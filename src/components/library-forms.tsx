@@ -12,7 +12,7 @@ import { BookPicker } from "./book-picker";
 import { useBookCatalog } from "./use-book-catalog";
 import { AssistLauncher } from "./assist-panel";
 export type Editor =
-  | { kind: "book"; book?: Book }
+  | { kind: "book"; book?: Book; focusCover?: boolean }
   | { kind: "note"; note?: Note; bookId?: string }
   | { kind: "start"; book: Book }
   | { kind: "progress" | "complete" | "date"; cycle: ReadingCycle };
@@ -391,6 +391,17 @@ export function LibraryForm({
                 </select>
               </label>
               <CoverInput
+                previewUrl={
+                  book && coverUrl === book.coverUrl
+                    ? book.storedCoverUrl ||
+                      book.storedImportedCoverUrl ||
+                      book.catalogCoverUrl ||
+                      (book.coverUrl?.startsWith("/api/")
+                        ? book.coverUrl
+                        : undefined)
+                    : undefined
+                }
+                focus={editor.kind === "book" && editor.focusCover}
                 value={coverUrl}
                 onChange={setCoverUrl}
                 preview={preview}

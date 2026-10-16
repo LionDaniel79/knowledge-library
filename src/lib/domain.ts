@@ -49,6 +49,8 @@ export interface Book {
   coverUrl?: string;
   /** Derived from current provider evidence; never replaces the saved cover. */
   catalogCoverUrl?: string;
+  storedCoverUrl?: string;
+  storedImportedCoverUrl?: string;
   classification?: {
     source?: string;
     code?: string;

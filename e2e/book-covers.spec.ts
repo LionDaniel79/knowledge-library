@@ -38,23 +38,36 @@ test("displays collected covers, preserves imported covers and falls back after 
     author: "저자",
     tags: [],
     coverUrl: "",
-    catalogCoverUrl: "https://library.test/catalog.jpg",
+    catalogCoverUrl: "/api/book-covers/catalog",
     sourceData: { app: "Local PDF", recordId: "document" },
   };
   const render = (b: unknown) =>
     page.evaluate((b) => (window as any).renderCover(b), b);
   await render(book);
   const img = page.locator(".book-cover img");
-  await expect(img).toHaveAttribute("src", "https://library.test/catalog.jpg");
+  await expect(img).toHaveAttribute("src", "/api/book-covers/catalog");
+  const originRequests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().startsWith("https://origin.invalid/"))
+      originRequests.push(r.url());
+  });
   await render({
     ...book,
     sourceData: { ...book.sourceData, cover: { sha256: "original" } },
   });
   await expect(img).toHaveAttribute("src", "/api/import-assets/book/sample");
-  await render({ ...book, coverUrl: "https://library.test/manual.jpg" });
-  await expect(img).toHaveAttribute("src", "https://library.test/manual.jpg");
+  await render({
+    ...book,
+    coverUrl: "https://origin.invalid/manual.jpg",
+    storedCoverUrl: "/api/book-covers/manual",
+    storedImportedCoverUrl: "/api/book-covers/imported",
+  });
+  await expect(img).toHaveAttribute("src", "/api/book-covers/manual");
+  expect(originRequests).toEqual([]);
   await img.dispatchEvent("error");
-  await expect(img).toHaveAttribute("src", "https://library.test/catalog.jpg");
+  await expect(img).toHaveAttribute("src", "/api/book-covers/imported");
+  await img.dispatchEvent("error");
+  await expect(img).toHaveAttribute("src", "/api/book-covers/catalog");
   await img.dispatchEvent("error");
   await expect(img).toHaveAttribute("src", "/api/pdf/document/cover");
   await expect(img).toHaveAttribute("title", "PDF 첫 페이지 미리보기");

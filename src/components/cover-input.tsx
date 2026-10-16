@@ -1,17 +1,32 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 export function CoverInput({
   value,
   onChange,
   preview,
   onBusy,
+  focus = false,
+  previewUrl,
 }: {
   value: string;
   onChange: (v: string) => void;
   preview: boolean;
   onBusy: (v: boolean) => void;
+  focus?: boolean;
+  previewUrl?: string;
 }) {
-  const [mode, setMode] = useState(value.startsWith("/api/") ? "file" : "url"),
+  const field = useRef<HTMLFieldSetElement>(null);
+  useEffect(() => {
+    if (focus) {
+      field.current?.scrollIntoView({ block: "center" });
+      field.current
+        ?.querySelector<HTMLInputElement>('input[type="radio"]')
+        ?.focus();
+    }
+  }, [focus]);
+  const [mode, setMode] = useState(
+      focus || value.startsWith("/api/") ? "file" : "url",
+    ),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   async function upload(file?: File) {
@@ -64,7 +79,7 @@ export function CoverInput({
     }
   }
   return (
-    <fieldset className="cover-input" disabled={busy}>
+    <fieldset ref={field} className="cover-input" disabled={busy}>
       <legend>표지 이미지 추가</legend>
       <div className="inline-options">
         <label>
@@ -106,12 +121,14 @@ export function CoverInput({
         />
       )}
       {busy && <small role="status">표지를 저장하고 있습니다…</small>}
-      {value && (
+      {(value || previewUrl) && (
         <div className="cover-input-preview">
-          <img src={value} alt="선택한 표지" />
-          <button type="button" onClick={() => onChange("")}>
-            표지 제거
-          </button>
+          <img src={previewUrl || value} alt="선택한 표지" />
+          {value && (
+            <button type="button" onClick={() => onChange("")}>
+              표지 제거
+            </button>
+          )}
         </div>
       )}
       {error && (

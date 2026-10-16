@@ -85,6 +85,13 @@ export class Yes24RequestError extends Error {
     super(`예스24 요청 중단: HTTP ${status}, ${code}`);
   }
 }
+function transientRequest(error: unknown): error is Yes24RequestError {
+  return (
+    error instanceof Yes24RequestError &&
+    ([502, 503, 504].includes(error.status) ||
+      (error.status === 0 && error.code === "NETWORK_ERROR"))
+  );
+}
 export async function readYes24Response(
   response: Response,
 ): Promise<any | null> {
@@ -245,12 +252,7 @@ export async function runYes24Queue<T>(options: {
     try {
       await options.process(items[state.cursor]);
     } catch (e) {
-      if (
-        !(e instanceof Yes24RequestError) ||
-        e.status !== 503 ||
-        !options.onTransientError
-      )
-        throw e;
+      if (!transientRequest(e) || !options.onTransientError) throw e;
       await options.onTransientError(items[state.cursor], e);
     }
     state.cursor++;
@@ -300,7 +302,7 @@ export async function runYes24Retries(options: {
     try {
       await options.process(id);
     } catch (e) {
-      if (!(e instanceof Yes24RequestError) || e.status !== 503) throw e;
+      if (!transientRequest(e)) throw e;
       failed = true;
     }
     state.pending.shift();

@@ -1,5 +1,7 @@
 import { it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
+import { storeCoverMirror } from "../src/server/cover-mirrors";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { curationMarkdown } from "../src/server/curation-export";
@@ -45,6 +47,16 @@ it("requires matching ISBN, records provider evidence separately and never overw
   };
   expect(parseGoogleBooks(raw, "9788999727764")).toBeNull();
   const match = parseGoogleBooks(raw, "9780306406157")!;
+  const cover = await storeCoverMirror(
+    fixture.db,
+    owner,
+    "https://books.google.com/cover.png",
+    await sharp({
+      create: { width: 20, height: 30, channels: 3, background: "red" },
+    })
+      .png()
+      .toBuffer(),
+  );
   const before = await library.snapshot(owner);
   const source = { kind: "book" as const, id: b.id!, version: "1" };
   expect(
@@ -62,9 +74,7 @@ it("requires matching ISBN, records provider evidence separately and never overw
   );
   expect(result.applied).toBeGreaterThan(0);
   const after = await library.snapshot(owner);
-  expect(after.books[0].catalogCoverUrl).toBe(
-    "https://books.google.com/cover.png",
-  );
+  expect(after.books[0].catalogCoverUrl).toBe(cover.url);
   expect({
     ...after,
     books: after.books.map(({ catalogCoverUrl, ...book }) => book),

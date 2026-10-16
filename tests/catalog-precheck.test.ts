@@ -64,3 +64,131 @@ it("retains translator conflicts, coauthor differences and names that must not b
       .certain,
   ).toBe(false);
 });
+it("recognizes joint credit roles and equivalent publisher acronym placement without guessing aliases", () => {
+  expect(
+    catalogPrecheck({ ...book, author: "김역" }, { ...book, author: "김" })
+      .certain,
+  ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...book, author: "펄 벅" },
+      { ...book, author: "펄 벅 저/장왕록,장영희 공역" },
+    ).certain,
+  ).toBe(true);
+  expect(
+    catalogPrecheck(
+      { ...book, author: "고석규, 고영진" },
+      { ...book, author: "고석규,고영진 공저" },
+    ).certain,
+  ).toBe(true);
+  expect(
+    catalogPrecheck(
+      { ...book, publisher: "기독교문서선교회(CLC)" },
+      { ...book, publisher: "CLC(기독교문서선교회)" },
+    ).certain,
+  ).toBe(true);
+  expect(
+    catalogPrecheck(
+      { ...book, publisher: "펭귄클래식코리아(웅진)" },
+      { ...book, publisher: "펭귄클래식코리아" },
+    ).certain,
+  ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...book, author: "펄 벅 저/김갑 공역" },
+      { ...book, author: "펄 벅 저/김을 공역" },
+    ).certain,
+  ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...book, author: "갑" },
+      { ...book, author: "갑,을 공저" },
+    ).certain,
+  ).toBe(false);
+});
+it("accepts a known series label on one side but preserves explicit series-volume and edition conflicts", () => {
+  for (const [title, candidate] of [
+    ["누가복음 12", "스펄전 설교전집 23: 누가복음 1-2"],
+    ["누가복음 1.2", "스펄전 설교전집 23: 누가복음 1-2"],
+    ["강의 12", "강의 1-2"],
+    [
+      "브람스를 좋아하세요 - 세계문학전집 179",
+      "브람스를 좋아하세요 - 세계문학전집 180",
+    ],
+    [
+      "브람스를 좋아하세요 - 세계문학전집 179.pdf",
+      "브람스를 좋아하세요 - 세계문학전집 180.pdf",
+    ],
+    [
+      "브람스를 좋아하세요 - 세계문학전집 179.pdf",
+      "브람스를 좋아하세요 - 세계문학전집 180",
+    ],
+  ])
+    expect(
+      catalogPrecheck(
+        { ...book, title, author: "스펄전" },
+        { ...book, title: candidate, author: "스펄전" },
+      ).certain,
+    ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...book, title: "성서주석 14: 마태복음" },
+      { ...book, title: "성서주석 1-4: 마태복음" },
+    ).certain,
+  ).toBe(false);
+  const a = {
+    ...book,
+    title: "마태복음",
+    author: "매튜 풀",
+    publisher: "CH북스(크리스천다이제스트)",
+  };
+  expect(
+    catalogPrecheck(a, { ...a, title: "매튜 풀 청교도 성경주석 14: 마태복음" })
+      .certain,
+  ).toBe(true);
+  expect(
+    catalogPrecheck(
+      { ...a, title: "누가복음 2", author: "스펄전" },
+      { ...a, author: "스펄전", title: "스펄전 설교전집 23 : 누가복음 2" },
+    ).certain,
+  ).toBe(true);
+  expect(
+    catalogPrecheck(
+      { ...a, title: "성서주석 45 : 디모데전.후서/디도서" },
+      { ...a, title: "디모데전.후서/디도서" },
+    ).certain,
+  ).toBe(true);
+  for (const title of [
+    "매튜 풀 청교도 성경주석 15: 마태복음",
+    "스펄전 설교전집 14: 마태복음",
+    "매튜 풀 청교도 성경주석 14: 마태복음 (큰글씨책)",
+  ])
+    expect(
+      catalogPrecheck(
+        { ...a, title: "매튜 풀 청교도 성경주석 14: 마태복음" },
+        { ...a, title },
+      ).certain,
+    ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...a, title: "마태복음 (상)" },
+      { ...a, title: "매튜 풀 청교도 성경주석 14: 마태복음" },
+    ).certain,
+  ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...a, title: "누가복음 1" },
+      { ...a, title: "스펄전 설교전집 23 : 누가복음 2" },
+    ).certain,
+  ).toBe(false);
+  expect(
+    catalogPrecheck(
+      { ...a, author: "다른 저자" },
+      {
+        ...a,
+        author: "다른 저자",
+        title: "매튜 풀 청교도 성경주석 14: 마태복음",
+      },
+    ).certain,
+  ).toBe(false);
+});

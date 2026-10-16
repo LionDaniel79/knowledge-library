@@ -4,6 +4,8 @@ import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { createCurationStore } from "../src/server/curation-store";
 import { collectBookReference } from "../src/local/curation/catalog";
+import sharp from "sharp";
+import { storeCoverMirror } from "../src/server/cover-mirrors";
 
 let fixture: Awaited<ReturnType<typeof testDatabase>>;
 beforeAll(async () => {
@@ -12,6 +14,16 @@ beforeAll(async () => {
 afterAll(async () => fixture?.pg.close());
 
 async function setup(owner: string) {
+  await storeCoverMirror(
+    fixture.db,
+    owner,
+    "https://images.example.org/edition-cover.jpg",
+    await sharp({
+      create: { width: 10, height: 15, channels: 3, background: "red" },
+    })
+      .png()
+      .toBuffer(),
+  );
   const library = createLibraryStore(fixture.db);
   const book = await library.mutate(owner, {
     requestId: randomUUID(),
@@ -47,9 +59,7 @@ async function setup(owner: string) {
 it("shows an ISBN-matched provider cover separately without changing the original book", async () => {
   const { library, before } = await setup("cover-owner");
   const book = (await library.snapshot("cover-owner")).books[0];
-  expect(book.catalogCoverUrl).toBe(
-    "https://images.example.org/edition-cover.jpg",
-  );
+  expect(book.catalogCoverUrl).toMatch(/^\/api\/book-covers\/[a-f0-9-]{36}$/);
   const { catalogCoverUrl, ...original } = book;
   expect(original).toEqual(before);
   expect((await library.snapshot("other-owner")).books).toEqual([]);

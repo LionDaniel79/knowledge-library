@@ -119,10 +119,8 @@ for (const width of [390, 1440])
     await expect(
       page.getByRole("button", { name: "책 정보 수정 이력" }),
     ).toHaveCount(0);
-    await page
-      .locator(".detail-actions")
-      .getByRole("button", { name: "수정", exact: true })
-      .click();
+    await expect(page.locator(".book-evidence")).not.toContainText("표지");
+    await page.getByRole("button", { name: "표지 수정", exact: true }).click();
     await page.getByLabel("파일 선택", { exact: true }).check();
     await expect(page.getByLabel("표지 파일 선택")).toBeVisible();
     await page.getByLabel("이미지 주소 입력", { exact: true }).check();

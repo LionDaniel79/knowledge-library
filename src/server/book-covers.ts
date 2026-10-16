@@ -19,7 +19,9 @@ export function createCoverStore(db: Database) {
           }),
           meta = await decoder.metadata();
         if (
-          !["jpeg", "png", "webp"].includes(meta.format ?? "") ||
+          !["jpeg", "png", "webp", "gif"].includes(meta.format ?? "") ||
+          (meta.format === "gif" &&
+            ((meta.width ?? 0) < 40 || (meta.height ?? 0) < 40)) ||
           (meta.pages ?? 1) > 1
         )
           throw Error("format");
@@ -70,7 +72,7 @@ export function createCoverStore(db: Database) {
           )
             throw new LibraryError(
               409,
-              "표지 저장 한도에 도달했습니다. 이미지 주소를 사용해 주세요.",
+              "표지 저장 공간이 부족합니다. 저장 공간을 확인해 주세요.",
             );
           id = randomUUID();
           await tx.query(

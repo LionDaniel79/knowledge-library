@@ -23,7 +23,12 @@ export async function verifyRelocatedPdf(
   const key = `${file}:${before.size}:${before.mtimeNs}:${before.ctimeNs}`;
   if (verified.get(key) !== sha256) {
     const hash = createHash("sha256");
-    for await (const chunk of createReadStream(file)) hash.update(chunk);
+    const stream = createReadStream(file);
+    for await (const chunk of stream) hash.update(chunk);
+    // Windows can retain old write timestamps until the final file handle closes.
+    await new Promise<void>((done, fail) =>
+      stream.close((error) => (error ? fail(error) : done())),
+    );
     const after = await stat(file, { bigint: true });
     if (
       after.size !== before.size ||

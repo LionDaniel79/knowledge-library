@@ -2,6 +2,7 @@ import type { Executor } from "./library-store";
 import type { Book } from "../lib/domain";
 import { isbn13 } from "../lib/bibliography";
 import { secureImage } from "./catalog-provider";
+import { attachStoredCovers } from "./cover-mirrors";
 export const bookSelect =
   'id,title,author,publisher,isbn,formats,total_pages AS "totalPages",shelf,tags,category,classification,bookshelves,cover_url AS "coverUrl",enrichment,version,created_at AS "createdAt",source_data AS "sourceData"';
 export const compactBookSelect = bookSelect
@@ -13,7 +14,7 @@ export const compactBookSelect = bookSelect
     "enrichment,",
     "jsonb_build_object('catalogSelection',enrichment->'catalogSelection') AS enrichment,",
   );
-export async function attachCatalogCovers(
+export async function attachCatalogCoverSources(
   tx: Executor,
   owner: string,
   books: Book[],
@@ -51,4 +52,12 @@ export async function attachCatalogCovers(
     )
       book.catalogCoverUrl = url;
   }
+}
+export async function attachCatalogCovers(
+  tx: Executor,
+  owner: string,
+  books: Book[],
+) {
+  await attachCatalogCoverSources(tx, owner, books);
+  await attachStoredCovers(tx, owner, books);
 }

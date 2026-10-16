@@ -17,13 +17,23 @@ export function BookCover({
     [
       book.id,
       book.coverUrl,
+      book.storedCoverUrl,
+      book.storedImportedCoverUrl,
       book.catalogCoverUrl,
       book.sourceData?.cover?.sha256,
       pdfId,
     ],
   );
   const sources = [
-    { src: book.coverUrl },
+    { src: book.storedCoverUrl },
+    {
+      src: book.coverUrl?.startsWith("/api/book-covers/")
+        ? book.coverUrl
+        : undefined,
+    },
+    {
+      src: book.storedImportedCoverUrl,
+    },
     {
       src: book.sourceData?.cover
         ? "/api/import-assets/book/" + book.id

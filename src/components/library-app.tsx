@@ -1471,7 +1471,21 @@ export function LibraryApp({
             </p>
           )}
           <div className="book-detail">
-            <BookCover book={detailBook} />
+            <div>
+              <BookCover book={detailBook} />
+              <button
+                className="secondary"
+                onClick={() =>
+                  setEditor({
+                    kind: "book",
+                    book: detailBook,
+                    focusCover: true,
+                  })
+                }
+              >
+                표지 수정
+              </button>
+            </div>
             <div>
               <div className="book-heading-status">
                 <span>{categoryName(detailBook.category)}</span>
@@ -1515,18 +1529,6 @@ export function LibraryApp({
                 {detailBook.classification?.verified
                   ? " · 서지 확인됨"
                   : " · 검토 필요"}
-              </dd>
-              <dt>표지</dt>
-              <dd>
-                {detailBook.coverUrl
-                  ? "외부 서지정보 표지"
-                  : detailBook.sourceData?.cover
-                    ? "가져온 표지"
-                    : detailBook.catalogCoverUrl
-                      ? "같은 ISBN으로 확인한 표지"
-                      : detailBook.sourceData?.app === "Local PDF"
-                        ? "원문 첫 페이지 미리보기 (책 표지와 다를 수 있습니다)"
-                        : "제목으로 표시"}
               </dd>
             </dl>
           </details>

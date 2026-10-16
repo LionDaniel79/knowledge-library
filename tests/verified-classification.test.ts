@@ -1,5 +1,7 @@
 import { it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
+import { storeCoverMirror } from "../src/server/cover-mirrors";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { collectBookReference } from "../src/local/curation/catalog";
@@ -15,6 +17,16 @@ beforeAll(async () => {
 });
 afterAll(async () => f.pg.close());
 async function setup(owner: string) {
+  await storeCoverMirror(
+    f.db,
+    owner,
+    "https://images.example.org/book.jpg",
+    await sharp({
+      create: { width: 20, height: 30, channels: 3, background: "red" },
+    })
+      .png()
+      .toBuffer(),
+  );
   const library = createLibraryStore(f.db);
   const b = await library.mutate(owner, {
     requestId: randomUUID(),
@@ -109,7 +121,9 @@ it("adopts an ISBN/title-matched official category while keeping introduction, c
   expect(after.books[0]).toMatchObject({
     category: "100",
     classification: { code: "186.3", verified: true },
-    catalogCoverUrl: "https://images.example.org/book.jpg",
+    catalogCoverUrl: expect.stringMatching(
+      /^\/api\/book-covers\/[a-f0-9-]{36}$/,
+    ),
   });
   expect(after.notes).toEqual(before.notes);
   expect(after.cycles).toEqual(before.cycles);
