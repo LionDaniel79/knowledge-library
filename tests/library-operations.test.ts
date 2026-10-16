@@ -3,6 +3,37 @@ import {
   summarizeCollection,
   ocrLaunchSpec,
 } from "../src/server/library-operations";
+it("reads nested YES24 progress and treats scheduled batch waits as waiting", () => {
+  const now = Date.parse("2026-10-16T10:00:00Z");
+  expect(
+    summarizeCollection(
+      {
+        stopped: "waiting",
+        updatedAt: "2026-10-16T09:56:00Z",
+        cursor: 2000,
+        total: 5749,
+        counts: {
+          review_required: 300,
+          applied: 1000,
+          retry_later: 2,
+          not_found: 5,
+          secret: "private",
+        },
+      },
+      now,
+    ),
+  ).toMatchObject({
+    status: "waiting",
+    counts: {
+      processed: 2000,
+      total: 5749,
+      review: 300,
+      applied: 1000,
+      pending: 2,
+      notFound: 5,
+    },
+  });
+});
 it("reports contents candidates separately from embedded contents and missing pages without exposing excerpts", () => {
   expect(
     summarizeCollection({

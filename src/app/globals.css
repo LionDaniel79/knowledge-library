@@ -3161,3 +3161,76 @@ textarea {
 .checkbox-label input {
   width: auto;
 }
+/* The compact list uses the same filters and book detail dialog as the cover view. */
+.book-list {
+  display: grid;
+  gap: 6px;
+}
+.book-list-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+}
+.book-list-row .book-cover {
+  width: 44px;
+  height: 62px;
+  min-height: 0;
+  margin: 0;
+}
+.book-list-row .book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.book-list-description {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.book-list-description strong {
+  font-size: 16px;
+}
+.book-list-description > span {
+  font-size: 14px;
+}
+.book-list-description small {
+  font-size: 13px;
+}
+.book-list-status {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.book-list-status span {
+  border-radius: 5px;
+  padding: 3px 6px;
+}
+.book-list-status .completed {
+  background: #e7f0ff;
+  color: #2355a0;
+}
+.book-list-status .reading {
+  background: #e5f5e9;
+  color: #27613a;
+}
+.book-list-status .queued {
+  background: #fff3c7;
+  color: #775b00;
+}
+@media (max-width: 480px) {
+  .book-list-row {
+    gap: 8px;
+    padding: 8px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+  .book-list-row .book-cover {
+    width: 36px;
+    height: 52px;
+  }
+}

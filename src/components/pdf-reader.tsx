@@ -6,20 +6,23 @@ export function PdfReader({
   title,
   initialPage,
   signature,
+  localAvailable = true,
 }: {
   id: string;
   title: string;
   initialPage: number;
   signature?: string;
+  localAvailable?: boolean;
 }) {
   const [page, setPage] = useState(initialPage),
     [count, setCount] = useState<number | null>(null),
     [image, setImage] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(true),
+    [busy, setBusy] = useState(localAvailable),
     [toc, setToc] = useState<{ title: string; page: number | null }[]>([]);
   const pin = signature ? `&signature=${encodeURIComponent(signature)}` : "";
   useEffect(() => {
+    if (!localAvailable) return;
     const abort = new AbortController();
     fetch(`/api/pdf?mode=detail&id=${id}`, { signal: abort.signal })
       .then((r) => (r.ok ? r.json() : null))
@@ -33,8 +36,12 @@ export function PdfReader({
       })
       .catch(() => {});
     return () => abort.abort();
-  }, [id]);
+  }, [id, localAvailable]);
   useEffect(() => {
+    if (!localAvailable) {
+      setBusy(false);
+      return;
+    }
     const abort = new AbortController();
     let objectUrl = "";
     setBusy(true);
@@ -61,7 +68,7 @@ export function PdfReader({
       abort.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [id, page, pin]);
+  }, [id, page, pin, localAvailable]);
   return (
     <main className="reader">
       <PcAccess id={id} page={page} signature={signature} />
@@ -72,47 +79,50 @@ export function PdfReader({
           PDF {page}페이지{count ? ` / ${count}페이지` : ""} · 인쇄된 쪽수와
           다를 수 있습니다.
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setPage(Number(new FormData(e.currentTarget).get("page")));
-          }}
-        >
-          <button
-            type="button"
-            disabled={page <= 1 || busy}
-            onClick={() => setPage(page - 1)}
+        {!localAvailable && <p>PDF는 연결된 PC의 서재에서 열 수 있습니다.</p>}
+        {localAvailable && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setPage(Number(new FormData(e.currentTarget).get("page")));
+            }}
           >
-            이전
-          </button>
-          <label>
-            PDF 페이지
-            <input
-              key={page}
-              name="page"
-              type="number"
-              min="1"
-              max={count ?? 100000}
-              defaultValue={page}
-              required
-            />
-          </label>
-          <button disabled={busy}>이동</button>
-          <button
-            type="button"
-            disabled={busy || Boolean(count && page >= count)}
-            onClick={() => setPage(page + 1)}
-          >
-            다음
-          </button>
-          <a
-            href={`/api/pdf/${id}/file?${pin.slice(1)}#page=${page}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            PDF 파일 열기
-          </a>
-        </form>
+            <button
+              type="button"
+              disabled={page <= 1 || busy}
+              onClick={() => setPage(page - 1)}
+            >
+              이전
+            </button>
+            <label>
+              PDF 페이지
+              <input
+                key={page}
+                name="page"
+                type="number"
+                min="1"
+                max={count ?? 100000}
+                defaultValue={page}
+                required
+              />
+            </label>
+            <button disabled={busy}>이동</button>
+            <button
+              type="button"
+              disabled={busy || Boolean(count && page >= count)}
+              onClick={() => setPage(page + 1)}
+            >
+              다음
+            </button>
+            <a
+              href={`/api/pdf/${id}/file?${pin.slice(1)}#page=${page}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              PDF 파일 열기
+            </a>
+          </form>
+        )}
       </header>
       {toc.length > 0 && (
         <details>

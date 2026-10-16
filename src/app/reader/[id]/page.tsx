@@ -2,6 +2,7 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { PdfReader } from "@/components/pdf-reader";
 import { z } from "zod";
+import { existsSync } from "node:fs";
 export const dynamic = "force-dynamic";
 export default async function Reader({
   params,
@@ -30,6 +31,13 @@ export default async function Reader({
         title={doc.title}
         initialPage={Math.max(1, Math.min(100000, Number(query.page) || 1))}
         signature={query.signature}
+        localAvailable={
+          !!(
+            process.env.LIBRARY_PDF_ROOT &&
+            process.env.LIBRARY_PYTHON &&
+            existsSync(process.env.LIBRARY_PYTHON)
+          )
+        }
       />
     );
   } catch {

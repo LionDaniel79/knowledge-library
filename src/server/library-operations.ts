@@ -49,15 +49,35 @@ export function summarizeCollection(value: unknown, now = Date.now()) {
       ? "complete"
       : v.stopped === "error"
         ? "error"
-        : v.stopped === "running"
-          ? now - Date.parse(v.updatedAt) > 240000
-            ? "stale"
-            : "running"
-          : "paused";
+        : v.stopped === "waiting" || v.stopped === "retrying"
+          ? "waiting"
+          : v.stopped === "retry_pending"
+            ? "paused"
+            : v.stopped === "running"
+              ? now - Date.parse(v.updatedAt) > 240000
+                ? "stale"
+                : "running"
+              : "paused";
+  const nested =
+    typeof v.counts === "object" && v.counts
+      ? (v.counts as Record<string, unknown>)
+      : {};
+  const source = {
+    ...v,
+    processed: v.processed ?? v.cursor,
+    applied: v.applied ?? nested.applied,
+    review: v.review ?? nested.review_required,
+    pending: v.pending ?? nested.retry_later,
+    notFound: v.notFound ?? nested.not_found,
+  };
   const counts = Object.fromEntries(
     countKeys
-      .filter((k) => Number.isSafeInteger(v[k]) && Number(v[k]) >= 0)
-      .map((k) => [k, v[k] as number]),
+      .filter(
+        (k) =>
+          Number.isSafeInteger(source[k as keyof typeof source]) &&
+          Number(source[k as keyof typeof source]) >= 0,
+      )
+      .map((k) => [k, source[k as keyof typeof source] as number]),
   );
   return { status, updatedAt: v.updatedAt, counts };
 }
@@ -128,6 +148,7 @@ export async function libraryOperations(db: Executor, owner: string) {
       ? pdfWorkerStatus(c.index, "ocr")
       : { status: "unknown" as const };
   let issues: Record<string, any>[] = [];
+  let issuesAvailable = false;
   if (available)
     try {
       issues = withPdfIndex((index) =>
@@ -137,6 +158,7 @@ export async function libraryOperations(db: Executor, owner: string) {
           )
           .all(),
       );
+      issuesAvailable = true;
     } catch {}
   const owned = issues.length
     ? (
@@ -151,6 +173,7 @@ export async function libraryOperations(db: Executor, owner: string) {
   return {
     localAvailable: available,
     rootConnected,
+    issuesAvailable,
     canControl:
       available &&
       rootConnected &&
@@ -164,12 +187,25 @@ export async function libraryOperations(db: Executor, owner: string) {
       ["pdf-identity", "PDF 판본 조사"],
       ["pdf-outlines", "PDF 목차 보관"],
       ["printed-toc", "PDF 인쇄 목차 조사"],
-    ].map(([folder, label]) => ({
-      label,
-      ...(cache
-        ? progress(join(cache, folder, "status.json"))
-        : summarizeCollection(null)),
-    })),
+    ]
+      .map(([folder, label]) => ({
+        label,
+        ...(cache
+          ? progress(join(cache, folder, "status.json"))
+          : summarizeCollection(null)),
+      }))
+      .concat(
+        process.env.LIBRARY_YES24_JOB_DIR
+          ? [
+              {
+                label: "예스24 도서정보 보완",
+                ...progress(
+                  join(process.env.LIBRARY_YES24_JOB_DIR, "status.json"),
+                ),
+              },
+            ]
+          : [],
+      ),
     issues: issues
       .filter((x) => map.has(x.id))
       .map((x) => ({

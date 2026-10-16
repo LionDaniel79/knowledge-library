@@ -11,6 +11,7 @@ const stateNames: Record<string, string> = {
   failed: "작업 중단",
   stale: "최근 응답 없음",
   unknown: "실행 정보 없음",
+  waiting: "다음 처리 대기",
 };
 const countNames: Record<string, string> = {
   total: "대상",
@@ -102,7 +103,10 @@ export function LibraryOperationsPanel() {
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {state && (
+      {state && !state.localAvailable && (
+        <p>PC 작업 현황은 내 PC의 서재에서 확인할 수 있습니다.</p>
+      )}
+      {state?.localAvailable && (
         <>
           <section className="curation-item">
             <h3>PDF 문자 인식</h3>
@@ -160,7 +164,11 @@ export function LibraryOperationsPanel() {
               </details>
             </section>
           ))}
-          <h3>원본 확인이 필요한 자료 {state.issues.length}건</h3>
+          <h3>
+            {state.issuesAvailable
+              ? `원본 확인이 필요한 자료 ${state.issues.length}건`
+              : "원본 상태를 확인할 수 없습니다."}
+          </h3>
           {state.issues.map((i) => (
             <article className="curation-item" key={i.id}>
               <strong>{i.title}</strong>

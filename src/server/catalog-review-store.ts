@@ -1,3 +1,4 @@
+import { catalogPrecheck } from "../lib/catalog-precheck";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
@@ -134,6 +135,7 @@ export async function readCatalogReviews(
       q: z.string().max(200).default(""),
       offset: z.coerce.number().int().min(0).max(1000000).default(0),
       id: z.string().uuid().optional(),
+      groupBy: z.enum(["candidate", "book"]).default("candidate"),
     })
     .parse(query);
   if (q.id) {
@@ -150,20 +152,28 @@ export async function readCatalogReviews(
         [owner, row.book_id],
       )
     ).rows[0];
-    return { ...row, current: snapshot(b) };
+    const alternatives = (
+      await db.query(
+        "SELECT id,record->>'title' AS title,record->>'isbn' AS isbn,record->'facts'->>'author' AS author,record->'facts'->>'publisher' AS publisher FROM library_catalog_reviews WHERE owner_id=$1 AND book_id=$2 AND status=$3 ORDER BY (record->>'isbn'=$4) DESC,created_at,id",
+        [owner, row.book_id, row.status, b.isbn],
+      )
+    ).rows;
+    return { ...row, current: snapshot(b), alternatives };
   }
   const params = [owner, q.status, q.q];
   const where =
     "owner_id=$1 AND status=$2 AND ($3='' OR strpos(lower(book_snapshot->>'title'),lower($3))>0 OR strpos(lower(record->>'title'),lower($3))>0)";
   const count = (
     await db.query(
-      `SELECT count(*)::int AS n FROM library_catalog_reviews WHERE ${where}`,
+      `SELECT count(${q.groupBy === "book" ? "DISTINCT book_id" : "*"})::int AS n FROM library_catalog_reviews WHERE ${where}`,
       params,
     )
   ).rows[0].n;
   const items = (
     await db.query(
-      `SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version FROM library_catalog_reviews WHERE ${where} ORDER BY created_at,id LIMIT 20 OFFSET $4`,
+      q.groupBy === "book"
+        ? `WITH matching AS(SELECT * FROM library_catalog_reviews WHERE ${where}), ranked AS(SELECT r.*,row_number() OVER(PARTITION BY book_id ORDER BY (record->>'isbn'=b.isbn) DESC,r.created_at,r.id) AS rank,count(*) OVER(PARTITION BY book_id)::int AS "candidateCount" FROM matching r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id) SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,"candidateCount",decision->'precheck' AS precheck FROM ranked WHERE rank=1 ORDER BY created_at,id LIMIT 20 OFFSET $4`
+        : `SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,decision->'precheck' AS precheck FROM library_catalog_reviews WHERE ${where} ORDER BY created_at,id LIMIT 20 OFFSET $4`,
       [...params, q.offset],
     )
   ).rows;
@@ -178,9 +188,13 @@ export async function decideCatalogReview(
   db: Database,
   owner: string,
   raw: unknown,
+  reviewer: "human" | "catalog_precheck" = "human",
 ) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const input = reviewDecisionSchema.parse(raw);
+  const automatic = reviewer === "catalog_precheck";
+  if (automatic && input.action !== "apply")
+    throw new LibraryError(400, "자동 검토는 확실한 후보만 반영합니다.");
   return db.transaction(async (tx) => {
     const row = (
       await tx.query(
@@ -198,9 +212,13 @@ export async function decideCatalogReview(
         409,
         "후보 상태가 바뀌었습니다. 다시 열어 주세요.",
       );
-    const result: any = { action: input.action, fields: input.fields };
+    const result: any = {
+      action: input.action,
+      fields: input.fields,
+      reviewedBy: reviewer,
+    };
     if (input.action === "apply") {
-      if (!input.sameEdition || !input.fields.length)
+      if ((!input.sameEdition || !input.fields.length) && !automatic)
         throw new LibraryError(
           400,
           "같은 판본인지 확인하고 반영할 항목을 선택하세요.",
@@ -233,39 +251,121 @@ export async function decideCatalogReview(
           "후보와 같은 ISBN으로 확인해야 목차·표지를 연결할 수 있습니다.",
         );
       const nested: Database = { query: tx.query, transaction: (fn) => fn(tx) };
-      await createLibraryStore(nested).mutate(owner, {
-        type: "editBook",
-        requestId: input.requestId,
-        payload: {
-          ...merged,
-          id: b.id,
-          expectedVersion: b.version,
-          catalogSelection: {
-            provider: "yes24",
-            sourceUrl: record.url,
-            description: (record.description ?? "").slice(0, 3000),
+      if (automatic) {
+        const proof = catalogPrecheck(b as any, record.facts);
+        if (!proof.certain)
+          throw new LibraryError(
+            409,
+            "확실히 일치하지 않아 직접 확인이 필요합니다.",
+          );
+        const existing = (
+          await tx.query(
+            "SELECT kind,value,state,reviewed_by FROM library_curation_items WHERE owner_id=$1 AND source_kind='book' AND source_id=$2 AND source_version=$3 AND state<>'rolled_back'",
+            [owner, b.id, String(b.version)],
+          )
+        ).rows;
+        const protectedResult = existing.some(
+          (c) => c.reviewed_by || c.state === "hidden",
+        );
+        if (!protectedResult) {
+          const has = (kind: string) =>
+            existing.some((c) => c.kind === kind && c.state === "active");
+          const supplement = {
+            ...record,
+            facts: {
+              ...record.facts,
+              coverUrl:
+                !b.coverUrl &&
+                !b.sourceData?.cover &&
+                !existing.some(
+                  (c) => c.kind === "bibliography" && c.value?.coverUrl,
+                )
+                  ? record.facts.coverUrl
+                  : "",
+            },
+            toc: has("toc") ? [] : record.toc,
+            description:
+              has("description") || has("publisher_intro")
+                ? ""
+                : record.description,
+          };
+          const added = await collectBookReference(
+            nested,
+            owner,
+            { kind: "book", id: b.id, version: String(b.version) },
+            supplement,
+            true,
+          );
+          await tx.query(
+            "UPDATE library_curation_items SET reviewed_by='catalog_precheck' WHERE owner_id=$1 AND run_id=$2 AND reviewed_by IS NULL",
+            [owner, added.runId],
+          );
+          result.supplements = added.applied;
+        } else result.preservedReviewedInformation = true;
+        result.precheck = proof;
+        await tx.query(
+          "INSERT INTO library_field_origins(id,owner_id,entity_id,field,origin,generator,reviewer,before_data,after_data) VALUES($1,$2,$3,'catalog_review','rule',$4,'catalog_precheck',$5,$6)",
+          [
+            randomUUID(),
+            owner,
+            b.id,
+            proof.version,
+            JSON.stringify(snapshot(b)),
+            JSON.stringify({
+              candidateId: row.id,
+              proof,
+              providerUrl: record.url,
+            }),
+          ],
+        );
+        await tx.query(
+          "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'catalogPrecheck',$4,$5)",
+          [
+            randomUUID(),
+            owner,
+            b.id,
+            JSON.stringify(snapshot(b)),
+            JSON.stringify({
+              ...snapshot(b),
+              catalogReview: { candidateId: row.id, ...result },
+            }),
+          ],
+        );
+      } else {
+        await createLibraryStore(nested).mutate(owner, {
+          type: "editBook",
+          requestId: input.requestId,
+          payload: {
+            ...merged,
+            id: b.id,
+            expectedVersion: b.version,
+            catalogSelection: {
+              provider: "yes24",
+              sourceUrl: record.url,
+              description: (record.description ?? "").slice(0, 3000),
+            },
           },
-        },
-      });
-      await collectBookReference(
-        nested,
-        owner,
-        { kind: "book", id: b.id, version: String(b.version + 1) },
-        {
-          ...record,
-          facts: {
-            ...record.facts,
-            coverUrl: input.fields.includes("coverUrl")
-              ? record.facts.coverUrl
-              : "",
+        });
+        await collectBookReference(
+          nested,
+          owner,
+          { kind: "book", id: b.id, version: String(b.version + 1) },
+          {
+            ...record,
+            facts: {
+              ...record.facts,
+              coverUrl: input.fields.includes("coverUrl")
+                ? record.facts.coverUrl
+                : "",
+            },
           },
-        },
-        true,
-      );
-      await tx.query(
-        "UPDATE library_curation_items SET reviewed_by='human' WHERE owner_id=$1 AND source_kind='book' AND source_id=$2 AND source_version=$3",
-        [owner, b.id, String(b.version + 1)],
-      );
+          true,
+        );
+        await tx.query(
+          "UPDATE library_curation_items SET reviewed_by='human' WHERE owner_id=$1 AND source_kind='book' AND source_id=$2 AND source_version=$3",
+          [owner, b.id, String(b.version + 1)],
+        );
+      }
       await tx.query(
         "UPDATE library_catalog_reviews SET status='superseded',version=version+1,updated_at=now() WHERE owner_id=$1 AND book_id=$2 AND id<>$3 AND status IN ('pending','deferred')",
         [owner, b.id, row.id],

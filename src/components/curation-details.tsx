@@ -196,7 +196,12 @@ export function CurationDetails({
               <summary>근거 보기</summary>
               <p>
                 {originNames[item.origin] ?? item.origin} ·{" "}
-                {item.reviewed_by ? "사용자 확인·수정" : "검토 전"} ·{" "}
+                {item.reviewed_by === "catalog_precheck"
+                  ? "서지 일치 확인"
+                  : item.reviewed_by
+                    ? "사용자 확인·수정"
+                    : "검토 전"}{" "}
+                ·{" "}
                 {item.coverage === "metadata"
                   ? "서지 정보 범위"
                   : item.coverage === "toc"

@@ -8,6 +8,13 @@ const labels = {
   isbn: "ISBN",
   coverUrl: "표지 주소",
 };
+const reasonLabels: Record<string, string> = {
+  isbn: "ISBN 확인",
+  title: "제목·판본 확인",
+  author: "저자 확인",
+  publisher: "출판사 확인",
+  source_changed: "수정된 도서정보 재확인",
+};
 export function CatalogReviewPanel({
   onChanged,
 }: {
@@ -27,7 +34,7 @@ export function CatalogReviewPanel({
     const c = new AbortController();
     setPage(null);
     fetch(
-      `/api/catalog-review?${new URLSearchParams({ status, q, offset: String(offset) })}`,
+      `/api/catalog-review?${new URLSearchParams({ status, q, offset: String(offset), groupBy: "book" })}`,
       { signal: c.signal, cache: "no-store" },
     )
       .then(async (r) => {
@@ -100,7 +107,7 @@ export function CatalogReviewPanel({
             }}
           >
             {[
-              ["pending", "검토 대기"],
+              ["pending", "확인 필요한 책"],
               ["deferred", "보류"],
               ["applied", "반영"],
               ["rejected", "거절"],
@@ -131,6 +138,29 @@ export function CatalogReviewPanel({
       {detail ? (
         <>
           <h3>{detail.current.title}</h3>
+          {detail.alternatives?.length > 1 && (
+            <label>
+              비교할 후보
+              <select
+                value={detail.id}
+                disabled={busy}
+                onChange={(e) => void open(e.target.value)}
+              >
+                {detail.alternatives.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title} · {a.author} · {a.publisher} · {a.isbn}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {detail.decision?.precheck?.reasons?.length > 0 && (
+            <p>
+              {detail.decision.precheck.reasons
+                .map((r: string) => reasonLabels[r] ?? "정보 확인")
+                .join(" · ")}
+            </p>
+          )}
           <div className="review-table-wrap">
             <table className="review-table">
               <thead>
@@ -210,7 +240,7 @@ export function CatalogReviewPanel({
         </>
       ) : page ? (
         <>
-          <p>{page.total.toLocaleString()}개 후보</p>
+          <p>{page.total.toLocaleString()}권</p>
           <ul className="review-list">
             {page.items.map((i: any) => (
               <li key={i.id}>
@@ -218,7 +248,17 @@ export function CatalogReviewPanel({
                   <strong>{i.title}</strong>
                   <span>
                     {i.candidate_title} · {i.isbn}
+                    {i.candidateCount > 1
+                      ? ` · 후보 ${i.candidateCount}개`
+                      : ""}
                   </span>
+                  {i.precheck?.reasons?.length > 0 && (
+                    <small>
+                      {i.precheck.reasons
+                        .map((r: string) => reasonLabels[r] ?? "정보 확인")
+                        .join(" · ")}
+                    </small>
+                  )}
                 </button>
               </li>
             ))}

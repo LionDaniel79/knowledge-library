@@ -108,6 +108,21 @@ export function LibraryApp({
   }
   const [menuOpen, setMenuOpen] = useState(false);
   const [sort, setSort] = useState("newest");
+  const [bookLayout, setBookLayout] = useState<"covers" | "list">("covers");
+  const layoutKey = `library:book-layout:${ownerId || "default"}`;
+  useEffect(() => {
+    try {
+      setBookLayout(
+        localStorage.getItem(layoutKey) === "list" ? "list" : "covers",
+      );
+    } catch {}
+  }, [layoutKey]);
+  function chooseBookLayout(value: "covers" | "list") {
+    setBookLayout(value);
+    try {
+      localStorage.setItem(layoutKey, value);
+    } catch {}
+  }
   const [category, setCategory] = useState("all");
   const [shelfFilter, setShelfFilter] = useState("all");
   const [noteTag, setNoteTag] = useState("all");
@@ -1025,6 +1040,24 @@ export function LibraryApp({
               {view === "books" && (
                 <>
                   <div className="book-toolbar">
+                    <div
+                      className="filter-tabs"
+                      role="group"
+                      aria-label="도서 보기 방식"
+                    >
+                      <button
+                        aria-pressed={bookLayout === "covers"}
+                        onClick={() => chooseBookLayout("covers")}
+                      >
+                        표지형
+                      </button>
+                      <button
+                        aria-pressed={bookLayout === "list"}
+                        onClick={() => chooseBookLayout("list")}
+                      >
+                        목록형
+                      </button>
+                    </div>
                     {!preview && (
                       <button onClick={() => setCatalogReviewOpen(true)}>
                         도서정보 검토
@@ -1058,11 +1091,53 @@ export function LibraryApp({
                   {catalog.loading && !matchedBooks.length ? (
                     <p role="status">도서를 불러오고 있습니다…</p>
                   ) : matchedBooks.length ? (
-                    <div className="shelf-grid">
+                    <div
+                      className={
+                        bookLayout === "covers" ? "shelf-grid" : "book-list"
+                      }
+                    >
                       {(remote
                         ? matchedBooks
                         : matchedBooks.slice(0, limit)
-                      ).map(bookCard)}
+                      ).map((book) =>
+                        bookLayout === "covers" ? (
+                          bookCard(book)
+                        ) : (
+                          <button
+                            key={book.id}
+                            className="book-list-row"
+                            onClick={() => setDetail(book.id)}
+                          >
+                            <BookCover book={book} />
+                            <span className="book-list-description">
+                              <strong>{book.title}</strong>
+                              <span>
+                                {book.author || "저자 미입력"}
+                                {book.publisher ? ` · ${book.publisher}` : ""}
+                              </span>
+                              <small>
+                                {book.formats
+                                  .map((f) => formatNames[f])
+                                  .join(" · ")}
+                                {book.category
+                                  ? ` · ${categoryName(book.category)}`
+                                  : ""}
+                              </small>
+                            </span>
+                            <span className="book-list-status">
+                              {readingIds.has(book.id) && (
+                                <span className="reading">읽는 중</span>
+                              )}
+                              {completedIds.has(book.id) && (
+                                <span className="completed">완독</span>
+                              )}
+                              {book.bookshelves?.includes("책 대기열") && (
+                                <span className="queued">책 대기열</span>
+                              )}
+                            </span>
+                          </button>
+                        ),
+                      )}
                     </div>
                   ) : (
                     <div className="panel empty-state">

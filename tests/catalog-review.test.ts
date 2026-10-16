@@ -1,3 +1,4 @@
+import { precheckCatalogReviews } from "../src/local/curation/catalog-precheck";
 import { beforeAll, afterAll, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
@@ -9,6 +10,79 @@ import {
   decideCatalogReview,
 } from "../src/server/catalog-review-store";
 let f: Awaited<ReturnType<typeof testDatabase>>;
+it("prechecks certain records without rewriting original metadata or labeling them human-approved", async () => {
+  const x = await fixture();
+  await f.db.query(
+    "update library_books set title=$2,author=$3,publisher=$4,isbn=$5 where id=$1",
+    [
+      x.bookId,
+      record.title,
+      record.facts.author,
+      record.facts.publisher,
+      record.isbn,
+    ],
+  );
+  await importCatalogReview(f.db, x.owner, x);
+  const id = (await readCatalogReviews(f.db, x.owner, {})).items![0].id;
+  const before = (
+    await f.db.query("select * from library_books where id=$1", [x.bookId])
+  ).rows;
+  const p = {
+    id,
+    expectedVersion: 1,
+    requestId: randomUUID(),
+    action: "apply",
+  };
+  await expect(
+    decideCatalogReview(f.db, x.owner, p, "catalog_precheck"),
+  ).resolves.toMatchObject({ reviewedBy: "catalog_precheck" });
+  await decideCatalogReview(f.db, x.owner, p, "catalog_precheck");
+  expect(
+    (await f.db.query("select * from library_books where id=$1", [x.bookId]))
+      .rows,
+  ).toEqual(before);
+  expect(
+    (
+      await f.db.query(
+        "select distinct reviewed_by from library_curation_items where owner_id=$1",
+        [x.owner],
+      )
+    ).rows,
+  ).toEqual([{ reviewed_by: "catalog_precheck" }]);
+  const y = await fixture();
+  await importCatalogReview(f.db, y.owner, y);
+  const other = (await readCatalogReviews(f.db, y.owner, {})).items![0];
+  await expect(
+    decideCatalogReview(
+      f.db,
+      y.owner,
+      { ...p, id: other.id, requestId: randomUUID() },
+      "catalog_precheck",
+    ),
+  ).rejects.toThrow();
+});
+it("groups ambiguous alternatives by owned book", async () => {
+  const x = await fixture();
+  await importCatalogReviewBatch(f.db, x.owner, [
+    x,
+    {
+      ...x,
+      record: {
+        ...record,
+        url: "https://www.yes24.com/product/goods/9999",
+        title: "후보 다른 판",
+        facts: { ...record.facts, title: "후보 다른 판" },
+      },
+    },
+  ]);
+  const page = await readCatalogReviews(f.db, x.owner, { groupBy: "book" });
+  expect(page.total).toBe(1);
+  expect(page.items![0].candidateCount).toBe(2);
+  const detail = await readCatalogReviews(f.db, x.owner, {
+    id: page.items![0].id,
+  });
+  expect("alternatives" in detail ? detail.alternatives : []).toHaveLength(2);
+});
 beforeAll(async () => {
   f = await testDatabase();
 });
@@ -180,4 +254,26 @@ it("rejects stale books and excludes metadata-only PDFs", async () => {
     [randomUUID(), y.owner, y.bookId],
   );
   expect(await importCatalogReview(f.db, y.owner, y)).toBeNull();
+});
+
+it("prechecks only pending owned books and preserves review versions on repeated ambiguous checks", async () => {
+  const x = await fixture();
+  await importCatalogReview(f.db, x.owner, x);
+  const dry = await precheckCatalogReviews(f.db, x.owner);
+  expect(dry).toMatchObject({ certain: 0, applied: 0, books: 1 });
+  await precheckCatalogReviews(f.db, x.owner, true);
+  const first = (await readCatalogReviews(f.db, x.owner, {})).items![0];
+  expect(first.precheck.reasons).toContain("isbn");
+  await precheckCatalogReviews(f.db, x.owner, true);
+  expect((await readCatalogReviews(f.db, x.owner, {})).items![0].version).toBe(
+    first.version,
+  );
+  await decideCatalogReview(f.db, x.owner, {
+    id: first.id,
+    expectedVersion: first.version,
+    requestId: randomUUID(),
+    action: "defer",
+  });
+  expect((await precheckCatalogReviews(f.db, x.owner, true)).books).toBe(0);
+  expect((await precheckCatalogReviews(f.db, "other", true)).books).toBe(0);
 });

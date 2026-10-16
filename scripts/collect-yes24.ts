@@ -23,6 +23,7 @@ import {
   acquireYes24Lock,
 } from "../src/local/curation/yes24-batch";
 import { importCatalogReview } from "../src/server/catalog-review-store";
+import { precheckCatalogReviews } from "../src/local/curation/catalog-precheck";
 import type { CollectedBook } from "../src/local/curation/catalog";
 import type { Database } from "../src/server/library-store";
 
@@ -318,6 +319,10 @@ try {
         }
       }
     state.consecutiveFailures = 0;
+    if (result.status === "review_required") {
+      const checked = await precheckCatalogReviews(db, owner, true, book.id);
+      state.precheckedBooks = (state.precheckedBooks ?? 0) + checked.applied;
+    }
     state.counts[result.status] = (state.counts[result.status] ?? 0) + 1;
     state.appliedItems += result.applied;
   };
