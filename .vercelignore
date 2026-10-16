@@ -1,6 +1,7 @@
 .env*
 private-data/
 .git/
+.vercel/
 .superpowers/
 .local-python/
 .next/

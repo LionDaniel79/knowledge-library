@@ -18,3 +18,4 @@ ireaditnow-library.json
 
 # Device pairing secrets
 *.private.json
+.vercel/
