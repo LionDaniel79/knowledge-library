@@ -3166,6 +3166,28 @@ textarea {
   display: grid;
   gap: 6px;
 }
+.book-toolbar {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.book-toolbar > .filter-tabs {
+  flex: 1 1 280px;
+}
+.book-toolbar > span {
+  margin-left: auto;
+}
+.book-view-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.book-view-actions select {
+  width: auto;
+  min-width: 100px;
+  min-height: 38px;
+  padding: 7px 10px;
+}
 .book-list-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;

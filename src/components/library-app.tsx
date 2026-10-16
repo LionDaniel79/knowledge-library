@@ -1040,29 +1040,25 @@ export function LibraryApp({
               {view === "books" && (
                 <>
                   <div className="book-toolbar">
-                    <div
-                      className="filter-tabs"
-                      role="group"
-                      aria-label="도서 보기 방식"
-                    >
-                      <button
-                        aria-pressed={bookLayout === "covers"}
-                        onClick={() => chooseBookLayout("covers")}
+                    <div className="book-view-actions">
+                      <select
+                        aria-label="도서 보기 방식"
+                        value={bookLayout}
+                        onChange={(e) =>
+                          chooseBookLayout(
+                            e.target.value === "list" ? "list" : "covers",
+                          )
+                        }
                       >
-                        표지형
-                      </button>
-                      <button
-                        aria-pressed={bookLayout === "list"}
-                        onClick={() => chooseBookLayout("list")}
-                      >
-                        목록형
-                      </button>
+                        <option value="list">목록형</option>
+                        <option value="covers">표지형</option>
+                      </select>
+                      {!preview && (
+                        <button onClick={() => setCatalogReviewOpen(true)}>
+                          도서정보 검토
+                        </button>
+                      )}
                     </div>
-                    {!preview && (
-                      <button onClick={() => setCatalogReviewOpen(true)}>
-                        도서정보 검토
-                      </button>
-                    )}
                     <div className="filter-tabs">
                       {[
                         ["all", "전체"],

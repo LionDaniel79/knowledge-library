@@ -125,14 +125,23 @@ test("cover/list preference survives reload and list opens the same book on a na
       json: { items: [], references: [], history: [], version: "1" },
     }),
   );
-  const code = `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';createRoot(document.getElementById('root')).render(<LibraryApp initial={${JSON.stringify(fixture)}} today="2026-10-16" preview/>);`;
+  const code = `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';createRoot(document.getElementById('root')).render(<LibraryApp initial={${JSON.stringify(fixture)}} today="2026-10-16" ownerId="layout-test"/>);`;
   const bundle = await mount(page, code);
   async function books() {
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page.getByRole("button", { name: /^소장 도서/ }).click();
   }
   await books();
-  await page.getByRole("button", { name: "목록형", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "도서 보기 방식", exact: true })
+    .selectOption("list");
+  const chooser = await page
+      .getByRole("combobox", { name: "도서 보기 방식", exact: true })
+      .boundingBox(),
+    review = await page
+      .getByRole("button", { name: "도서정보 검토", exact: true })
+      .boundingBox();
+  expect(chooser!.x + chooser!.width).toBeLessThanOrEqual(review!.x);
   await expect(page.locator(".book-list-row")).toHaveCount(3);
   expect(
     await page.evaluate(
@@ -144,8 +153,8 @@ test("cover/list preference survives reload and list opens the same book on a na
   await page.addScriptTag({ content: bundle });
   await books();
   await expect(
-    page.getByRole("button", { name: "목록형", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("combobox", { name: "도서 보기 방식", exact: true }),
+  ).toHaveValue("list");
   await page.locator(".book-list-row").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
