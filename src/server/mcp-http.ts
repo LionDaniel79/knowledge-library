@@ -24,8 +24,8 @@ export const mcpReadDatabase: Executor = {
         max: 2,
         connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 5000,
-        options:
-          "-c default_transaction_read_only=on -c statement_timeout=15000",
+        // Read-only and timeout defaults belong to the dedicated database role.
+        // Neon pooled connections reject statement_timeout in startup options.
       });
       attachDatabasePool(readPool);
     }
