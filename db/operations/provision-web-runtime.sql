@@ -19,7 +19,8 @@ GRANT SELECT, INSERT, UPDATE ON
   library_analysis_devices, library_worker_limits, library_ai_policy,
   library_ai_usage, library_assist_requests, library_assist_results,
   library_assist_workers, library_curation_runs, library_curation_items,
-  library_reference_sources, library_field_origins
+  library_reference_sources, library_field_origins,library_assist_receipts,
+  library_mcp_codes,library_mcp_tokens
 TO library_web_runtime;
 GRANT SELECT, INSERT ON
   library_revisions, library_imports, library_analysis_feedback

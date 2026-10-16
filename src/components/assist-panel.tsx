@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Library } from "@/lib/domain";
 import { DeviceSettings } from "./thought-map/device-settings";
 import { AssistHelp } from "./assist-help";
+import { McpConnections } from "./mcp-connections";
 const purposes = {
   organize_note: "AI 정리 · 태그와 주제",
   tag_suggestion: "태그 제안",
@@ -97,7 +98,11 @@ export function AssistPanel({
         await load();
         if (action === "request") {
           setPreview(null);
-          setMessage("선택한 요청을 저장했습니다. PC가 연결되면 처리합니다.");
+          setMessage(
+            state?.execution === "server"
+              ? "요청을 저장했습니다. 처리 결과를 기다려 주세요."
+              : "선택한 요청을 저장했습니다. PC가 연결되면 처리합니다.",
+          );
         } else if (action === "adopt") {
           setMessage("확인한 제안을 보관했습니다. 내 원문은 그대로입니다.");
           onAdopt?.();
@@ -132,9 +137,11 @@ export function AssistPanel({
     }
     return { purpose, sources };
   }
-  const online = state?.workers.some(
-    (w: any) => w.key_ready && Date.now() - Date.parse(w.last_seen) < 120000,
-  );
+  const online =
+    state?.execution === "server" ||
+    state?.workers.some(
+      (w: any) => w.key_ready && Date.now() - Date.parse(w.last_seen) < 120000,
+    );
   return (
     <section className="assist-panel">
       <div className="assist-heading">
@@ -151,7 +158,11 @@ export function AssistPanel({
       {state && (
         <>
           <details className="assist-settings">
-            <summary>AI 사용·비용·PC 설정</summary>
+            <summary>
+              {state.execution === "server"
+                ? "AI 사용·비용 설정"
+                : "AI 사용·비용·PC 설정"}
+            </summary>
             <form
               className="thought-form"
               key={state.policy.version}
@@ -196,7 +207,8 @@ export function AssistPanel({
               </label>
               <button disabled={busy}>AI 설정 저장</button>
             </form>
-            <DeviceSettings />
+            {state.execution !== "server" && <DeviceSettings />}
+            <McpConnections />
             <details>
               <summary>사용량 보기</summary>
               {state.usage.map((u: any, i: number) => (
@@ -211,9 +223,11 @@ export function AssistPanel({
             <p className="notice">AI 도움 꺼짐 · 설정에서 켤 수 있습니다.</p>
           )}
           <p className="form-hint">
-            {online
-              ? "PC가 연결되어 있습니다."
-              : "PC 연결 대기 · 요청은 연결 후 처리합니다."}
+            {state.execution === "server"
+              ? "온라인 AI 연결됨 · PC 없이 요청할 수 있습니다."
+              : online
+                ? "PC가 연결되어 있습니다."
+                : "PC 연결 대기 · 요청은 연결 후 처리합니다."}
           </p>
           <form
             className="thought-form"
@@ -338,11 +352,13 @@ export function AssistPanel({
               <article key={r.id}>
                 <h4>
                   {purposes[r.purpose as keyof typeof purposes]} ·{" "}
-                  {statusNames[r.status] ?? r.status}
+                  {r.status === "queued" && state.execution === "server"
+                    ? "처리 대기"
+                    : (statusNames[r.status] ?? r.status)}
                 </h4>
                 {r.status === "failed" && (
                   <p>
-                    원문·사용 한도·PC 연결을 확인해 주세요. 자동 재호출은 하지
+                    원문·사용 한도·연결을 확인해 주세요. 자동 재호출은 하지
                     않습니다.
                   </p>
                 )}

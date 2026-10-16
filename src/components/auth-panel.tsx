@@ -5,9 +5,11 @@ import { authClient } from "@/lib/auth-client";
 export function AuthPanel({
   available,
   message,
+  returnPath = "/",
 }: {
   available: boolean;
   message?: string;
+  returnPath?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(message ?? "");
@@ -17,7 +19,9 @@ export function AuthPanel({
     try {
       const result = await authClient.signIn.social({
         provider: "google",
-        callbackURL: window.location.origin + "/",
+        callbackURL:
+          window.location.origin +
+          (returnPath.startsWith("/connect/mcp?") ? returnPath : "/"),
         errorCallbackURL: window.location.origin + "/auth/sign-in?login=failed",
       });
       if (result.error)

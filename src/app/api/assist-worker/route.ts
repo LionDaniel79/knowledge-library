@@ -4,7 +4,13 @@ import { createDeviceAuth } from "@/server/thought-device-auth";
 import { createAssistStore } from "@/server/assist-store";
 import { LibraryError } from "@/server/library-store";
 import { failure } from "@/server/http";
+import { after } from "next/server";
+import {
+  processServerAssist,
+  serverAssistConfig,
+} from "@/server/server-assist";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 const lease = { id: z.string().uuid(), leaseToken: z.string().uuid() };
 const schema = z.discriminatedUnion("action", [
   z
@@ -39,7 +45,17 @@ export async function POST(request: Request) {
     const p = schema.parse(raw),
       s = createAssistStore(database);
     let result;
-    if (p.action === "claim") result = { job: await s.claim(d) };
+    if (p.action === "claim" && serverAssistConfig().ready) {
+      // Existing PC brokers may still submit/observe requests. Server mode owns new work.
+      after(async () => {
+        try {
+          await processServerAssist(database, d.ownerId);
+        } catch {
+          console.warn("AI 요청 연결·결과 저장을 확인해 주세요.");
+        }
+      });
+      result = { job: null };
+    } else if (p.action === "claim") result = { job: await s.claim(d) };
     else if (p.action === "heartbeat")
       result = await s.heartbeat(d, {
         keyReady: p.keyReady,

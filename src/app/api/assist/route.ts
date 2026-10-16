@@ -5,14 +5,33 @@ import { createAssistStore } from "@/server/assist-store";
 import { validateWriteOrigin } from "@/server/access";
 import { failure } from "@/server/http";
 import { LibraryError } from "@/server/library-store";
+import { after } from "next/server";
+import {
+  processServerAssist,
+  serverAssistConfig,
+} from "@/server/server-assist";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 const headers = { "Cache-Control": "private, no-store" };
 const store = () => createAssistStore(database);
 export async function GET() {
   try {
-    return Response.json(await store().status(await requireOwner()), {
-      headers,
-    });
+    const owner = await requireOwner(),
+      state = await store().status(owner),
+      server = serverAssistConfig().ready;
+    if (
+      server &&
+      state.requests.some((r: any) =>
+        ["queued", "claimed", "sending"].includes(r.status),
+      )
+    )
+      schedule(owner);
+    return Response.json(
+      { ...state, execution: server ? "server" : "pc" },
+      {
+        headers,
+      },
+    );
   } catch (e) {
     return failure(e);
   }
@@ -71,8 +90,20 @@ export async function POST(request: Request) {
         .parse(p.payload);
       result = await s.adopt(owner, v.id, v.index);
     }
+    if (p.action === "request" && serverAssistConfig().ready) schedule(owner);
     return Response.json(result, { headers });
   } catch (e) {
     return failure(e);
   }
+}
+function schedule(owner: string) {
+  after(async () => {
+    try {
+      await processServerAssist(database, owner);
+    } catch {
+      console.warn(
+        "AI 결과 저장·연결 확인이 필요합니다. 같은 요청을 자동 재전송하지 않습니다.",
+      );
+    }
+  });
 }
