@@ -134,6 +134,7 @@ export async function readCatalogReviews(
         .default("pending"),
       q: z.string().max(200).default(""),
       offset: z.coerce.number().int().min(0).max(1000000).default(0),
+      limit: z.coerce.number().int().min(1).max(50).default(20),
       id: z.string().uuid().optional(),
       groupBy: z.enum(["candidate", "book"]).default("candidate"),
     })
@@ -172,9 +173,9 @@ export async function readCatalogReviews(
   const items = (
     await db.query(
       q.groupBy === "book"
-        ? `WITH matching AS(SELECT * FROM library_catalog_reviews WHERE ${where}), ranked AS(SELECT r.*,row_number() OVER(PARTITION BY book_id ORDER BY (record->>'isbn'=b.isbn) DESC,r.created_at,r.id) AS rank,count(*) OVER(PARTITION BY book_id)::int AS "candidateCount" FROM matching r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id) SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,"candidateCount",decision->'precheck' AS precheck FROM ranked WHERE rank=1 ORDER BY created_at,id LIMIT 20 OFFSET $4`
-        : `SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,decision->'precheck' AS precheck FROM library_catalog_reviews WHERE ${where} ORDER BY created_at,id LIMIT 20 OFFSET $4`,
-      [...params, q.offset],
+        ? `WITH matching AS(SELECT * FROM library_catalog_reviews WHERE ${where}), ranked AS(SELECT r.*,row_number() OVER(PARTITION BY book_id ORDER BY (record->>'isbn'=b.isbn) DESC,r.created_at,r.id) AS rank,count(*) OVER(PARTITION BY book_id)::int AS "candidateCount" FROM matching r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id) SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,"candidateCount",decision->'precheck' AS precheck FROM ranked WHERE rank=1 ORDER BY created_at,id LIMIT $5 OFFSET $4`
+        : `SELECT id,book_id,book_snapshot->>'title' AS title,record->>'title' AS candidate_title,record->>'isbn' AS isbn,status,version,decision->'precheck' AS precheck FROM library_catalog_reviews WHERE ${where} ORDER BY created_at,id LIMIT $5 OFFSET $4`,
+      [...params, q.offset, q.limit],
     )
   ).rows;
   return {

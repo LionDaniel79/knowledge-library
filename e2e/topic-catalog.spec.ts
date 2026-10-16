@@ -26,12 +26,12 @@ test("topic browsing retrieves matching books outside the initial page", async (
       define: { "process.env.NODE_ENV": '"production"' },
     })
   ).outputFiles[0].text;
-  await page.route("https://library.test/api/books?*", (r) =>
+  await page.route("https://library.test/api/library-materials?*", (r) =>
     r.fulfill({
       json:
         new URL(r.request().url()).searchParams.get("topic") === topic
-          ? { items: [book], total: 1, nextCursor: null }
-          : { items: [], total: 10994, nextCursor: null },
+          ? { items: [{ ...book, kind: "book", text: book.author }], total: 1 }
+          : { items: [], total: 10994 },
     }),
   );
   await page.route("https://library.test/", (r) =>
@@ -54,7 +54,7 @@ test("topic browsing retrieves matching books outside the initial page", async (
           total: 10994,
           formatCounts: {},
           categoryCounts: {},
-          firstPage: { items: [], total: 10994, nextCursor: null },
+          firstPage: { items: [], total: 10994 },
         },
       },
       state: {

@@ -1,5 +1,11 @@
 "use client";
 import { useState } from "react";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
+import { usePagedResource } from "./use-paged-resource";
 import type { SearchHit } from "@/server/library-search";
 import type { SearchTopic } from "@/server/library-search-context";
 export function LibrarySearchPanel({
@@ -9,10 +15,7 @@ export function LibrarySearchPanel({
 }) {
   const [text, setText] = useState(""),
     [layer, setLayer] = useState("all"),
-    [hits, setHits] = useState<SearchHit[]>([]),
-    [cursor, setCursor] = useState<string | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false),
     [searched, setSearched] = useState(false);
   const [topicId, setTopicId] = useState(""),
     [topicScope, setTopicScope] = useState("exact"),
@@ -39,34 +42,32 @@ export function LibrarySearchPanel({
       setLoadingTopics(false);
     }
   }
-  async function search(more = false) {
-    if (busy) return;
-    setBusy(true);
+  const [revision, setRevision] = useState(0);
+  const paging = useListPagination("search", JSON.stringify(submitted));
+  const result = usePagedResource<{ items: SearchHit[]; total: number }>(
+    "/api/library-search?" +
+      new URLSearchParams({
+        ...submitted,
+        offset: String(paging.offset),
+        limit: String(paging.size),
+      }),
+    searched && paging.ready,
+    revision,
+  );
+  const hits = result.data?.items ?? [];
+  const busy = result.loading;
+  function search() {
     setError("");
-    try {
-      const query: Record<string, string> = more
-        ? submitted
-        : {
-            text,
-            layer,
-            topicScope,
-            expandAliases: String(expandAliases),
-            ...(topicId ? { topicId } : {}),
-          };
-      const p = new URLSearchParams(query);
-      if (more && cursor) p.set("cursor", cursor);
-      const r = await fetch("/api/library-search?" + p, { cache: "no-store" }),
-        j = await r.json();
-      if (!r.ok) throw Error(j.error ?? "검색하지 못했습니다.");
-      setHits((old) => (more ? [...old, ...j.items] : j.items));
-      setCursor(j.nextCursor);
-      setSubmitted(query);
-      setSearched(true);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    setSubmitted({
+      text,
+      layer,
+      topicScope,
+      expandAliases: String(expandAliases),
+      ...(topicId ? { topicId } : {}),
+    });
+    paging.setPage(0);
+    setSearched(true);
+    setRevision((n) => n + 1);
   }
   return (
     <section className="panel library-search-panel">
@@ -152,14 +153,15 @@ export function LibrarySearchPanel({
           {busy ? "검색 중…" : "자료 찾기"}
         </button>
       </form>
-      {error && (
+      {(error || result.error) && (
         <p role="alert" className="error">
-          {error}
+          {error || result.error}
         </p>
       )}
-      {searched && !hits.length && (
+      {searched && !busy && !result.error && !hits.length && (
         <p role="status">조건에 맞는 자료가 없습니다.</p>
       )}
+      <PageSizeSelect label="통합 검색" paging={paging} />
       <div className="search-hit-list">
         {hits.map((h) => (
           <article key={h.id}>
@@ -213,10 +215,13 @@ export function LibrarySearchPanel({
           </article>
         ))}
       </div>
-      {cursor && (
-        <button disabled={busy} onClick={() => void search(true)}>
-          검색 결과 더 보기
-        </button>
+      {searched && (
+        <PageNavigation
+          label="통합 검색"
+          paging={paging}
+          total={result.data?.total ?? 0}
+          busy={busy || !!result.error}
+        />
       )}
     </section>
   );

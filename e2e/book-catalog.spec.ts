@@ -77,10 +77,10 @@ test("server catalog searches beyond loaded books, ignores late results and open
         .catch(() => {});
       return;
     }
-    const found = p.get("q")?.includes("정서") || p.has("cursor");
+    const found = p.get("q")?.includes("정서") || Number(p.get("offset")) > 0;
     await route.fulfill({
       json: found
-        ? { items: [distant], total: 1, nextCursor: null }
+        ? { items: [distant], total: p.get("q") ? 1 : 10994, nextCursor: null }
         : { items: [first], total: 10994, nextCursor: "page-2" },
     });
   });
@@ -113,7 +113,10 @@ test("server catalog searches beyond loaded books, ignores late results and open
   await page.addScriptTag({ content: bundle });
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
   await page.getByRole("button", { name: /소장 도서/ }).click();
-  await page.getByRole("button", { name: "더 보기", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "소장 도서 페이지", exact: true })
+    .getByRole("button", { name: "다음", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: /멀리 있는 정서 책/ }).first(),
   ).toBeVisible();

@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
 import type { Book, Library } from "@/lib/domain";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
 import { useBookCatalog } from "./use-book-catalog";
 export function BookPicker({
   library,
@@ -18,16 +23,32 @@ export function BookPicker({
     [selected, setSelected] = useState<Book | undefined>(() =>
       library.books.find((b) => b.id === defaultValue),
     );
+  const paging = useListPagination("book-picker", query);
   const catalog = useBookCatalog({
-    enabled: !!library.catalog && !disabled,
-    query: { q: query, sort: "title" },
+    enabled: !!library.catalog && !disabled && paging.ready,
+    query: {
+      q: query,
+      sort: "title",
+      offset: paging.offset,
+      limit: paging.size,
+    },
     revision: library,
   });
+  const local = library.books.filter(
+    (b) =>
+      !query ||
+      [b.title, b.author, b.isbn]
+        .join(" ")
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
   const options = [
     ...new Map(
       [
         ...(selected ? [selected] : []),
-        ...(library.catalog ? catalog.items : library.books),
+        ...(library.catalog
+          ? catalog.items
+          : local.slice(paging.offset, paging.offset + paging.size)),
       ].map((b) => [b.id, b]),
     ).values(),
   ];
@@ -74,10 +95,16 @@ export function BookPicker({
           </button>
         </p>
       )}
-      {catalog.nextCursor && (
-        <button type="button" disabled={catalog.loading} onClick={catalog.more}>
-          검색한 책 더 보기
-        </button>
+      {!disabled && (
+        <>
+          <PageSizeSelect label="연결할 책" paging={paging} />
+          <PageNavigation
+            label="연결할 책"
+            paging={paging}
+            total={library.catalog ? catalog.total : local.length}
+            busy={catalog.loading || !!catalog.error}
+          />
+        </>
       )}
     </div>
   );

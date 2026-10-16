@@ -23,12 +23,14 @@ const querySchema = z.object({
   topicScope: z.enum(["exact", "children", "related"]).optional(),
   expandAliases: z.boolean().optional(),
   cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).max(100000).default(0),
 });
 export async function searchLibrary(
   db: Executor,
   owner: string,
-  query: z.infer<typeof querySchema>,
-): Promise<{ items: SearchHit[]; nextCursor: string | null }> {
+  query: z.input<typeof querySchema>,
+): Promise<{ items: SearchHit[]; total: number; nextCursor: string | null }> {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const q = querySchema.parse(query),
     context = await searchContext(db, owner, q),
@@ -45,7 +47,9 @@ export async function searchLibrary(
         [...context.scope.values()],
       ]),
     );
-  let offset = 0;
+  let offset = q.offset;
+  if (q.cursor && offset)
+    throw new LibraryError(400, "페이지 조회 방법을 하나만 선택해 주세요.");
   if (q.cursor) {
     try {
       const c = JSON.parse(Buffer.from(q.cursor, "base64url").toString());
@@ -64,9 +68,7 @@ export async function searchLibrary(
       );
     }
   }
-  const rows = (
-    await db.query(
-      `WITH entries AS (
+  const cte = `WITH entries AS (
   SELECT 'n:'||n.id AS id,'note' AS kind,n.id::text AS source_id,n.version::text AS version,n.title,n.content AS body,
    CASE WHEN n.kind='highlight' THEN 'quote' ELSE coalesce(e.voice,CASE WHEN (n.source_data IS NULL OR n.source_data='null'::jsonb) AND n.kind IN ('thought','reflection') THEN 'self' ELSE 'unconfirmed' END) END AS voice,
    'full' AS coverage,'original' AS origin,array_to_string(n.tags,' ') AS tags,0 AS aux
@@ -103,19 +105,35 @@ export async function searchLibrary(
    CASE WHEN aux=1 THEN 10 WHEN voice='self' AND EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(lower(term) in lower(body))>0) THEN 100 WHEN EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(regexp_replace(lower(term),'[[:space:]　 ]+','','g') in regexp_replace(lower(title),'[[:space:]　 ]+','','g'))>0) THEN 80 ELSE 60 END AS score
   FROM entries WHERE EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(lower(term) in lower(concat_ws(' ',title,body,tags)))>0 OR position(regexp_replace(lower(term),'[[:space:]　 ]+','','g') in regexp_replace(lower(title),'[[:space:]　 ]+','','g'))>0)
    AND ($4::uuid[] IS NULL OR EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=$1 AND m.topic_id=ANY($4) AND m.source_kind=entries.kind AND m.source_id=entries.source_id AND m.source_version=entries.version AND m.status='accepted'))
- ) SELECT *, (SELECT coalesce(jsonb_agg(m.topic_id),'[]') FROM library_topic_memberships m WHERE m.owner_id=$1 AND m.topic_id=ANY($4::uuid[]) AND m.source_kind=scored.kind AND m.source_id=scored.source_id AND m.source_version=scored.version AND m.status='accepted') AS matched_topics
- FROM scored WHERE ($3='all' OR layer=$3) ORDER BY score DESC,id LIMIT 21 OFFSET $5`,
-      [
-        owner,
-        context.terms,
-        q.layer,
-        q.topicId ? [...context.scope.keys()] : null,
-        offset,
-      ],
-    )
-  ).rows;
+ ), filtered AS (SELECT * FROM scored WHERE ($3='all' OR layer=$3))`;
+  const sql =
+    cte +
+    ` SELECT *, count(*) OVER()::int AS "_total", (SELECT coalesce(jsonb_agg(m.topic_id),'[]') FROM library_topic_memberships m WHERE m.owner_id=$1 AND m.topic_id=ANY($4::uuid[]) AND m.source_kind=scored.kind AND m.source_id=scored.source_id AND m.source_version=scored.version AND m.status='accepted') AS matched_topics
+ FROM filtered scored ORDER BY score DESC,id LIMIT $6 OFFSET $5`;
+  const args = [
+    owner,
+    context.terms,
+    q.layer,
+    q.topicId ? [...context.scope.keys()] : null,
+    offset,
+    q.limit + 1,
+  ];
+  const rows = (await db.query(sql, args)).rows;
+  const total = rows.length
+    ? Number(rows[0]._total)
+    : offset
+      ? Number(
+          (
+            await db.query(
+              cte + " SELECT count(*)::int AS total FROM filtered",
+              args.slice(0, 4),
+            )
+          ).rows[0].total,
+        )
+      : 0;
   return {
-    items: rows.slice(0, 20).map((r) => {
+    total,
+    items: rows.slice(0, q.limit).map((r) => {
       const body = r.body ?? "";
       const matchedTerms = context.terms.filter(
         (t) =>
@@ -157,9 +175,9 @@ export async function searchLibrary(
       };
     }),
     nextCursor:
-      rows.length > 20
+      rows.length > q.limit
         ? Buffer.from(
-            JSON.stringify({ key: fingerprint, offset: offset + 20 }),
+            JSON.stringify({ key: fingerprint, offset: offset + q.limit }),
           ).toString("base64url")
         : null,
   };

@@ -218,6 +218,7 @@ test("new search and curation routes require an owner", async ({ request }) => {
     "/api/books/00000000-0000-4000-a000-000000000001",
     "/api/backup",
     "/api/library-search?text=test",
+    "/api/library-materials?q=test&limit=15",
     "/api/curation?kind=book&id=00000000-0000-4000-a000-000000000001",
   ])
     expect((await request.get(url)).status()).toBe(401);

@@ -14,6 +14,13 @@ export const previewNoteSelect = fullNoteSelect
     `CASE WHEN n.source_data IS NULL THEN NULL ELSE jsonb_build_object('app',n.source_data->'app','libraryId',n.source_data->'libraryId','recordId',n.source_data->'recordId','raw',CASE WHEN n.source_data->>'app'='PDF' THEN jsonb_build_object('signature',n.source_data->'raw'->'signature','pdfPage',n.source_data->'raw'->'pdfPage') ELSE '{}'::jsonb END) END AS "sourceData",true AS "summary"`,
   );
 const querySchema = z.object({
+  category: z
+    .string()
+    .regex(/^all$|^\d00$/)
+    .default("all"),
+  topic: z
+    .union([z.enum(["all", "unclassified"]), z.string().uuid()])
+    .default("all"),
   q: z.string().trim().max(200).default(""),
   tag: z.string().max(80).default("all"),
   kind: z
@@ -41,12 +48,23 @@ const querySchema = z.object({
     .regex(/^$|^\d{4}-\d{2}-\d{2}$/)
     .default(""),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(24),
 });
 export async function readNotePage(db: Executor, owner: string, raw: unknown) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const p = querySchema.parse(raw),
-    args = [owner, p.q, p.tag, p.kind, p.book, p.from, p.to];
-  const where = `n.owner_id=$1 AND ($2='' OR strpos(lower(n.title||' '||n.content||' '||array_to_string(n.tags,' ')||' '||coalesce(b.title,'')),lower($2))>0) AND ($3='all' OR ($3='untagged' AND cardinality(n.tags)=0) OR $3=ANY(n.tags)) AND ($4='all' OR n.kind=$4) AND ($5='all' OR ($5='unlinked' AND n.book_id IS NULL) OR n.book_id::text=$5) AND ($6='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text >=$6) AND ($7='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text <=$7)`;
+    args = [
+      owner,
+      p.q,
+      p.tag,
+      p.kind,
+      p.book,
+      p.from,
+      p.to,
+      p.category,
+      p.topic,
+    ];
+  const where = `n.owner_id=$1 AND ($2='' OR strpos(lower(n.title||' '||n.content||' '||array_to_string(n.tags,' ')||' '||coalesce(b.title,'')),lower($2))>0) AND ($3='all' OR ($3='untagged' AND cardinality(n.tags)=0) OR $3=ANY(n.tags)) AND ($4='all' OR n.kind=$4) AND ($5='all' OR ($5='unlinked' AND n.book_id IS NULL) OR n.book_id::text=$5) AND ($6='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text >=$6) AND ($7='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text <=$7) AND ($8='all' OR b.category=$8) AND ($9='all' OR ($9='unclassified' AND NOT EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.status<>'rejected')) OR EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.topic_id::text=$9 AND m.status<>'rejected'))`;
   const join =
     " FROM library_active_notes n LEFT JOIN library_books b ON b.owner_id=n.owner_id AND b.id=n.book_id WHERE ";
   const total = Number(
@@ -55,10 +73,10 @@ export async function readNotePage(db: Executor, owner: string, raw: unknown) {
   );
   const items = (
     await db.query(
-      `SELECT ${previewNoteSelect}${join}${where} ORDER BY n.updated_at DESC,n.id LIMIT 24 OFFSET $8`,
-      [...args, p.offset],
+      `SELECT ${previewNoteSelect},b.category AS "bookCategory"${join}${where} ORDER BY n.updated_at DESC,n.id LIMIT $11 OFFSET $10`,
+      [...args, p.offset, p.limit],
     )
-  ).rows as Note[];
+  ).rows as (Note & { bookCategory?: string | null })[];
   return {
     items,
     total,
@@ -124,6 +142,7 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional(),
       offset: z.coerce.number().int().min(0).max(1000000).default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(24),
     })
     .parse(raw);
   const args = [owner, p.book ?? null, p.date ?? null, p.id ?? null],
@@ -139,8 +158,8 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
     ),
     items = (
       await db.query(
-        `SELECT ${cycleSelect} FROM library_cycles WHERE ${where} ORDER BY completed_on DESC NULLS FIRST,id LIMIT 24 OFFSET $5`,
-        [...args, p.offset],
+        `SELECT ${cycleSelect} FROM library_cycles WHERE ${where} ORDER BY completed_on DESC NULLS FIRST,id LIMIT $6 OFFSET $5`,
+        [...args, p.offset, p.limit],
       )
     ).rows as ReadingCycle[];
   const books = (

@@ -37,6 +37,17 @@ it("searches full content beyond the preview, loads exact bodies and keeps whole
       (await readNoteDetail(f.db, owner, page.items[0].id)).content.length,
     ).toBeGreaterThan(2000);
     expect((await readNotePage(f.db, owner, {})).items.length).toBe(24);
+    const firstTen = await readNotePage(f.db, owner, { limit: 10 });
+    const nextTen = await readNotePage(f.db, owner, { limit: 10, offset: 10 });
+    expect(firstTen.items).toHaveLength(10);
+    expect(nextTen.items).toHaveLength(10);
+    expect(nextTen.total).toBe(28);
+    expect(
+      new Set([...firstTen.items, ...nextTen.items].map((n) => n.id)).size,
+    ).toBe(20);
+    expect((await readNotePage(f.db, owner, { limit: 50 })).items).toHaveLength(
+      28,
+    );
     expect((await readNotePage(f.db, "other", {})).total).toBe(0);
     await f.db.query(
       "insert into library_cycles(id,owner_id,book_id,status,completed_on) values($1,$2,$3,'completed','2020-01-01'),($4,$2,$3,'completed','2026-10-01'),($5,$2,$3,'completed',NULL)",

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import {
   monthCells,
@@ -7,6 +7,12 @@ import {
   type Library,
   type ReadingCycle,
 } from "@/lib/domain";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
+import { usePagedResource } from "./use-paged-resource";
 import { BookCover } from "./book-cover";
 export function ReadingCalendar({
   library,
@@ -25,12 +31,8 @@ export function ReadingCalendar({
   onEdit: (c: ReadingCycle) => void;
   today: string;
 }) {
-  const dayGeneration = useRef(0),
-    morePending = useRef(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const remote = !!library.readingSummary;
   const [calendar, setCalendar] = useState<any>(null),
-    [dayPage, setDayPage] = useState<any>(null),
     [error, setError] = useState("");
   useEffect(() => {
     if (!remote) return;
@@ -51,27 +53,17 @@ export function ReadingCalendar({
       });
     return () => c.abort();
   }, [remote, month, library]);
-  useEffect(() => {
-    if (!remote) return;
-    const c = new AbortController();
-    dayGeneration.current++;
-    morePending.current = false;
-    setLoadingMore(false);
-    setDayPage(null);
-    fetch(`/api/reading?date=${selected}`, {
-      signal: c.signal,
-      cache: "no-store",
-    })
-      .then(async (r) => {
-        const j = await r.json();
-        if (!r.ok) throw Error(j.error);
-        setDayPage(j);
-      })
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
-      });
-    return () => c.abort();
-  }, [remote, selected, library]);
+  const paging = useListPagination("calendar-day", selected);
+  const dayState = usePagedResource<{
+    items: ReadingCycle[];
+    books: Library["books"];
+    total: number;
+  }>(
+    `/api/reading?date=${selected}&limit=${paging.size}&offset=${paging.offset}`,
+    remote && paging.ready,
+    library,
+  );
+  const dayPage = dayState.data;
   const books = remote
     ? [...(calendar?.books ?? []), ...(dayPage?.books ?? [])]
     : library.books;
@@ -162,7 +154,10 @@ export function ReadingCalendar({
           <span>{selectedCount}권 완독</span>
         </div>
         {selectedCycles.length ? (
-          selectedCycles.map((c) => (
+          (remote
+            ? selectedCycles
+            : selectedCycles.slice(paging.offset, paging.offset + paging.size)
+          ).map((c) => (
             <div className="completed-row" key={c.id}>
               <span>{books.find((b) => b.id === c.bookId)?.title}</span>
               <button className="text-button" onClick={() => onEdit(c)}>
@@ -174,41 +169,18 @@ export function ReadingCalendar({
           <p className="muted">이날의 완독 기록이 없습니다.</p>
         )}
       </div>
-      {remote && dayPage?.nextOffset != null && (
-        <button
-          disabled={loadingMore}
-          onClick={async () => {
-            if (morePending.current) return;
-            morePending.current = true;
-            setLoadingMore(true);
-            const epoch = dayGeneration.current;
-            try {
-              const r = await fetch(
-                  `/api/reading?date=${selected}&offset=${dayPage.nextOffset}`,
-                  { cache: "no-store" },
-                ),
-                j = await r.json();
-              if (!r.ok) throw Error(j.error);
-              if (epoch !== dayGeneration.current) return;
-              setDayPage((p: any) => ({
-                ...j,
-                items: [...p.items, ...j.items],
-                books: [...p.books, ...j.books],
-              }));
-            } catch (e) {
-              if (epoch === dayGeneration.current)
-                setError((e as Error).message);
-            } finally {
-              if (epoch === dayGeneration.current) {
-                morePending.current = false;
-                setLoadingMore(false);
-              }
-            }
-          }}
-        >
-          이날의 책 더 보기
-        </button>
+      <PageSizeSelect label="이날의 책" paging={paging} />
+      {dayState.error && (
+        <p role="alert">
+          {dayState.error} <button onClick={dayState.reload}>다시 조회</button>
+        </p>
       )}
+      <PageNavigation
+        label="이날의 책"
+        paging={paging}
+        total={selectedCount}
+        busy={dayState.loading || !!dayState.error}
+      />
     </section>
   );
 }

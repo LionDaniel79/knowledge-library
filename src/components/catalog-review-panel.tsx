@@ -1,5 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
 import { reviewFields } from "../lib/catalog-review";
 const labels = {
   title: "제목",
@@ -22,7 +27,6 @@ export function CatalogReviewPanel({
 }) {
   const [status, setStatus] = useState("pending"),
     [q, setQ] = useState(""),
-    [offset, setOffset] = useState(0),
     [page, setPage] = useState<any>(null),
     [detail, setDetail] = useState<any>(null),
     [fields, setFields] = useState<string[]>([]),
@@ -30,11 +34,18 @@ export function CatalogReviewPanel({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0);
+  const paging = useListPagination(
+    "catalog-reviews",
+    JSON.stringify([status, q]),
+  );
+  const offset = paging.offset;
   useEffect(() => {
+    if (!paging.ready) return;
+    setError("");
     const c = new AbortController();
     setPage(null);
     fetch(
-      `/api/catalog-review?${new URLSearchParams({ status, q, offset: String(offset), groupBy: "book" })}`,
+      `/api/catalog-review?${new URLSearchParams({ status, q, offset: String(offset), limit: String(paging.size), groupBy: "book" })}`,
       { signal: c.signal, cache: "no-store" },
     )
       .then(async (r) => {
@@ -46,7 +57,7 @@ export function CatalogReviewPanel({
         if (e.name !== "AbortError") setError(e.message);
       });
     return () => c.abort();
-  }, [status, q, offset, revision]);
+  }, [status, q, offset, revision, paging.ready, paging.size]);
   async function open(id: string) {
     setBusy(true);
     setError("");
@@ -102,7 +113,7 @@ export function CatalogReviewPanel({
             value={status}
             onChange={(e) => {
               setStatus(e.target.value);
-              setOffset(0);
+              paging.setPage(0);
               setDetail(null);
             }}
           >
@@ -125,7 +136,7 @@ export function CatalogReviewPanel({
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
-              setOffset(0);
+              paging.setPage(0);
             }}
           />
         </label>
@@ -240,6 +251,7 @@ export function CatalogReviewPanel({
         </>
       ) : page ? (
         <>
+          <PageSizeSelect label="도서정보 검토" paging={paging} />
           <p>{page.total.toLocaleString()}권</p>
           <ul className="review-list">
             {page.items.map((i: any) => (
@@ -264,20 +276,12 @@ export function CatalogReviewPanel({
             ))}
           </ul>
           {page.total === 0 && <p>이 상태의 후보가 없습니다.</p>}
-          <div className="button-row">
-            <button
-              disabled={!offset}
-              onClick={() => setOffset((n) => Math.max(0, n - 20))}
-            >
-              이전
-            </button>
-            <button
-              disabled={page.nextOffset === null}
-              onClick={() => setOffset(page.nextOffset)}
-            >
-              다음
-            </button>
-          </div>
+          <PageNavigation
+            label="도서정보 검토"
+            paging={paging}
+            total={page.total}
+            busy={busy || !!error}
+          />
         </>
       ) : (
         <p role="status">불러오는 중…</p>

@@ -36,6 +36,7 @@ const queryInput = z.object({
     .union([z.enum(["all", "unclassified"]), z.string().uuid()])
     .default("all"),
   limit: z.coerce.number().int().min(1).max(100).default(24),
+  offset: z.coerce.number().int().min(0).max(1000000).default(0),
   cursor: z.string().max(4000).optional(),
 });
 function ownerRequired(owner: string) {
@@ -48,7 +49,9 @@ export async function readBookPage(
   input: unknown,
 ): Promise<BookPage> {
   ownerRequired(owner);
-  const { cursor, ...q } = queryInput.parse(input);
+  const { cursor, offset, ...q } = queryInput.parse(input);
+  if (cursor && offset)
+    throw new LibraryError(400, "페이지 조회 방법을 하나만 선택해 주세요.");
   const values: unknown[] = [owner],
     where = ["b.owner_id=$1"];
   const param = (v: unknown) => {
@@ -147,7 +150,7 @@ export async function readBookPage(
     );
   }
   const result = await tx.query(
-    `SELECT ${compactBookSelect},created_at::text AS "_created" FROM library_books b WHERE ${where.join(" AND ")} ORDER BY ${fields.map((f) => f + " " + direction).join(",")} LIMIT ${param(q.limit + 1)}`,
+    `SELECT ${compactBookSelect},created_at::text AS "_created" FROM library_books b WHERE ${where.join(" AND ")} ORDER BY ${fields.map((f) => f + " " + direction).join(",")} LIMIT ${param(q.limit + 1)} OFFSET ${param(offset)}`,
     values,
   );
   const rows = result.rows.slice(0, q.limit),

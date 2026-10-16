@@ -3,7 +3,12 @@ import { useState, useMemo } from "react";
 import type { Library } from "@/lib/domain";
 import { categories, categoryName, parseTags } from "@/lib/catalog";
 import type { ThoughtMapSnapshot, Topic } from "@/lib/thought-map/types";
-import { useBookCatalog } from "../use-book-catalog";
+import { useMaterialPage } from "../use-material-page";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "../list-pagination";
 import { TopicPicker, type ThoughtSend } from "./topic-picker";
 export function TopicBrowser({
   library,
@@ -20,24 +25,27 @@ export function TopicBrowser({
 }) {
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState(""),
-    [query, setQuery] = useState(""),
-    [limit, setLimit] = useState(36);
+    [query, setQuery] = useState("");
+  const paging = useListPagination(
+    "topic-materials",
+    JSON.stringify([selected, field, query]),
+  );
   const [editing, setEditing] = useState<Topic | null>(null),
     [name, setName] = useState(""),
     [description, setDescription] = useState(""),
     [aliases, setAliases] = useState(""),
     [parentId, setParentId] = useState("");
-  const catalog = useBookCatalog({
-    enabled: !!library.catalog,
-    query: {
+  const catalog = useMaterialPage(
+    !!library.catalog && paging.ready,
+    {
       q: query,
       category: field || "all",
       topic: selected,
-      sort: "title",
-      limit: 36,
+      limit: paging.size,
+      offset: paging.offset,
     },
-    revision: state,
-  });
+    state,
+  );
   const materials = [
     ...library.notes.map((n) => ({
       id: n.id,
@@ -47,7 +55,7 @@ export function TopicBrowser({
       category: library.books.find((b) => b.id === n.bookId)?.category ?? "",
       version: n.version,
     })),
-    ...(library.catalog ? catalog.items : library.books).map((b) => ({
+    ...library.books.map((b) => ({
       id: b.id,
       kind: "book" as const,
       title: b.title,
@@ -68,19 +76,22 @@ export function TopicBrowser({
     (membershipMap.get(m.kind + ":" + m.id) ?? []).filter(
       (a) => a.status !== "rejected",
     );
-  const shown = materials.filter(
+  const localShown = materials.filter(
     (m) =>
-      (m.kind === "book" && !!library.catalog) ||
-      ((!field || m.category === field) &&
-        (selected === "all" || selected === "unclassified"
-          ? selected === "all" || assigned(m).length === 0
-          : assigned(m).some((a) => a.topicId === selected)) &&
-        (!query ||
-          [m.title, m.text]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(query.toLocaleLowerCase()))),
+      (!field || m.category === field) &&
+      (selected === "all" || selected === "unclassified"
+        ? selected === "all" || assigned(m).length === 0
+        : assigned(m).some((a) => a.topicId === selected)) &&
+      (!query ||
+        [m.title, m.text]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query.toLocaleLowerCase())),
   );
+  const total = library.catalog ? catalog.total : localShown.length;
+  const shown = library.catalog
+    ? catalog.items
+    : localShown.slice(paging.offset, paging.offset + paging.size);
   function edit(t: Topic | null) {
     setEditing(t);
     setName(t?.name ?? "");
@@ -99,7 +110,7 @@ export function TopicBrowser({
           aria-pressed={selected === "all"}
           onClick={() => {
             setSelected("all");
-            setLimit(36);
+            paging.setPage(0);
           }}
         >
           전체 자료
@@ -108,7 +119,7 @@ export function TopicBrowser({
           aria-pressed={selected === "unclassified"}
           onClick={() => {
             setSelected("unclassified");
-            setLimit(36);
+            paging.setPage(0);
           }}
         >
           미분류
@@ -122,7 +133,7 @@ export function TopicBrowser({
               aria-pressed={selected === t.id}
               onClick={() => {
                 setSelected(t.id);
-                setLimit(36);
+                paging.setPage(0);
               }}
             >
               {t.parentId ? "↳ " : ""}
@@ -225,7 +236,7 @@ export function TopicBrowser({
               placeholder="책 제목·저자·기록 내용"
               onChange={(e) => {
                 setQuery(e.target.value);
-                setLimit(36);
+                paging.setPage(0);
               }}
             />
           </label>
@@ -240,12 +251,8 @@ export function TopicBrowser({
               ))}
             </select>
           </label>
-          <p>
-            {library.catalog
-              ? catalog.total + shown.filter((m) => m.kind === "note").length
-              : shown.length}
-            개 자료
-          </p>
+          <p>{total}개 자료</p>
+          <PageSizeSelect label="주제별 자료" paging={paging} />
           {catalog.loading && <p role="status">자료를 불러오고 있습니다…</p>}
           {catalog.error && (
             <p role="alert">
@@ -255,7 +262,7 @@ export function TopicBrowser({
           )}
         </div>
         <div className="thought-card-grid">
-          {shown.slice(0, limit).map((m) => (
+          {shown.map((m) => (
             <article className="panel thought-card" key={m.kind + m.id}>
               <small>
                 {m.kind === "book" ? "소장 도서 · 서지 정보" : "내 기록"} ·{" "}
@@ -295,17 +302,12 @@ export function TopicBrowser({
         {!catalog.loading && !shown.length && (
           <p>해당 자료가 없습니다. 다른 주제나 미분류 자료를 확인해 보세요.</p>
         )}
-        {(shown.length > limit || !!catalog.nextCursor) && (
-          <button
-            disabled={catalog.loading}
-            onClick={() => {
-              setLimit((n) => n + 36);
-              if (library.catalog) void catalog.more();
-            }}
-          >
-            자료 더 보기
-          </button>
-        )}
+        <PageNavigation
+          label="주제별 자료"
+          paging={paging}
+          total={total}
+          busy={catalog.loading || !!catalog.error}
+        />
         <section className="panel">
           <h3>주제 사이의 연결</h3>
           <p>서로 다른 원자료의 근거가 있을 때만 연결을 제안합니다.</p>

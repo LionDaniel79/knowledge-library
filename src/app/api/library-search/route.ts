@@ -14,6 +14,8 @@ export async function GET(request: Request) {
         topicScope: (p.get("topicScope") ?? "exact") as "exact",
         expandAliases: p.get("expandAliases") === "true",
         cursor: p.get("cursor") ?? undefined,
+        ...(p.has("limit") ? { limit: Number(p.get("limit")) } : {}),
+        ...(p.has("offset") ? { offset: Number(p.get("offset")) } : {}),
       }),
       { headers: { "Cache-Control": "private, no-store" } },
     );

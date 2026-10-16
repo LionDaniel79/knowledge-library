@@ -4,6 +4,11 @@ import { FileText, Search, RefreshCw, ExternalLink, Quote } from "lucide-react";
 import { PdfProgress } from "./pdf-progress";
 import { LibraryOperationsPanel } from "./library-operations";
 import { PdfConnection } from "./pdf-connection";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
 import { PcAccess } from "./pc-access";
 import type { PdfSummary } from "../lib/pdf-progress";
 type PdfDoc = {
@@ -53,7 +58,18 @@ export function PdfLibraryPanel({
   const [mode, setMode] = useState<"list" | "search">(
     documentId ? "search" : "list",
   );
-  const [page, setPage] = useState(0);
+  const [submitted, setSubmitted] = useState({
+    q: "",
+    mode: documentId ? ("search" as const) : ("list" as const),
+    revision: 0,
+  });
+  const paging = useListPagination(
+    "pdf",
+    JSON.stringify([documentId, submitted.q, submitted.mode]),
+  );
+  const page = paging.page;
+  const setPage = paging.setPage;
+  const request = useRef<AbortController | null>(null);
   const [docs, setDocs] = useState<PdfDoc[]>([]);
   const [hits, setHits] = useState<Hit[]>([]);
   const [total, setTotal] = useState(0);
@@ -66,32 +82,46 @@ export function PdfLibraryPanel({
   const savedRequests = useRef(new Map<string, string>());
   const load = useCallback(
     async (q: string, m: "list" | "search", p: number) => {
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
       setBusy(true);
       setError("");
+      setDocs([]);
       try {
-        const params = new URLSearchParams({ mode: m, q, page: String(p) });
+        const params = new URLSearchParams({
+          mode: m,
+          q,
+          page: String(p),
+          limit: String(paging.size),
+        });
         if (documentId) params.set("id", documentId);
         const response = await fetch("/api/pdf?" + params, {
           cache: "no-store",
+          signal: controller.signal,
         });
         const data = await response.json();
         if (!response.ok)
           throw Error(data.error ?? "PDF 서재를 읽지 못했습니다.");
+        if (controller.signal.aborted) return;
         setSummary(data.summary);
         setDocs(data.documents ?? []);
         setHits(data.hits ?? []);
         setTotal(data.total ?? 0);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "PDF 검색에 실패했습니다.");
+        if (!controller.signal.aborted)
+          setError(e instanceof Error ? e.message : "PDF 검색에 실패했습니다.");
       } finally {
-        setBusy(false);
+        if (!controller.signal.aborted) setBusy(false);
       }
     },
-    [documentId],
+    [documentId, paging.size],
   );
   useEffect(() => {
-    if (!documentId) void load("", "list", 0);
-  }, [load, documentId]);
+    if (paging.ready && (!documentId || submitted.q))
+      void load(submitted.q, submitted.mode, page);
+    return () => request.current?.abort();
+  }, [load, documentId, submitted, page, paging.ready]);
   async function save(hit: Hit) {
     const key = hit.documentId + ":" + hit.pageNumber;
     setSaving(key);
@@ -140,7 +170,7 @@ export function PdfLibraryPanel({
             <button
               className="secondary"
               disabled={busy}
-              onClick={() => load(query, mode, page)}
+              onClick={() => load(submitted.q, submitted.mode, page)}
             >
               <RefreshCw size={16} />
               상태 새로고침
@@ -155,7 +185,7 @@ export function PdfLibraryPanel({
         onSubmit={(e) => {
           e.preventDefault();
           setPage(0);
-          void load(query, mode, 0);
+          setSubmitted((s) => ({ q: query, mode, revision: s.revision + 1 }));
         }}
       >
         <label
@@ -277,18 +307,23 @@ export function PdfLibraryPanel({
           </article>
         ))}
       </div>
-      {mode === "search" && !busy && query && hits.length === 0 && !error && (
-        <div className="empty-state">
-          현재 색인에서 일치하는 원문을 찾지 못했습니다. 다른 단어나 제목으로
-          찾아보세요.
-        </div>
-      )}
-      {!documentId && mode === "list" && (
+      {submitted.mode === "search" &&
+        !busy &&
+        submitted.q &&
+        hits.length === 0 &&
+        !error && (
+          <div className="empty-state">
+            현재 색인에서 일치하는 원문을 찾지 못했습니다. 다른 단어나 제목으로
+            찾아보세요.
+          </div>
+        )}
+      {!documentId && submitted.mode === "list" && (
         <>
           <p className="form-hint">
             {total.toLocaleString()}개 파일 · 파일명으로 등록한 제목은 서지 검증
             전입니다.
           </p>
+          <PageSizeSelect label="PDF 목록" paging={paging} />
           <div className="pdf-list">
             {docs.map((doc) => (
               <article className="panel pdf-row" key={doc.id}>
@@ -315,31 +350,12 @@ export function PdfLibraryPanel({
               </article>
             ))}
           </div>
-          <div className="pagination">
-            <button
-              className="secondary"
-              disabled={busy || page === 0}
-              onClick={() => {
-                setPage(page - 1);
-                void load(query, mode, page - 1);
-              }}
-            >
-              이전
-            </button>
-            <span>
-              {page + 1} / {Math.max(1, Math.ceil(total / 30))}
-            </span>
-            <button
-              className="secondary"
-              disabled={busy || (page + 1) * 30 >= total}
-              onClick={() => {
-                setPage(page + 1);
-                void load(query, mode, page + 1);
-              }}
-            >
-              다음
-            </button>
-          </div>
+          <PageNavigation
+            label="PDF 목록"
+            paging={paging}
+            total={total}
+            busy={busy || !!error}
+          />
         </>
       )}
     </section>

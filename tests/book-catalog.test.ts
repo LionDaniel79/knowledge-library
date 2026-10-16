@@ -53,6 +53,24 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => await f?.pg.close());
+it("loads numbered pages at the selected size without repeating the first page", async () => {
+  const one = await readBookPage(f.db, "reader", { sort: "oldest", limit: 15 });
+  const two = await readBookPage(f.db, "reader", {
+    sort: "oldest",
+    limit: 15,
+    offset: 15,
+  });
+  expect(one.items.map((b) => b.id)).toEqual(ids.slice(0, 15));
+  expect(two.items.map((b) => b.id)).toEqual(ids.slice(15, 30));
+  expect(two.total).toBe(55);
+  expect(
+    (await readBookPage(f.db, "outsider", { offset: 15, limit: 15 })).items,
+  ).toEqual([]);
+  await expect(readBookPage(f.db, "reader", { offset: -1 })).rejects.toThrow();
+  await expect(
+    readBookPage(f.db, "reader", { offset: 15, cursor: one.nextCursor! }),
+  ).rejects.toThrow();
+});
 it("finds titles and authors with different spacing while keeping literal punctuation and owner isolation", async () => {
   const owner = "spacing-catalog",
     id = randomUUID();

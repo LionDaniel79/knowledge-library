@@ -4,7 +4,12 @@ import { exportResearchMarkdown, type ResearchPlacement } from "@/lib/research";
 import { ThoughtMapPanel } from "./thought-map/panel";
 import { ThoughtMapHelp } from "./thought-map/help";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useBookCatalog } from "./use-book-catalog";
+import { useMaterialPage } from "./use-material-page";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
 import type { Library, Revision } from "@/lib/domain";
 import { relationNames, type Relation } from "@/lib/knowledge";
 type Connection = {
@@ -60,11 +65,12 @@ export function KnowledgePanel({
 }) {
   const [find, setFind] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
-  const catalog = useBookCatalog({
-    enabled: !!library.catalog,
-    query: { q: find, sort: "title" },
-    revision: library,
-  });
+  const paging = useListPagination("connection-materials", find);
+  const catalog = useMaterialPage(
+    !!library.catalog && paging.ready,
+    { q: find, limit: paging.size, offset: paging.offset },
+    library,
+  );
   const [chosen, setChosen] = useState<
     { id: string; kind: string; title: string }[]
   >([]);
@@ -85,7 +91,7 @@ export function KnowledgePanel({
           ...chosen,
           ...catalog.items.map((b) => ({
             id: b.id,
-            kind: "book",
+            kind: b.kind,
             title: b.title,
           })),
         ].map((n) => [n.kind + ":" + n.id, n]),
@@ -162,9 +168,12 @@ export function KnowledgePanel({
   }, []); // One initial source; every further source is chosen by the reader.
   const title = (kind: string, id: string) =>
     nodes.find((n) => n.kind === kind && n.id === id)?.title ?? "자료";
-  const choices = nodes
-    .filter((n) => n.title.toLowerCase().includes(find.toLowerCase()))
-    .slice(0, library.catalog ? 1000 : 100);
+  const localChoices = nodes.filter((n) =>
+    n.title.toLowerCase().includes(find.toLowerCase()),
+  );
+  const choices = library.catalog
+    ? catalog.items
+    : localChoices.slice(paging.offset, paging.offset + paging.size);
   const links = state.connections.filter((c) => c.status === status);
   const selected =
     state.research.find((r) => r.id === researchId) ?? state.research[0];
@@ -255,15 +264,13 @@ export function KnowledgePanel({
                 <button onClick={catalog.reload}>다시 조회</button>
               </p>
             )}
-            {catalog.nextCursor && (
-              <button
-                type="button"
-                disabled={catalog.loading}
-                onClick={catalog.more}
-              >
-                자료 검색 더 보기
-              </button>
-            )}
+            <PageSizeSelect label="연결할 자료" paging={paging} />
+            <PageNavigation
+              label="연결할 자료"
+              paging={paging}
+              total={library.catalog ? catalog.total : localChoices.length}
+              busy={catalog.loading || !!catalog.error}
+            />
             <label>
               출발 자료
               <select

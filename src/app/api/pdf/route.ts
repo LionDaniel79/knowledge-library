@@ -50,9 +50,16 @@ export async function GET(request: Request) {
         0,
         Math.min(10000, Number(params.get("page")) || 0),
       );
+      const limit = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(30)
+        .parse(params.get("limit") ?? undefined);
       const docs = await database.query(
-        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3) ORDER BY b.title,d.id LIMIT 30 OFFSET $4`,
-        [owner, query, "%" + query + "%", Math.floor(page) * 30],
+        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3) ORDER BY b.title,d.id LIMIT $5 OFFSET $4`,
+        [owner, query, "%" + query + "%", Math.floor(page) * limit, limit],
       );
       const total = Number(
         await database

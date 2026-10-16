@@ -1,0 +1,49 @@
+"use client";
+import { useEffect, useState } from "react";
+
+export function usePagedResource<T>(
+  path: string,
+  enabled = true,
+  revision?: unknown,
+) {
+  const [retry, setRetry] = useState(0);
+  const [state, setState] = useState<{
+    path: string;
+    data: T | null;
+    loading: boolean;
+    error: string;
+  }>({ path, data: null, loading: enabled, error: "" });
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setState({ path, data: null, loading: true, error: "" });
+    const timer = setTimeout(() => {
+      void fetch(path, { cache: "no-store", signal: controller.signal })
+        .then(async (r) => {
+          const data = await r.json();
+          if (!r.ok) throw Error(data.error ?? "목록을 불러오지 못했습니다.");
+          if (!controller.signal.aborted)
+            setState({ path, data, loading: false, error: "" });
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted)
+            setState({
+              path,
+              data: null,
+              loading: false,
+              error: error.message,
+            });
+        });
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [path, enabled, revision, retry]);
+  return {
+    ...(enabled && state.path === path
+      ? state
+      : { data: null, loading: enabled, error: "" }),
+    reload: () => setRetry((n) => n + 1),
+  };
+}

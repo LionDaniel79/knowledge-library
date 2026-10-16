@@ -50,6 +50,11 @@ import { BookShelves } from "./shelf-picker";
 import { LibrarySearchPanel } from "./library-search-panel";
 import { BookRecords } from "./book-records";
 import { useNotePage } from "./use-note-page";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "./list-pagination";
 import { BookIntroduction } from "./book-introduction";
 import { CatalogReviewPanel } from "./catalog-review-panel";
 import { CurationDetails } from "./curation-details";
@@ -141,7 +146,6 @@ export function LibraryApp({
   const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [limit, setLimit] = useState(24);
   const [readingIndex, setReadingIndex] = useState(0);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
@@ -159,16 +163,33 @@ export function LibraryApp({
   } | null>(null);
   const remote = !!data.catalog;
   const needle = query.trim().toLocaleLowerCase();
-  const defaultQuery =
-    !needle &&
-    sort === "newest" &&
-    category === "all" &&
-    shelfFilter === "all" &&
-    filter === "all";
+  const bookPaging = useListPagination(
+    "books",
+    JSON.stringify([view, needle, sort, category, shelfFilter, filter]),
+  );
+  const notePaging = useListPagination(
+    "notes",
+    JSON.stringify([
+      view,
+      needle,
+      noteTag,
+      noteType,
+      noteBook,
+      dateFrom,
+      dateTo,
+    ]),
+  );
   const catalog = useBookCatalog({
-    enabled: remote,
-    query: { q: needle, sort, category, shelf: shelfFilter, filter },
-    initial: defaultQuery ? data.catalog?.firstPage : undefined,
+    enabled: remote && bookPaging.ready,
+    query: {
+      q: needle,
+      sort,
+      category,
+      shelf: shelfFilter,
+      filter,
+      limit: bookPaging.size,
+      offset: bookPaging.offset,
+    },
     revision: data,
   });
   const totalBooks = data.catalog?.total ?? data.books.length;
@@ -312,7 +333,7 @@ export function LibraryApp({
         );
 
   const notePage = useNotePage(
-    remote && (view === "notes" || !!needle),
+    remote && notePaging.ready && (view === "notes" || !!needle),
     {
       q: needle,
       tag: noteTag,
@@ -320,6 +341,8 @@ export function LibraryApp({
       book: noteBook,
       from: dateFrom,
       to: dateTo,
+      limit: notePaging.size,
+      offset: notePaging.offset,
     },
     data,
   );
@@ -349,9 +372,6 @@ export function LibraryApp({
             (!dateTo || n.createdAt.slice(0, 10) <= dateTo),
         );
   const matchedCount = remote ? catalog.total : matchedBooks.length;
-  const hasMoreBooks = remote
-    ? !!catalog.nextCursor
-    : matchedBooks.length > limit;
   const navigate = (next: View) => {
     setView(next);
     setMenuOpen(false);
@@ -364,7 +384,8 @@ export function LibraryApp({
     setDateTo("");
     setQuery("");
     setFilter("all");
-    setLimit(24);
+    bookPaging.setPage(0);
+    notePaging.setPage(0);
   };
   async function openNote(id: string) {
     if (preview || !remote) {
@@ -656,7 +677,8 @@ export function LibraryApp({
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
-                setLimit(24);
+                bookPaging.setPage(0);
+                notePaging.setPage(0);
               }}
             />
             {query && (
@@ -754,7 +776,8 @@ export function LibraryApp({
                   value={category}
                   onChange={(e) => {
                     setCategory(e.target.value);
-                    setLimit(24);
+                    bookPaging.setPage(0);
+                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">전체 분야</option>
@@ -776,7 +799,8 @@ export function LibraryApp({
                   value={shelfFilter}
                   onChange={(e) => {
                     setShelfFilter(e.target.value);
-                    setLimit(24);
+                    bookPaging.setPage(0);
+                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">모든 책장</option>
@@ -809,7 +833,8 @@ export function LibraryApp({
                 value={noteTag}
                 onChange={(tag) => {
                   setNoteTag(tag);
-                  setLimit(24);
+                  bookPaging.setPage(0);
+                  notePaging.setPage(0);
                 }}
                 onUpdated={refresh}
                 preview={preview}
@@ -820,7 +845,8 @@ export function LibraryApp({
                   value={noteType}
                   onChange={(e) => {
                     setNoteType(e.target.value);
-                    setLimit(24);
+                    bookPaging.setPage(0);
+                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">모든 기록</option>
@@ -837,7 +863,8 @@ export function LibraryApp({
                   value={noteBook}
                   onChange={(e) => {
                     setNoteBook(e.target.value);
-                    setLimit(24);
+                    bookPaging.setPage(0);
+                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">모든 책</option>
@@ -912,22 +939,44 @@ export function LibraryApp({
                   책 <span className="count">{matchedCount}</span>
                 </h2>
               </div>
+              <PageSizeSelect label="검색 도서" paging={bookPaging} />
               <div className="shelf-grid">
-                {(remote ? matchedBooks : matchedBooks.slice(0, limit)).map(
-                  bookCard,
-                )}
+                {(remote
+                  ? matchedBooks
+                  : matchedBooks.slice(
+                      bookPaging.offset,
+                      bookPaging.offset + bookPaging.size,
+                    )
+                ).map(bookCard)}
               </div>
+              <PageNavigation
+                label="검색 도서"
+                paging={bookPaging}
+                total={matchedCount}
+                busy={catalog.loading || !!catalog.error}
+              />
               <h2 className="section-space">
                 기록과 생각{" "}
                 <span className="count">
                   {remote ? notePage.total : matchedNotes.length}
                 </span>
               </h2>
+              <PageSizeSelect label="검색 기록" paging={notePaging} />
               <div className="notes-grid">
-                {(remote ? matchedNotes : matchedNotes.slice(0, limit)).map(
-                  noteCard,
-                )}
+                {(remote
+                  ? matchedNotes
+                  : matchedNotes.slice(
+                      notePaging.offset,
+                      notePaging.offset + notePaging.size,
+                    )
+                ).map(noteCard)}
               </div>
+              <PageNavigation
+                label="검색 기록"
+                paging={notePaging}
+                total={remote ? notePage.total : matchedNotes.length}
+                busy={notePage.loading || !!notePage.error}
+              />
               {!catalog.loading &&
                 !matchedBooks.length &&
                 !matchedNotes.length && (
@@ -1045,6 +1094,7 @@ export function LibraryApp({
                 <>
                   <div className="book-toolbar">
                     <div className="book-view-actions">
+                      <PageSizeSelect label="소장 도서" paging={bookPaging} />
                       <select
                         aria-label="도서 보기 방식"
                         value={bookLayout}
@@ -1079,7 +1129,8 @@ export function LibraryApp({
                           className={filter === id ? "active" : ""}
                           onClick={() => {
                             setFilter(id);
-                            setLimit(24);
+                            bookPaging.setPage(0);
+                            notePaging.setPage(0);
                           }}
                         >
                           {label}
@@ -1098,7 +1149,10 @@ export function LibraryApp({
                     >
                       {(remote
                         ? matchedBooks
-                        : matchedBooks.slice(0, limit)
+                        : matchedBooks.slice(
+                            bookPaging.offset,
+                            bookPaging.offset + bookPaging.size,
+                          )
                       ).map((book) =>
                         bookLayout === "covers" ? (
                           bookCard(book)
@@ -1158,12 +1212,19 @@ export function LibraryApp({
                   )}
                 </>
               )}
+              {view === "notes" && (
+                <PageSizeSelect label="기록과 생각" paging={notePaging} />
+              )}
               {view === "notes" &&
-                (data.notes.length ? (
+                (data.notes.length || remote ? (
                   <div className="notes-grid">
-                    {(remote ? matchedNotes : matchedNotes.slice(0, limit)).map(
-                      noteCard,
-                    )}
+                    {(remote
+                      ? matchedNotes
+                      : matchedNotes.slice(
+                          notePaging.offset,
+                          notePaging.offset + notePaging.size,
+                        )
+                    ).map(noteCard)}
                     {!matchedNotes.length && (
                       <p className="empty-state">
                         조건에 맞는 기록이 없습니다. 필터를 바꾸어 보세요.
@@ -1345,29 +1406,21 @@ export function LibraryApp({
               <button onClick={catalog.reload}>다시 조회</button>
             </p>
           )}
-          {((needle &&
-            (hasMoreBooks ||
-              (remote
-                ? notePage.nextOffset !== null
-                : matchedNotes.length > limit))) ||
-            (!needle && view === "books" && hasMoreBooks) ||
-            (!needle &&
-              view === "notes" &&
-              (remote
-                ? notePage.nextOffset !== null
-                : matchedNotes.length > limit))) && (
-            <button
-              className="secondary load-more"
-              disabled={remote && catalog.loading}
-              onClick={() => {
-                setLimit((n) => n + 24);
-                if (remote && (view === "books" || needle)) void catalog.more();
-                if (remote && (view === "notes" || needle))
-                  void notePage.more();
-              }}
-            >
-              더 보기
-            </button>
+          {!needle && view === "books" && (
+            <PageNavigation
+              label="소장 도서"
+              paging={bookPaging}
+              total={matchedCount}
+              busy={catalog.loading || !!catalog.error}
+            />
+          )}
+          {!needle && view === "notes" && (
+            <PageNavigation
+              label="기록과 생각"
+              paging={notePaging}
+              total={remote ? notePage.total : matchedNotes.length}
+              busy={notePage.loading || !!notePage.error}
+            />
           )}
           {!preview && ownerId && (
             <OfflineDrafts
