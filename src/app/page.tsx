@@ -4,15 +4,30 @@ import { LibraryError } from "@/server/library-store";
 import { todayInSeoul } from "@/lib/domain";
 import { LibraryApp } from "@/components/library-app";
 import { AuthPanel } from "@/components/auth-panel";
+import { libraryEntry } from "@/lib/library-entry";
 export const dynamic = "force-dynamic";
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const entry = libraryEntry(await searchParams);
   try {
     const owner = await requireOwner();
     const data = await getStore().overview(owner);
-    return <LibraryApp initial={data} today={todayInSeoul()} ownerId={owner} />;
+    return (
+      <LibraryApp
+        initial={data}
+        today={todayInSeoul()}
+        ownerId={owner}
+        initialView={entry.view}
+        initialOperationsOpen={entry.operations}
+      />
+    );
   } catch (e) {
     return (
       <AuthPanel
+        returnPath={entry.path}
         available={configured()}
         message={
           e instanceof LibraryError && e.status !== 401

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { BookOpen, ShieldCheck } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { authReturnPath } from "@/lib/library-entry";
 export function AuthPanel({
   available,
   message,
@@ -19,9 +20,7 @@ export function AuthPanel({
     try {
       const result = await authClient.signIn.social({
         provider: "google",
-        callbackURL:
-          window.location.origin +
-          (returnPath.startsWith("/connect/mcp?") ? returnPath : "/"),
+        callbackURL: window.location.origin + authReturnPath(returnPath),
         errorCallbackURL: window.location.origin + "/auth/sign-in?login=failed",
       });
       if (result.error)

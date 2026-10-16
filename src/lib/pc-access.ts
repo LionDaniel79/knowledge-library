@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pdfLibraryPath } from "./library-entry";
 /** Configuration is a link only; no server proxy, network probing or credential forwarding. */
 export function privatePcOrigin(value: string | undefined): string | null {
   if (!value) return null;
@@ -35,4 +36,9 @@ export function pcDocumentUrl(
   if (signature)
     u.searchParams.set("signature", z.string().max(500).parse(signature));
   return u.href;
+}
+export function pcLibraryUrl(origin: string, operations = false) {
+  const safe = privatePcOrigin(origin);
+  if (!safe) throw Error("인증된 PC 주소 설정이 필요합니다.");
+  return new URL(pdfLibraryPath(operations), safe).href;
 }

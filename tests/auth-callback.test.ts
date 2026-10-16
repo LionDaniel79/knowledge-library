@@ -26,7 +26,12 @@ afterEach(() => {
 
 // Keep the actual Neon middleware: setting the login URL to the callback path
 // must fail this test, because the SDK skips verification on its login page.
-it.each(["/", "/connect/mcp?state=chatgpt-state"])(
+it.each([
+  "/",
+  "/?view=pdf",
+  "/?view=pdf&panel=operations",
+  "/connect/mcp?state=chatgpt-state",
+])(
   "exchanges the Google callback on %s and preserves its return parameters",
   async (path) => {
     expect(
@@ -113,4 +118,11 @@ it("sends an anonymous visitor to a separate accessible sign-in page", async () 
   expect(response.headers.get("location")).toBe(
     "https://library.example.test/auth/sign-in",
   );
+});
+it("lets the PDF entry render its owner-checked sign-in without dropping the destination", async () => {
+  const response = await proxy(
+    new NextRequest("https://library.example.test/?view=pdf&panel=operations"),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-middleware-next")).toBe("1");
 });

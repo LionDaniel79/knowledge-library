@@ -92,11 +92,15 @@ export function LibraryApp({
   today,
   preview = false,
   ownerId = "",
+  initialView = "home",
+  initialOperationsOpen = false,
 }: {
   initial: Library;
   today: string;
   preview?: boolean;
   ownerId?: string;
+  initialView?: "home" | "pdf";
+  initialOperationsOpen?: boolean;
 }) {
   const [draftRevision, setDraftRevision] = useState(0);
   async function keepDraft(c: Command) {
@@ -134,7 +138,7 @@ export function LibraryApp({
   const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [data, setData] = useState(initial);
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [limit, setLimit] = useState(24);
@@ -1328,7 +1332,10 @@ export function LibraryApp({
                     내 서재에 로그인하면 등록한 PDF를 검색할 수 있습니다.
                   </div>
                 ) : (
-                  <PdfLibraryPanel onSaved={refresh} />
+                  <PdfLibraryPanel
+                    onSaved={refresh}
+                    initialOperationsOpen={initialOperationsOpen}
+                  />
                 ))}
             </>
           )}

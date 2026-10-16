@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PcAccess } from "./pc-access";
 import type { libraryOperations } from "@/server/library-operations";
 type State = Awaited<ReturnType<typeof libraryOperations>>;
 const stateNames: Record<string, string> = {
@@ -43,7 +44,21 @@ const reasonNames: Record<string, string> = {
   interrupted: "작업이 중단되었습니다.",
   engine_unavailable: "Windows 문자 인식 환경을 확인해 주세요.",
 };
-export function LibraryOperationsPanel() {
+export function LibraryOperationsPanel({
+  initiallyOpen = false,
+}: {
+  initiallyOpen?: boolean;
+}) {
+  const panel = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (initiallyOpen && panel.current) {
+      panel.current.open = true;
+      const frame = requestAnimationFrame(() =>
+        panel.current?.scrollIntoView({ block: "start" }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [initiallyOpen]);
   const [state, setState] = useState<State | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -83,6 +98,8 @@ export function LibraryOperationsPanel() {
   }
   return (
     <details
+      ref={panel}
+      id="library-operations"
       className="panel"
       onToggle={(e) => {
         if (e.target === e.currentTarget && e.currentTarget.open && !state)
@@ -104,7 +121,10 @@ export function LibraryOperationsPanel() {
       )}
       {message && <p role="status">{message}</p>}
       {state && !state.localAvailable && (
-        <p>PC 작업 현황은 내 PC의 서재에서 확인할 수 있습니다.</p>
+        <>
+          <p>PDF 처리 현황은 PC에서 확인할 수 있습니다.</p>
+          <PcAccess operations />
+        </>
       )}
       {state?.localAvailable && (
         <>

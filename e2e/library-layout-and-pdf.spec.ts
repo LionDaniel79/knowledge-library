@@ -87,14 +87,18 @@ test("ambiguous editions appear once per book and allow switching the candidate 
     page.getByLabel("소장본과 같은 판본으로 확인했습니다."),
   ).not.toBeChecked();
 });
-async function mount(page: any, contents: string) {
-  await page.route("https://library.test/", (r: any) =>
+async function mount(
+  page: any,
+  contents: string,
+  origin = "https://library.test",
+) {
+  await page.route(origin + "/", (r: any) =>
     r.fulfill({
       contentType: "text/html",
       body: '<html lang="ko"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div></html>',
     }),
   );
-  await page.goto("https://library.test/");
+  await page.goto(origin + "/");
   const bundle = (
     await build({
       stdin: { contents, resolveDir: process.cwd(), loader: "tsx" },
@@ -199,9 +203,90 @@ test("cloud PDF reader offers the PC link without requesting unavailable origina
   ).toHaveAttribute("href", /page=5/);
   await page.getByText("자료 준비·오류 확인", { exact: true }).click();
   await expect(
-    page.getByText("PC 작업 현황은 내 PC의 서재에서 확인할 수 있습니다."),
+    page.getByText("PDF 처리 현황은 PC에서 확인할 수 있습니다."),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "PC 작업 현황 보기", exact: true }),
+  ).toHaveAttribute(
+    "href",
+    "https://knowledge-library-pc.tail83cf39.ts.net/?view=pdf&panel=operations",
+  );
   await expect(page.getByText("원본 확인이 필요한 자료 0건")).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(originalRequests).toBe(0);
+});
+test("the general PC link selects PDF search, and the destination opens processing details immediately", async ({
+  page,
+}) => {
+  await page.route("https://library.test/api/pc-access", (r) =>
+    r.fulfill({
+      json: {
+        local: false,
+        pcOrigin: "https://knowledge-library-pc.tail83cf39.ts.net",
+      },
+    }),
+  );
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {PcAccess} from './src/components/pc-access';createRoot(document.getElementById('root')).render(<PcAccess/>);`,
+  );
+  await expect(
+    page.getByRole("link", { name: "PC의 PDF 원문 검색 열기", exact: true }),
+  ).toHaveAttribute(
+    "href",
+    "https://knowledge-library-pc.tail83cf39.ts.net/?view=pdf",
+  );
+  let readStatus = false;
+  await page.route("https://library.test/api/pc-access", (r) =>
+    r.fulfill({ json: { local: true, pcOrigin: null } }),
+  );
+  await page.route("https://library.test/api/library-operations", (r) => {
+    readStatus = true;
+    return r.fulfill({
+      json: {
+        localAvailable: true,
+        rootConnected: true,
+        canControl: false,
+        ocr: { status: "completed" },
+        collections: [],
+        issues: [],
+        issuesAvailable: true,
+      },
+    });
+  });
+  await page.route("https://library.test/api/pdf**", (r) =>
+    r.fulfill({ json: { documents: [], total: 0, summary: null } }),
+  );
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';import {previewLibrary} from './src/lib/preview-data';createRoot(document.getElementById('root')).render(<LibraryApp initial={previewLibrary} today="2026-10-17" initialView="pdf" initialOperationsOpen/>);`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "PDF 원문 검색", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "PDF 문자 인식", exact: true }),
+  ).toBeVisible();
+  expect(readStatus).toBe(true);
+});
+test("a disconnected PDF drive on the PC shows a connection message instead of linking back to itself", async ({
+  page,
+}) => {
+  const pc = "https://knowledge-library-pc.tail83cf39.ts.net";
+  await page.route(pc + "/api/pc-access", (r) =>
+    r.fulfill({ json: { local: false, pcOrigin: pc } }),
+  );
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {PcAccess} from './src/components/pc-access';createRoot(document.getElementById('root')).render(<PcAccess operations/>);`,
+    pc,
+  );
+  await expect(
+    page.getByRole("link", { name: "PC 작업 현황 보기", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "이 PC에서 PDF 원본에 연결할 수 없습니다. 외장하드 연결을 확인해 주세요.",
+    ),
+  ).toBeVisible();
 });

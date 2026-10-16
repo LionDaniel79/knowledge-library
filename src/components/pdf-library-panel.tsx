@@ -43,9 +43,11 @@ const stateNames: Record<string, string> = {
 export function PdfLibraryPanel({
   onSaved,
   documentId,
+  initialOperationsOpen = false,
 }: {
   onSaved: () => Promise<void>;
   documentId?: string;
+  initialOperationsOpen?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"list" | "search">(
@@ -145,7 +147,7 @@ export function PdfLibraryPanel({
             </button>
           </div>
           {summary && <PdfProgress summary={summary} />}
-          <LibraryOperationsPanel />
+          <LibraryOperationsPanel initiallyOpen={initialOperationsOpen} />
         </>
       )}
       <form
