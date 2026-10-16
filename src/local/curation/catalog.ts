@@ -11,7 +11,7 @@ import {
 import { secureImage, lookupLibrary } from "../../server/catalog-provider";
 import { reserveCatalogRequest } from "./api-quota";
 export interface CollectedBook {
-  provider: "Google Books" | "도서관 정보나루";
+  provider: "Google Books" | "도서관 정보나루" | "예스24";
   url: string;
   isbn: string;
   title: string;
@@ -139,6 +139,12 @@ export async function collectBookReference(
     url.password ||
     !(
       (record.provider === "Google Books" && host === "books.google.com") ||
+      (record.provider === "예스24" &&
+        host === "www.yes24.com" &&
+        /^\/product\/goods\/\d+$/.test(url.pathname) &&
+        !url.search &&
+        !url.hash &&
+        !url.port) ||
       (record.provider === "도서관 정보나루" &&
         ["www.data4library.kr", "data4library.kr"].includes(host))
     )

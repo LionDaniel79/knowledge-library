@@ -97,6 +97,41 @@ const response = (data: any = raw) =>
     }),
     { status: 200, headers: { "x-request-id": "req_test" } },
   );
+it("grounds a unique exact provider quote by UTF-16 position while keeping storage validation strict", async () => {
+  const wrong = {
+    tags: [
+      {
+        tag: "감정",
+        evidence: { sourceIndex: 0, start: 0, end: 2, quote: "감정" },
+      },
+    ],
+  };
+  expect(validateAiTaskResult(task, wrong).valid).toBe(false);
+  const result = await runOpenAiTask(task, reservation(), {
+    ...config,
+    fetcher: async () => response(wrong),
+  });
+  expect(result).toMatchObject({
+    valid: true,
+    output: { tags: [{ evidence: { start: 6, end: 8, quote: "감정" } }] },
+  });
+  const repeated = structuredClone(task);
+  repeated.payload.sources[0].text = "감정과 감정";
+  const ambiguous = {
+    tags: [
+      {
+        tag: "감정",
+        evidence: { sourceIndex: 0, start: 2, end: 4, quote: "감정" },
+      },
+    ],
+  };
+  expect(
+    await runOpenAiTask(repeated, reservation(), {
+      ...config,
+      fetcher: async () => response(ambiguous),
+    }),
+  ).toMatchObject({ valid: false, errorCode: "invalid_evidence" });
+});
 it("sends only explicit bounded input with no tools and counts token subsets once", async () => {
   const fetcher = vi.fn(async () => response());
   const r = await runOpenAiTask(task, reservation(), { ...config, fetcher });

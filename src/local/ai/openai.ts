@@ -62,6 +62,43 @@ export function validateAiTaskResult(task: AiTask, raw: unknown) {
   });
   return { valid, output: valid ? parsed.data : null };
 }
+/** Ground only literal, unique quotations; model-generated character counting is not evidence. */
+function groundProviderEvidence(task: AiTask, raw: unknown) {
+  const parsed = resultSchema(task).safeParse(raw);
+  if (!parsed.success) return raw;
+  const data: any = structuredClone(parsed.data);
+  const locate = (e: any, text: string | undefined) => {
+    if (!e || !text || typeof e.quote !== "string" || !e.quote.length) return;
+    if (text.slice(e.start, e.end) === e.quote) return;
+    const start = text.indexOf(e.quote);
+    if (start < 0 || text.indexOf(e.quote, start + 1) >= 0) return;
+    e.start = start;
+    e.end = start + e.quote.length;
+  };
+  if (task.phase === "runtime" && task.payload.purpose === "compare_notes") {
+    for (const [index, side] of ["before", "after"].entries()) {
+      const e = data[side],
+        s = task.payload.sources[index];
+      if (
+        e &&
+        s &&
+        e.noteId === s.source.id &&
+        String(e.noteVersion) === s.source.version
+      )
+        locate(e, s.text);
+    }
+  } else {
+    const evidence =
+      task.phase === "development" || task.payload.purpose === "organize_note"
+        ? data.items.map((i: any) => i.evidence)
+        : task.payload.purpose === "tag_suggestion"
+          ? data.tags.map((i: any) => i.evidence)
+          : data.evidence;
+    for (const e of evidence)
+      locate(e, task.payload.sources[e.sourceIndex]?.text);
+  }
+  return data;
+}
 export function prepareAiTask(input: AiTask) {
   const task = aiTaskSchema.parse(input),
     sources = task.payload.sources;
@@ -254,7 +291,10 @@ export async function runOpenAiTask(
     } catch {
       return base;
     }
-    const checked = validateAiTaskResult(task, data);
+    const checked = validateAiTaskResult(
+      task,
+      groundProviderEvidence(task, data),
+    );
     return {
       ...base,
       ...checked,

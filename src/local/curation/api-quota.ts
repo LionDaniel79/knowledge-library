@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-type Provider = "library" | "google";
+type Provider = "library" | "google" | "yes24";
 interface QuotaOptions {
   path?: string;
   limit?: number;
@@ -30,8 +30,10 @@ export function reserveCatalogRequest(
       process.env[
         provider === "library"
           ? "DATA4LIBRARY_DAILY_LIMIT"
-          : "GOOGLE_BOOKS_DAILY_LIMIT"
-      ] ?? "450",
+          : provider === "yes24"
+            ? "YES24_DAILY_LIMIT"
+            : "GOOGLE_BOOKS_DAILY_LIMIT"
+      ] ?? (provider === "yes24" ? "20000" : "450"),
     );
   const ipRegistered =
     options.ipRegistered ?? process.env.DATA4LIBRARY_IP_REGISTERED === "true";
