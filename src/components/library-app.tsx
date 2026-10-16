@@ -1108,7 +1108,7 @@ export function LibraryApp({
                             className="book-list-row"
                             onClick={() => setDetail(book.id)}
                           >
-                            <BookCover book={book} />
+                            <BookCover book={book} small />
                             <span className="book-list-description">
                               <strong>{book.title}</strong>
                               <span>
