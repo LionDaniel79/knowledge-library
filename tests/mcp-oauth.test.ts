@@ -47,6 +47,19 @@ it("pins ChatGPT redirect, resource, scope and S256 instead of accepting arbitra
   p.append("redirect_uri", redirect_uri);
   expect(() => oauth.parseMcpAuthorization?.(p, origin)).toThrow();
 });
+it("accepts ChatGPT's optional UI locale without changing the security-bound request", () => {
+  const original = oauth.parseMcpAuthorization(auth(), origin);
+  const p = auth();
+  p.set("ui_locales", "ko-KR");
+  expect(oauth.parseMcpAuthorization(p, origin)).toEqual(original);
+  p.set("ui_locales", "ko-KR en-US");
+  expect(oauth.parseMcpAuthorization(p, origin)).toEqual(original);
+  p.append("ui_locales", "en-US");
+  expect(() => oauth.parseMcpAuthorization(p, origin)).toThrow();
+  const invalid = auth();
+  invalid.set("ui_locales", "ko-KR\n<script>");
+  expect(() => oauth.parseMcpAuthorization(invalid, origin)).toThrow();
+});
 it("requires PKCE, consumes a code once and scopes resulting tokens to their owner and resource", async () => {
   const s = oauth.createMcpOAuth?.(f.db, origin),
     a = oauth.parseMcpAuthorization?.(auth(), origin);

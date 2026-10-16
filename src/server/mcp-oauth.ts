@@ -47,8 +47,17 @@ const authorizationSchema = z
     resource: z.string(),
     code_challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
     code_challenge_method: z.literal("S256"),
+    ui_locales: z
+      .string()
+      .max(200)
+      .regex(
+        /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*(?: [A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*)*$/,
+      )
+      .optional(),
   })
-  .strict();
+  .strict()
+  // Locale is a display hint, never part of the permission grant or callback.
+  .transform(({ ui_locales: _uiLocales, ...authorization }) => authorization);
 export type McpAuthorization = z.infer<typeof authorizationSchema>;
 export function parseMcpAuthorization(
   params: URLSearchParams,
