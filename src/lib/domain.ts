@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { catalogSelection } from "./catalog-selection";
 export type Format = "paper" | "pdf" | "ebook" | "unknown";
 export const formatNames: Record<Format, string> = {
   paper: "종이책",
@@ -177,10 +178,26 @@ export const bookInput = z.object({
     .string()
     .max(2000)
     .refine(
-      (v) => !v || /^https:\/\/[^\s]+$/.test(v),
+      (v) =>
+        !v ||
+        /^\/api\/book-covers\/[a-f0-9-]{36}$/.test(v) ||
+        (() => {
+          try {
+            const u = new URL(v);
+            return (
+              u.protocol === "https:" &&
+              !u.username &&
+              !u.password &&
+              !/\s/.test(v)
+            );
+          } catch {
+            return false;
+          }
+        })(),
       "표지는 https 주소를 사용해 주세요.",
     )
     .default(""),
+  catalogSelection: catalogSelection.optional(),
 });
 export const noteInput = z
   .object({

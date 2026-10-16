@@ -41,61 +41,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg?.close();
 });
-it("links explicit Zotero identifiers without modifying books and guards owner, revision and duplicate mappings", async () => {
-  const book = await library.mutate(
-    "zotero",
-    cmd("addBook", {
-      title: "서지",
-      author: "저자",
-      publisher: "출판사",
-      formats: ["paper"],
-    }),
-  );
-  const other = await library.mutate(
-    "zotero",
-    cmd("addBook", { title: "다른 책", formats: ["paper"] }),
-  );
-  const payload = {
-    bookId: book.id,
-    expectedBookVersion: 1,
-    url: "https://www.zotero.org/users/123/items/ABCD1234",
-    expectedVersion: 0,
-    state: "active",
-  };
-  const request = cmd("linkZotero", payload);
-  expect(await store.mutate("zotero", request)).toEqual(
-    await store.mutate("zotero", request),
-  );
-  await expect(
-    store.mutate("foreign", cmd("linkZotero", payload)),
-  ).rejects.toMatchObject({ status: 404 });
-  await expect(
-    store.mutate("zotero", cmd("linkZotero", { ...payload, bookId: other.id })),
-  ).rejects.toMatchObject({ status: 409 });
-  await expect(
-    store.mutate("zotero", cmd("linkZotero", payload)),
-  ).rejects.toMatchObject({ status: 409 });
-  await expect(
-    store.mutate(
-      "zotero",
-      cmd("linkZotero", { ...payload, url: payload.url + "?key=secret" }),
-    ),
-  ).rejects.toMatchObject({ status: 400 });
-  await store.mutate(
-    "zotero",
-    cmd("linkZotero", { ...payload, expectedVersion: 1, state: "removed" }),
-  );
-  expect(
-    (await db.query("SELECT version FROM library_books WHERE id=$1", [book.id]))
-      .rows[0].version,
-  ).toBe(1);
-  expect(
-    (await readBibliography(db, "zotero", { bookId: book.id }))[0].title,
-  ).toBe("서지");
-  await expect(
-    readBibliography(db, "foreign", { bookId: book.id }),
-  ).rejects.toMatchObject({ status: 404 });
-});
 it("exports research bibliography from frozen sources and excludes removed materials", async () => {
   const book = await library.mutate(
     "export",

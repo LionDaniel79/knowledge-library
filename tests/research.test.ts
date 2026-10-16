@@ -1,10 +1,6 @@
 import { expect, it } from "vitest";
 import { exportResearchMarkdown, sortResearchItems } from "../src/lib/research";
-import {
-  bibliography,
-  toRis,
-  zoteroLink,
-} from "../src/lib/bibliography-exchange";
+import { bibliography, toRis } from "../src/lib/bibliography-exchange";
 it("orders human research roles while preserving a frozen quote and PDF page identity", () => {
   const snapshot = {
     note: {
@@ -107,22 +103,4 @@ it("preserves distinct frozen bibliographies and stable export IDs regardless of
   expect(rows.find((b) => b.title === first.title)?.id).toBe(
     bibliography([first])[0].id,
   );
-});
-it("accepts explicit Zotero item URLs only and rejects credentials, fragments and unrelated hosts", () => {
-  expect(zoteroLink("https://www.zotero.org/users/123/items/ABCD1234")).toEqual(
-    {
-      url: "https://www.zotero.org/users/123/items/ABCD1234",
-      libraryType: "users",
-      libraryId: "123",
-      itemKey: "ABCD1234",
-    },
-  );
-  for (const url of [
-    "https://www.zotero.org.evil.test/users/123/items/ABCD1234",
-    "https://www.zotero.org/users/123/items/ABCD1234?key=secret",
-    "https://x@y.zotero.org/users/1/items/ABCD1234",
-    "zotero://select/library/items/ABCD1234",
-    "https://www.zotero.org/users/1/items/ABCD1234#x",
-  ])
-    expect(() => zoteroLink(url)).toThrow();
 });

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Modal } from "./modal";
+import { BACKUP_FILE_MAX } from "../lib/backup-limits";
 type Preview = {
   canRestore: boolean;
   existingRecords: number;
@@ -16,7 +17,8 @@ const names: Record<string, string> = {
   library_connections: "자료 연결",
   library_book_relations: "소장본·판본 연결",
   library_research_placements: "연구 자료 배치·해석",
-  library_external_links: "Zotero 항목 연결",
+  library_external_links: "과거 외부 연결",
+  library_cover_assets: "업로드한 표지",
   library_research: "설교·논문 모음",
   library_curation_items: "정리 정보",
 };
@@ -39,6 +41,10 @@ export function BackupPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, backup: value }),
     });
+    if (response.status === 413)
+      throw Error(
+        "백업이 서버 업로드 한도를 초과합니다. PC에서 복원해 주세요.",
+      );
     const result = await response.json();
     if (!response.ok)
       throw Error(result.error ?? "백업을 처리하지 못했습니다.");
@@ -52,8 +58,8 @@ export function BackupPanel({
     setPreview(null);
     setBackup(null);
     try {
-      if (file.size > 127 * 1024 * 1024)
-        throw Error("백업은 127MB 이하로 선택하세요.");
+      if (file.size > BACKUP_FILE_MAX)
+        throw Error("백업은 511MB 이하로 선택하세요.");
       let value: unknown;
       try {
         value = JSON.parse(await file.text());

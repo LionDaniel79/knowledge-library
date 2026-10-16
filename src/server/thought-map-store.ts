@@ -1,4 +1,5 @@
 import { insertCandidate, mutateCandidate } from "./thought-candidates";
+import { readActiveNote } from "./active-note";
 import type { CandidateInput } from "../lib/thought-map/types";
 import { randomUUID, createHash } from "node:crypto";
 import { LibraryError, type Database, type Executor } from "./library-store";
@@ -40,12 +41,15 @@ export async function ownRow(
   id: string,
   lock = false,
 ) {
-  const row = (
-    await tx.query(
-      `SELECT * FROM ${table} WHERE owner_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
-      [owner, id],
-    )
-  ).rows[0];
+  const row =
+    table === "library_active_notes"
+      ? await readActiveNote(tx, owner, id, lock)
+      : (
+          await tx.query(
+            `SELECT * FROM ${table} WHERE owner_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
+            [owner, id],
+          )
+        ).rows[0];
   if (!row) throw new LibraryError(404, "자료를 찾을 수 없습니다.");
   return row;
 }

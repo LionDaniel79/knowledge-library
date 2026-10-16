@@ -1,4 +1,5 @@
 import { requireOwner } from "@/server/auth";
+import { BACKUP_REQUEST_MAX } from "@/lib/backup-limits";
 import { database } from "@/server/db";
 import { validateWriteOrigin } from "@/server/access";
 import { failure } from "@/server/http";
@@ -28,9 +29,9 @@ export async function POST(request: Request) {
   try {
     validateWriteOrigin(request, process.env.APP_ORIGIN ?? "");
     const owner = await requireOwner(),
-      max = 128 * 1024 * 1024;
+      max = BACKUP_REQUEST_MAX;
     if (Number(request.headers.get("content-length")) > max)
-      throw new LibraryError(413, "백업 요청은 128MB 이하로 선택하세요.");
+      throw new LibraryError(413, "백업 요청은 512MB 이하로 선택하세요.");
     const reader = request.body?.getReader();
     if (!reader) throw new LibraryError(400, "백업 파일이 없습니다.");
     const chunks: Uint8Array[] = [];
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         size += value.length;
         if (size > max) {
           await reader.cancel();
-          throw new LibraryError(413, "백업 요청은 128MB 이하로 선택하세요.");
+          throw new LibraryError(413, "백업 요청은 512MB 이하로 선택하세요.");
         }
         chunks.push(value);
       }

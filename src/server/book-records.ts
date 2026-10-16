@@ -9,7 +9,10 @@ export const compactBookSelect = bookSelect
     'source_data AS "sourceData"',
     `CASE WHEN source_data IS NULL THEN NULL ELSE jsonb_build_object('app',source_data->'app','libraryId',source_data->'libraryId','recordId',source_data->'recordId','cover',source_data->'cover','raw','{}'::jsonb) END AS "sourceData"`,
   )
-  .replace("enrichment,", "");
+  .replace(
+    "enrichment,",
+    "jsonb_build_object('catalogSelection',enrichment->'catalogSelection') AS enrichment,",
+  );
 export async function attachCatalogCovers(
   tx: Executor,
   owner: string,

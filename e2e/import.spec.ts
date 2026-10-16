@@ -96,10 +96,8 @@ test("import preview, retry and imported reading history are usable without coun
     .click();
   await page.getByRole("button", { name: "전자책", exact: true }).click();
   await page.getByRole("button", { name: /가져온 전자책/ }).click();
-  await page.getByText("가져온 독서 이력 1회").click();
-  await expect(page.getByText("독서 중단 · 원본 코드 3")).toBeVisible();
-  await page.getByText("페이지 기록 1건").click();
-  await expect(page.getByText("날짜 미기록 · 42쪽")).toBeVisible();
+  await expect(page.getByText(/가져온 독서 이력/)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "독서 이력" })).toBeVisible();
 });
 
 test("import and private images reject anonymous access", async ({

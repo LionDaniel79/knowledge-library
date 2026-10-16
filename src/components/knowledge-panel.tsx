@@ -572,7 +572,7 @@ export function KnowledgePanel({
                 <a
                   href={`/api/bibliography?researchId=${selected.id}&format=csl`}
                 >
-                  Zotero 서지 (.json)
+                  서지 JSON (.json)
                 </a>{" "}
                 ·{" "}
                 <a

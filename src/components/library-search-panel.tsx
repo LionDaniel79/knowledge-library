@@ -70,8 +70,6 @@ export function LibrarySearchPanel({
   }
   return (
     <section className="panel library-search-panel">
-      <h2>자료와 내 생각을 함께 찾기</h2>
-      <p>내 글·책의 정보·검색용 정리 정보를 구분해서 찾습니다.</p>
       <form
         className="thought-filters"
         onSubmit={(e) => {
@@ -154,10 +152,6 @@ export function LibrarySearchPanel({
           {busy ? "검색 중…" : "자료 찾기"}
         </button>
       </form>
-      <p className="form-hint">
-        이 검색은 온라인에 저장된 목록과 기록을 찾습니다. PDF 본문은 원문이 있는
-        PC의 ‘PDF 원문 검색’에서 찾을 수 있습니다.
-      </p>
       {error && (
         <p role="alert" className="error">
           {error}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zoteroLink } from "../lib/bibliography-exchange";
+import { createHash } from "node:crypto";
 import { dateInput } from "../lib/domain";
 import { curationItemSchema } from "../lib/curation";
 import { comparisonSchema, topicLinkSchema } from "../lib/thought-map/types";
@@ -113,7 +113,7 @@ const linkedBook = z.object({
   isbn: z.string(),
   version: z.number().int().positive(),
 });
-const zoteroSyncData = z.object({
+const legacyBibliographyData = z.object({
   itemType: z.literal("book"),
   title: z.string(),
   publisher: z.string(),
@@ -155,7 +155,7 @@ const fields: Record<string, Record<string, z.ZodType>> = {
           remoteVerified: z.literal(true),
           sync: z.object({
             remoteVersion: z.number().int().nonnegative(),
-            data: zoteroSyncData,
+            data: legacyBibliographyData,
           }),
         })
         .passthrough(),
@@ -245,19 +245,35 @@ export function invalidBackupJsonField(
     !printedTocSchema.safeParse(row.value).success
   )
     return "value";
+  // Historical external links are archival data, never used to contact a service.
   if (table === "library_external_links") {
     try {
-      const link = zoteroLink(String(row.url));
+      const url = new URL(String(row.url));
       if (
-        row.provider !== "zotero" ||
-        row.url !== link.url ||
-        row.external_id !==
-          `${link.libraryType}/${link.libraryId}/${link.itemKey}`
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
       )
         return "url";
     } catch {
       return "url";
     }
+  }
+  if (table === "library_cover_assets") {
+    const data = String(row.data_base64 ?? ""),
+      bytes = Buffer.from(data, "base64");
+    if (
+      bytes.length > 500000 ||
+      bytes.length < 12 ||
+      bytes.toString("base64") !== data ||
+      bytes.toString("ascii", 0, 4) !== "RIFF" ||
+      bytes.toString("ascii", 8, 12) !== "WEBP" ||
+      row.mime !== "image/webp" ||
+      createHash("sha256").update(bytes).digest("hex") !== row.sha256
+    )
+      return "data_base64";
   }
   for (const [field, schema] of Object.entries(fields[table] ?? {}))
     if (!schema.safeParse(row[field]).success) return field;

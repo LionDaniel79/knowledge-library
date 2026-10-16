@@ -4,6 +4,7 @@ import { invalidBackupJsonField } from "./backup-json";
 
 // Dependency order. Never accept table names, SQL, or credentials from a backup.
 const optionalTables = [
+  "library_cover_assets",
   "library_note_trash",
   "library_book_relations",
   "library_research_placements",
@@ -153,6 +154,16 @@ function validateEnvelope(input: unknown): LibraryBackup {
   return b;
 }
 function validateReferences(b: LibraryBackup) {
+  const coverIds = new Set(
+    (b.tables.library_cover_assets ?? []).map((r) => String(r.id)),
+  );
+  for (const book of b.tables.library_books)
+    if (
+      typeof book.cover_url === "string" &&
+      book.cover_url.startsWith("/api/book-covers/") &&
+      !coverIds.has(book.cover_url.slice("/api/book-covers/".length))
+    )
+      invalid("백업 안의 표지 이미지가 누락되었습니다.");
   const sets = Object.fromEntries(
     tables.map((t) => [
       t,

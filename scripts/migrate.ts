@@ -29,9 +29,13 @@ try {
   );
   const role = process.env.LIBRARY_APP_ROLE;
   await client.query(await readFile("db/017_note_trash.sql", "utf8"));
+  await client.query(await readFile("db/018_cover_assets.sql", "utf8"));
   if (role) {
     if (!/^[a-z_][a-z0-9_]*$/.test(role))
       throw Error("Invalid application role");
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_cover_assets TO "' + role + '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_note_trash TO "' + role + '"',
     );

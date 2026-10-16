@@ -290,6 +290,24 @@ export function createLibraryStore(db: Database) {
           ).rows[0];
         } else if (cmd.type === "addBook" || cmd.type === "editBook") {
           const p = bookInput.parse(cmd.payload);
+          if (p.coverUrl.startsWith("/api/book-covers/")) {
+            const coverId = z
+              .string()
+              .uuid()
+              .parse(p.coverUrl.slice("/api/book-covers/".length));
+            if (
+              !(
+                await tx.query(
+                  "SELECT id FROM library_cover_assets WHERE owner_id=$1 AND id=$2",
+                  [owner, coverId],
+                )
+              ).rows.length
+            )
+              throw new LibraryError(
+                400,
+                "본인 서재에 추가한 표지를 선택해 주세요.",
+              );
+          }
           const allowed = [
             ...defaultShelves,
             ...(
@@ -397,6 +415,22 @@ export function createLibraryStore(db: Database) {
                         }
                       : {},
                   ),
+                ],
+              )
+            ).rows[0];
+          }
+          if (p.catalogSelection) {
+            after = (
+              await tx.query(
+                "UPDATE library_books SET enrichment=enrichment || jsonb_build_object('catalogSelection',$3::jsonb) WHERE owner_id=$1 AND id=$2 RETURNING " +
+                  bookSelect,
+                [
+                  owner,
+                  id,
+                  JSON.stringify({
+                    ...p.catalogSelection,
+                    selectedAt: new Date().toISOString(),
+                  }),
                 ],
               )
             ).rows[0];

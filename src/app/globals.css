@@ -2793,33 +2793,331 @@ textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.zotero-book-list {
-  max-height: min(50vh, 560px);
-  overflow-y: auto;
-  margin-block: 16px;
+/* Compact library: reduce spacing while retaining readable text and touch targets. */
+.main-content {
+  padding-top: 20px;
 }
-.zotero-book-row {
+.page-heading {
+  margin-bottom: 16px;
+  gap: 14px;
+}
+.page-heading > .primary {
+  margin-top: 0;
+}
+.heading-line {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.heading-line .eyebrow {
+  white-space: nowrap;
+  letter-spacing: 0.4px;
+}
+.heading-line h1 {
+  margin: 0;
+}
+.stat-grid {
   gap: 12px;
-  padding: 12px 4px;
-  border-bottom: 1px solid #d8dfdc;
+  margin-bottom: 18px;
+}
+.stat-card {
+  padding: 16px;
+}
+.catalog-controls {
+  margin-block: 10px;
+  gap: 12px;
+}
+.notes-grid {
+  gap: 10px;
+}
+.note-card {
+  padding: 10px 14px;
+}
+.note-card .note-meta {
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.note-card h3 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.note-card > p {
+  font-size: 15px;
+  line-height: 1.5;
+  margin-top: 4px;
+  -webkit-line-clamp: 2;
+}
+.note-card .note-tags {
+  margin-block: 4px;
+  gap: 4px;
+}
+.note-card .note-tags:empty {
+  display: none;
+}
+.note-card .note-source {
+  margin-top: 5px;
+  padding-top: 5px;
+  font-size: 13px;
+}
+.note-card .note-source span {
   overflow-wrap: anywhere;
 }
-.zotero-book-row input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  margin-top: 3px;
+.shelf-grid {
+  gap: 14px;
 }
-.zotero-book-row > div,
-.zotero-book-row > span {
+.shelf-card {
+  position: relative;
+  padding: 16px 12px 12px;
+}
+.book-status-markers {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 5px;
+  z-index: 1;
+}
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #ffffff;
+  box-shadow: 0 0 0 1px #0002;
+}
+.status-dot.completed {
+  background: #287cdd;
+}
+.status-dot.reading {
+  background: #288c51;
+}
+.status-dot.queued {
+  background: #e5b62b;
+}
+.book-heading-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 7px;
+}
+.book-heading-status .completed {
+  color: #1663aa;
+}
+.book-heading-status .reading {
+  color: #257345;
+}
+.book-detail dl {
+  margin-block: 12px;
+}
+.tag-filter {
+  display: grid;
+  gap: 5px;
+  position: relative;
+  min-width: 180px;
+  font-size: 14px;
+}
+.tag-filter summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  min-height: 42px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+.tag-filter summary::-webkit-details-marker {
+  display: none;
+}
+.tag-filter summary span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.tag-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 260px;
+  max-width: min(340px, 85vw);
+  max-height: 380px;
+  overflow: auto;
+  z-index: 12;
+  background: white;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 30px #122b3226;
+  border-radius: 8px;
+  padding: 5px;
+}
+.tag-dropdown > button,
+.tag-option > button:first-child {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 9px 10px;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+}
+.tag-option {
+  display: flex;
+  align-items: center;
+}
+.tag-option .tag-remove {
+  flex: 0 0 40px;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  font-size: 23px;
+  color: #a73939;
+}
+.tag-confirm {
+  padding: 10px;
+  background: #faf1ed;
+  font-size: 14px;
+}
+.tag-confirm button {
+  padding: 7px 12px;
+  margin: 8px 8px 0 0;
+}
+.inline-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.inline-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inline-options input {
+  width: auto;
+}
+.cover-input-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cover-input-preview img {
+  width: 55px;
+  height: 78px;
+  object-fit: contain;
+}
+.cover-input-preview button {
+  padding: 7px 12px;
+}
+.editor-form {
+  gap: 12px;
+}
+.editor-form fieldset {
   min-width: 0;
 }
-.zotero-book-row small {
-  display: block;
-  line-height: 1.5;
+.book-lookup {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f6f8f4;
+  margin-bottom: 12px;
 }
-.zotero-book-row p {
-  margin-block: 5px;
+.lookup-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lookup-line input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.lookup-line button {
+  padding: 9px 12px;
+}
+.barcode-photo {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.barcode-photo input {
+  max-width: 100%;
+  font-size: 13px;
+}
+.barcode-camera video {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: #182320;
+  margin-top: 8px;
+}
+.barcode-camera p {
+  font-size: 13px;
+}
+.lookup-results {
+  max-height: 330px;
+  overflow: auto;
+  margin-top: 10px;
+}
+.lookup-results article {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+.lookup-results article > div {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.lookup-results article > img {
+  width: 40px;
+  height: 60px;
+  object-fit: contain;
+}
+.lookup-results p {
+  font-size: 13px;
+  margin: 4px 0;
+}
+.lookup-results small {
+  font-size: 12px;
+}
+.catalog-credit {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.catalog-credit a {
+  text-decoration: underline;
+}
+.catalog-credit details {
+  font-size: 15px;
+  color: var(--ink);
+  margin: 10px 0;
+}
+@media (max-width: 700px) {
+  .main-content {
+    padding: 16px 12px;
+  }
+  .heading-line {
+    gap: 10px;
+  }
+  .heading-line .eyebrow {
+    font-size: 12px;
+  }
+  .heading-line h1 {
+    font-size: 25px;
+  }
+  .page-heading {
+    flex-wrap: wrap;
+  }
+  .page-heading > .primary {
+    margin-top: 0;
+  }
+  .note-card {
+    padding: 10px 12px;
+  }
+  .tag-filter {
+    min-width: 0;
+  }
 }

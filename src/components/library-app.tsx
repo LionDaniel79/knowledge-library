@@ -1,9 +1,9 @@
 "use client";
+import { CatalogAttribution } from "./catalog-attribution";
+import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
 import { OfflineDrafts } from "./offline-drafts";
 import { newDraft, writeDraft, offlineOwnerKey } from "@/lib/offline-drafts";
-import { ZoteroLinks } from "./zotero-links";
-import { ZoteroSyncPanel } from "./zotero-sync-panel";
 import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
@@ -42,7 +42,6 @@ import { LibraryForm, type Editor } from "./library-forms";
 import { Modal } from "./modal";
 import { RevisionContent } from "./revision-content";
 import { ImportPanel } from "./import-panel";
-import { ImportedRecords } from "./imported-records";
 import { PdfLibraryPanel } from "./pdf-library-panel";
 import { KnowledgePanel } from "./knowledge-panel";
 import { NavigationDrawer } from "./navigation-drawer";
@@ -113,7 +112,6 @@ export function LibraryApp({
   const [dateTo, setDateTo] = useState("");
   const [importing, setImporting] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
-  const [zoteroOpen, setZoteroOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [view, setView] = useState<View>("home");
   const [query, setQuery] = useState("");
@@ -179,7 +177,13 @@ export function LibraryApp({
   useEffect(() => {
     if (!remote || !detail) return;
     const controller = new AbortController();
-    setDetailState(null);
+    setDetailState({
+      id: detail,
+      book:
+        catalog.items.find((b) => b.id === detail) ??
+        data.books.find((b) => b.id === detail),
+      revision: data,
+    });
     void fetch("/api/books/" + detail, {
       signal: controller.signal,
       cache: "no-store",
@@ -193,7 +197,12 @@ export function LibraryApp({
       })
       .catch((e) => {
         if (!controller.signal.aborted)
-          setDetailState({ id: detail, error: e.message, revision: data });
+          setDetailState((previous) => ({
+            id: detail,
+            book: previous?.id === detail ? previous.book : undefined,
+            error: e.message,
+            revision: data,
+          }));
       });
     return () => controller.abort();
   }, [detail, remote, data]);
@@ -375,7 +384,31 @@ export function LibraryApp({
       key={book.id}
       onClick={() => setDetail(book.id)}
     >
+      <div className="book-status-markers" aria-label="독서 상태">
+        {completedIds.has(book.id) && (
+          <span
+            className="status-dot completed"
+            title="완독"
+            aria-label="완독"
+          />
+        )}
+        {readingIds.has(book.id) && (
+          <span
+            className="status-dot reading"
+            title="읽는 중"
+            aria-label="읽는 중"
+          />
+        )}
+        {book.bookshelves?.includes("책 대기열") && (
+          <span
+            className="status-dot queued"
+            title="책 대기열"
+            aria-label="책 대기열"
+          />
+        )}
+      </div>
       <BookCover book={book} />
+      <CatalogAttribution value={book.enrichment?.catalogSelection} compact />
       <strong>{book.title}</strong>
       <span>{book.author || "저자 미입력"}</span>
       <div className="shelf-meta">
@@ -585,38 +618,11 @@ export function LibraryApp({
         )}
         <main className="main-content">
           <div className="page-heading">
-            <div>
-              <span className="eyebrow">
-                {today.replaceAll("-", ".")} · MY READING LIFE
-              </span>
-              <h1>
-                {needle
-                  ? "서재에서 찾은 연결"
-                  : {
-                      home: "오늘도, 한 페이지 더.",
-                      books: "나의 소장 도서",
-                      notes: "기록이 쌓여 생각이 됩니다.",
-                      calendar: "책으로 채워 가는 날들",
-                      stats: "나의 독서 발자취",
-                      pdf: "PDF 원문 검색",
-                      knowledge: "사유의 지도",
-                      search: "통합 검색",
-                    }[view]}
-              </h1>
-              <p>
-                {needle
-                  ? '"' + query + '" 검색 결과'
-                  : {
-                      home: "읽고, 남기고, 다시 꺼내 보는 나만의 서재",
-                      books: "종이책과 전자책, PDF를 한곳에서 만나세요.",
-                      notes: "책 속의 문장과 나의 목소리를 함께 보관하세요.",
-                      calendar: "다 읽은 책을 날짜별로 돌아보세요.",
-                      stats: "완독 회차와 책의 수를 구분해 살펴보세요.",
-                      pdf: "소장 PDF에서 근거를 찾고 원문으로 확인합니다.",
-                      knowledge: "책과 생각을 연결하고 연구에 활용합니다.",
-                      search: "필요한 순간에 내 지식을 다시 꺼내 보세요.",
-                    }[view]}
-              </p>
+            <div className="heading-line">
+              <time className="eyebrow" dateTime={today}>
+                {today.replaceAll("-", ".")}
+              </time>
+              <h1>{navigation.find((n) => n.id === view)?.label}</h1>
             </div>
             <button
               className="primary"
@@ -704,30 +710,18 @@ export function LibraryApp({
               </label>
             </div>
           )}
-          {view === "notes" && !preview && (
-            <NoteTrash library={data} onSave={save} />
-          )}
           {view === "notes" && (
             <div className="catalog-controls note-controls">
-              <label>
-                태그
-                <select
-                  aria-label="기록 태그 필터"
-                  value={noteTag}
-                  onChange={(e) => {
-                    setNoteTag(e.target.value);
-                    setLimit(24);
-                  }}
-                >
-                  <option value="all">모든 태그</option>
-                  <option value="untagged">태그 없는 기록</option>
-                  {[...new Set(data.notes.flatMap((n) => n.tags ?? []))]
-                    .sort((a, b) => a.localeCompare(b, "ko"))
-                    .map((t) => (
-                      <option key={t}>{t}</option>
-                    ))}
-                </select>
-              </label>
+              <NoteTagFilter
+                tags={data.notes.flatMap((n) => n.tags ?? [])}
+                value={noteTag}
+                onChange={(tag) => {
+                  setNoteTag(tag);
+                  setLimit(24);
+                }}
+                onUpdated={refresh}
+                preview={preview}
+              />
               <label>
                 종류
                 <select
@@ -865,11 +859,11 @@ export function LibraryApp({
                     <span>{Number(month.slice(5))}월 완독</span>
                     <strong data-testid="month-total">
                       {stats.monthCount}
-                      <small>회</small>
+                      <small>권</small>
                     </strong>
                     <p>
                       서로 다른 책 {stats.uniqueBooks}권 · 재독 {stats.rereads}
-                      회
+                      권
                     </p>
                     <CalendarDays />
                   </div>
@@ -1035,11 +1029,11 @@ export function LibraryApp({
                     <h2>{Number(month.slice(5))}월의 독서</h2>
                     <strong>
                       {stats.monthCount}
-                      <small>회 완독</small>
+                      <small>권 완독</small>
                     </strong>
                     <p>
                       서로 다른 책 {stats.uniqueBooks}권<br />
-                      다시 읽은 회차 {stats.rereads}회
+                      다시 읽은 책 {stats.rereads}권
                     </p>
                     <p className="muted">
                       책 표지가 있는 날짜를 눌러 완독한 책을 확인하고 날짜를
@@ -1058,7 +1052,7 @@ export function LibraryApp({
                           data.cycles.filter((c) => c.status === "completed")
                             .length
                         }
-                        <small>회</small>
+                        <small>권</small>
                       </strong>
                     </div>
                     <div className="stat-card">
@@ -1072,27 +1066,15 @@ export function LibraryApp({
                       <span>{month.slice(0, 4)}년 완독 날짜 기준</span>
                       <strong>
                         {stats.yearCount}
-                        <small>회</small>
+                        <small>권</small>
                       </strong>
                     </div>
-                    {data.annualMetrics
-                      ?.filter((m) => m.year === Number(month.slice(0, 4)))
-                      .map((m) => (
-                        <div className="stat-card" key={m.year}>
-                          <span>{m.year}년 기존 앱 독서량</span>
-                          <strong>
-                            {m.reportedBooks}
-                            <small>권</small>
-                          </strong>
-                          <p>{m.explanation}</p>
-                        </div>
-                      ))}
                   </div>
                   <div className="section-heading">
                     <div>
                       <span className="eyebrow">A YEAR IN BOOKS</span>
                       <h2>
-                        {month.slice(0, 4)}년, {stats.yearCount}번의 완독
+                        {month.slice(0, 4)}년, {stats.yearCount}권 완독
                       </h2>
                     </div>
                     <label>
@@ -1143,7 +1125,7 @@ export function LibraryApp({
                       return (
                         <button
                           key={m}
-                          aria-label={m + " 완독 " + n + "회"}
+                          aria-label={m + " 완독 " + n + "권"}
                           className={m === month ? "selected" : ""}
                           onClick={() => setMonth(m)}
                         >
@@ -1155,8 +1137,8 @@ export function LibraryApp({
                     })}
                   </div>
                   <p className="form-hint">
-                    같은 책을 두 번 읽으면 완독 2회로 집계합니다. 날짜가 없는
-                    완독 {stats.undatedCount}회는 월별 통계에서 제외합니다.
+                    같은 책을 두 번 읽으면 완독 2권으로 집계합니다. 날짜가 없는
+                    완독 {stats.undatedCount}권는 월별 통계에서 제외합니다.
                   </p>
                 </section>
               )}
@@ -1212,6 +1194,9 @@ export function LibraryApp({
               onSaved={refresh}
             />
           )}
+          {view === "notes" && !preview && (
+            <NoteTrash library={data} onSave={save} />
+          )}
           <footer className="workspace-footer">
             <span>당신의 책, 당신의 생각.</span>
             <div>
@@ -1254,12 +1239,6 @@ export function LibraryApp({
                   >
                     백업과 복원
                   </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setZoteroOpen(true)}
-                  >
-                    Zotero 서지 전송
-                  </button>
                 </>
               )}
             </div>
@@ -1275,7 +1254,6 @@ export function LibraryApp({
           onRestored={refresh}
         />
       )}
-      {zoteroOpen && <ZoteroSyncPanel onClose={() => setZoteroOpen(false)} />}
       {editor && (
         <LibraryForm
           key={JSON.stringify(editor)}
@@ -1304,9 +1282,23 @@ export function LibraryApp({
       )}
       {detailBook && !editor && (
         <Modal title="책을 펼쳐 보기" onClose={() => setDetail(null)}>
+          {detailState?.error && (
+            <p role="status" className="notice">
+              최신 정보를 불러오지 못했습니다. 다시 열어 주세요.
+            </p>
+          )}
           <div className="book-detail">
             <BookCover book={detailBook} />
             <div>
+              <div className="book-heading-status">
+                <span>{categoryName(detailBook.category)}</span>
+                {completedIds.has(detailBook.id) && (
+                  <span className="status-label completed">완독</span>
+                )}
+                {readingIds.has(detailBook.id) && (
+                  <span className="status-label reading">읽는 중</span>
+                )}
+              </div>
               <div className="tags">
                 {detailBook.tags.map((t) => (
                   <span key={t}>{t}</span>
@@ -1330,6 +1322,7 @@ export function LibraryApp({
               </dl>
             </div>
           </div>
+          <CatalogAttribution value={detailBook.enrichment?.catalogSelection} />
           <details className="book-evidence">
             <summary>근거 보기</summary>
             <dl>
@@ -1355,18 +1348,6 @@ export function LibraryApp({
             </dl>
           </details>
           <div className="detail-actions">
-            <button
-              className="secondary"
-              onClick={() => setEditor({ kind: "book", book: detailBook })}
-            >
-              수정
-            </button>
-            <button
-              className="text-button"
-              onClick={() => showHistory(detailBook.id)}
-            >
-              책 정보 수정 이력
-            </button>
             {!readingIds.has(detailBook.id) && (
               <button
                 className="primary"
@@ -1381,7 +1362,13 @@ export function LibraryApp({
               className="secondary"
               onClick={() => setEditor({ kind: "note", bookId: detailBook.id })}
             >
-              이 책에 기록 남기기
+              기록
+            </button>
+            <button
+              className="secondary"
+              onClick={() => setEditor({ kind: "book", book: detailBook })}
+            >
+              수정
             </button>
           </div>
           <BookShelves
@@ -1406,15 +1393,6 @@ export function LibraryApp({
               book={detailBook}
               library={data}
             />
-          )}
-          {!preview && (
-            <ZoteroLinks
-              key={detailBook.id + ":" + detailBook.version}
-              book={detailBook}
-            />
-          )}
-          {detailBook.sourceData?.app === "iReadItNow HD" && (
-            <ImportedRecords book={detailBook} />
           )}
           {detailBook.sourceData?.app === "Local PDF" && (
             <>

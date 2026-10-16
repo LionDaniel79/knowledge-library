@@ -1,0 +1,157 @@
+"use client";
+import { useRef, useState } from "react";
+type Tag = {
+  tag: string;
+  count: number;
+  activeCount: number;
+  fingerprint: string;
+};
+export function NoteTagFilter({
+  tags,
+  value,
+  onChange,
+  onUpdated,
+  preview,
+}: {
+  tags: string[];
+  value: string;
+  onChange: (tag: string) => void;
+  onUpdated: () => Promise<void>;
+  preview: boolean;
+}) {
+  const details = useRef<HTMLDetailsElement>(null);
+  const [items, setItems] = useState<Tag[]>([]),
+    [pending, setPending] = useState<(Tag & { requestId: string }) | null>(
+      null,
+    ),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  async function load() {
+    if (preview) return;
+    setError("");
+    try {
+      const r = await fetch("/api/note-tags", { cache: "no-store" }),
+        body = await r.json();
+      if (!r.ok) throw Error(body.error);
+      setItems(body);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "태그 조회 실패");
+    }
+  }
+  async function remove() {
+    if (!pending || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch("/api/note-tags", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tag: pending.tag,
+            fingerprint: pending.fingerprint,
+            requestId: pending.requestId,
+          }),
+        }),
+        body = await r.json();
+      if (!r.ok) throw Error(body.error);
+      if (value === pending.tag) onChange("all");
+      setPending(null);
+      await onUpdated();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "태그 삭제 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const options = [...new Set([...tags, ...items.map((t) => t.tag)])].sort(
+    (a, b) => a.localeCompare(b, "ko"),
+  );
+  function choose(tag: string) {
+    onChange(tag);
+    if (details.current) details.current.open = false;
+  }
+  return (
+    <div className="tag-filter">
+      <span>태그</span>
+      <details
+        ref={details}
+        onToggle={(e) => {
+          if (e.currentTarget.open) {
+            setPending(null);
+            void load();
+          }
+        }}
+      >
+        <summary aria-label="기록 태그 필터 · 태그 관리">
+          {value === "all"
+            ? "모든 태그"
+            : value === "untagged"
+              ? "태그 없는 기록"
+              : value}
+          <span>관리 ▾</span>
+        </summary>
+        <div className="tag-dropdown">
+          <button type="button" onClick={() => choose("all")}>
+            모든 태그
+          </button>
+          <button type="button" onClick={() => choose("untagged")}>
+            태그 없는 기록
+          </button>
+          {options.map((tag) => (
+            <div className="tag-option" key={tag}>
+              <button type="button" onClick={() => choose(tag)}>
+                {tag}
+              </button>
+              <button
+                type="button"
+                className="tag-remove"
+                aria-label={`태그 삭제 ${tag}`}
+                disabled={preview || busy || !items.some((t) => t.tag === tag)}
+                onClick={() => {
+                  const item = items.find((t) => t.tag === tag);
+                  setPending(
+                    item ? { ...item, requestId: crypto.randomUUID() } : null,
+                  );
+                }}
+              >
+                ⊖
+              </button>
+            </div>
+          ))}
+          {pending && (
+            <div
+              className="tag-confirm"
+              role="group"
+              aria-label="태그 삭제 확인"
+            >
+              <p>
+                ‘{pending.tag}’를 기록 {pending.count}개에서 삭제합니다. 기록
+                내용은 유지됩니다.
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void remove()}
+              >
+                태그 삭제
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPending(null)}
+              >
+                취소
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}

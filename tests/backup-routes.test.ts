@@ -86,13 +86,19 @@ it("rejects oversized requests from headers and malformed JSON", async () => {
     ).status,
   ).toBe(400);
 });
-it("allows large historical backups past 64 MB to reach format validation", async () => {
-  // The real corpus has an 81 MiB backup because original imports and revisions are preserved.
+it("allows historical backups past 128 MB to reach format validation", async () => {
+  // The current corpus is already over 127 MiB, even before cover uploads.
   const response = await POST(
     request({
       action: "preview",
-      backup: { archive: " ".repeat(65 * 1024 * 1024) },
+      backup: { archive: " ".repeat(129 * 1024 * 1024) },
     }),
   );
   expect(response.status).toBe(400);
+});
+it("accepts the declared size of a full cover quota plus existing history", async () => {
+  const backup = await (await GET()).json();
+  const req = request({ action: "preview", backup });
+  req.headers.set("content-length", String(330 * 1024 * 1024));
+  expect((await POST(req)).status).toBe(200);
 });

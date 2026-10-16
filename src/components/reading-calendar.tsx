@@ -96,7 +96,7 @@ export function ReadingCalendar({
       <div className="date-detail" data-testid="selected-date-books">
         <div className="date-label">
           {Number(selected.slice(5, 7))}월 {Number(selected.slice(8))}일{" "}
-          <span>{forDay(selected).length}회 완독</span>
+          <span>{forDay(selected).length}권 완독</span>
         </div>
         {forDay(selected).length ? (
           forDay(selected).map((c) => (

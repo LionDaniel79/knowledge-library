@@ -1,6 +1,9 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
 import type { Book, Command, Library, Note, ReadingCycle } from "@/lib/domain";
+import { BookLookup } from "./book-lookup";
+import type { BookCandidate } from "@/lib/book-lookup";
+import { CoverInput } from "./cover-input";
 import { Modal } from "./modal";
 import { categories, parseTags } from "@/lib/catalog";
 import { ShelfPicker } from "./shelf-picker";
@@ -37,8 +40,14 @@ export function LibraryForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const book = editor.kind === "book" ? editor.book : undefined;
   const [shelves, setShelves] = useState(book?.bookshelves ?? []);
+  const [coverUrl, setCoverUrl] = useState(book?.coverUrl ?? "");
+  const [uploading, setUploading] = useState(false);
   const [isbn, setIsbn] = useState(book?.isbn ?? "");
   const [title, setTitle] = useState(book?.title ?? "");
+  const formRef = useRef<HTMLFormElement>(null);
+  const [selectedCatalog, setSelectedCatalog] = useState<BookCandidate | null>(
+    null,
+  );
   const pending = useRef<{ signature: string; id: string } | null>(null);
   const [noteKind, setNoteKind] = useState(
     editor.kind === "note" ? (editor.note?.kind ?? "thought") : "thought",
@@ -87,6 +96,7 @@ export function LibraryForm({
       : [];
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (uploading) return;
     if (preview) {
       setError(
         "미리보기에서는 저장하지 않습니다. 내 서재에 로그인하면 사용할 수 있습니다.",
@@ -110,6 +120,15 @@ export function LibraryForm({
         category: text("category"),
         bookshelves: shelves,
         coverUrl: text("coverUrl"),
+        ...(selectedCatalog
+          ? {
+              catalogSelection: {
+                provider: selectedCatalog.provider,
+                sourceUrl: selectedCatalog.sourceUrl,
+                description: selectedCatalog.description,
+              },
+            }
+          : {}),
         ...(book
           ? { id: book.id, expectedVersion: baseVersion ?? book.version }
           : {}),
@@ -210,13 +229,38 @@ export function LibraryForm({
         if (!busy) onClose();
       }}
     >
-      <form className="editor-form" onSubmit={submit}>
+      <form ref={formRef} className="editor-form" onSubmit={submit}>
         <fieldset className="editor-fields" disabled={busy}>
           {preview && (
             <div className="notice">
               예시 화면입니다. 입력을 살펴볼 수 있으며 실제 서재에는 저장되지
               않습니다.
             </div>
+          )}
+          {editor.kind === "book" && !book && (
+            <BookLookup
+              preview={preview}
+              onSelect={(candidate) => {
+                setIsbn(candidate.isbn);
+                setTitle(candidate.title);
+                setCoverUrl(candidate.coverUrl);
+                setSelectedCatalog(candidate);
+                for (const [name, value] of Object.entries({
+                  title: candidate.title,
+                  author: candidate.author,
+                  publisher: candidate.publisher,
+                  totalPages: candidate.totalPages ?? "",
+                  category: candidate.category ?? "",
+                })) {
+                  const field = formRef.current?.elements.namedItem(name);
+                  if (
+                    field instanceof HTMLInputElement ||
+                    field instanceof HTMLSelectElement
+                  )
+                    field.value = String(value);
+                }
+              }}
+            />
           )}
           {editor.kind === "book" && (
             <>
@@ -342,16 +386,12 @@ export function LibraryForm({
                   ))}
                 </select>
               </label>
-              <label>
-                표지 이미지 주소
-                <input
-                  name="coverUrl"
-                  type="url"
-                  maxLength={2000}
-                  defaultValue={book?.coverUrl}
-                  placeholder="https://…"
-                />
-              </label>
+              <CoverInput
+                value={coverUrl}
+                onChange={setCoverUrl}
+                preview={preview}
+                onBusy={setUploading}
+              />
               <ShelfPicker
                 library={library}
                 selected={shelves}
@@ -366,10 +406,6 @@ export function LibraryForm({
                   확인해 주세요. 자동으로 합치지 않습니다.
                 </div>
               )}
-              <p className="form-hint">
-                수정한 서지 정보와 분야는 이력에 보관합니다. 분야는
-                한국십진분류법(KDC)의 큰 분류를 사용합니다.
-              </p>
             </>
           )}
           {editor.kind === "note" && (

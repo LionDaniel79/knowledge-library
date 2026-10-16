@@ -95,15 +95,19 @@ it("round trips edition relationships and keeps older backups compatible", async
         state: "active",
       }),
     );
-    await knowledge.mutate(
-      "books",
-      command("linkZotero", {
-        bookId: ids[0],
-        expectedBookVersion: 1,
-        url: "https://www.zotero.org/users/123/items/ABCD1234",
-        expectedVersion: 0,
-        state: "active",
-      }),
+    // Imported historical links survive backups after removing the integration.
+    await origin.db.query(
+      "INSERT INTO library_external_links(id,owner_id,book_id,provider,external_id,url,state,snapshot) VALUES($1,'books',$2,'zotero','users/123/items/ABCD1234','https://www.zotero.org/users/123/items/ABCD1234','active',$3)",
+      [
+        randomUUID(),
+        ids[0],
+        JSON.stringify({
+          book: { id: ids[0], title: "책", author: "", isbn: "", version: 1 },
+          confirmedAt: new Date().toISOString(),
+          method: "user-linked-url",
+          remoteVerified: false,
+        }),
+      ],
     );
     const saved = await createLibraryBackup(origin.db, "books");
     expect(saved.tables.library_research_placements).toHaveLength(1);

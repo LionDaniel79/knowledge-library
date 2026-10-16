@@ -181,11 +181,6 @@ export function PdfLibraryPanel({
           {busy ? "찾는 중…" : "검색"}
         </button>
       </form>
-      <p className="form-hint">
-        검색 결과는 실제 PDF에서 추출한 구절입니다. 페이지는 PDF 순번이며 책에
-        인쇄된 쪽수와 다를 수 있습니다. 스캔본은 문자 인식을 마쳐야 본문 검색에
-        포함됩니다.
-      </p>
       {error && (
         <p className="error" role="alert">
           {error}

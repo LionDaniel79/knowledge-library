@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import { proposeConnections, type KnowledgeNode } from "../lib/knowledge";
-import { zoteroLink } from "../lib/bibliography-exchange";
+
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
   relation = z.enum(["related", "supports", "challenges", "revises"]),
@@ -16,7 +16,6 @@ const command = z.object({
     "createResearch",
     "addResearchNote",
     "placeResearchItem",
-    "linkZotero",
   ]),
   payload: z.unknown(),
 });
@@ -257,80 +256,6 @@ export function createKnowledgeStore(db: Database) {
         ).rows[0];
         await revise(id, c.type, null, after);
         result = { id };
-      } else if (c.type === "linkZotero") {
-        const p = z
-          .object({
-            bookId: uuid,
-            expectedBookVersion: z.number().int().positive(),
-            url: z.string().max(500),
-            expectedVersion: z.number().int().nonnegative(),
-            state: z.enum(["active", "removed"]),
-          })
-          .parse(c.payload);
-        const book = (
-          await tx.query(
-            "SELECT id,title,author,isbn,version FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE",
-            [owner, p.bookId],
-          )
-        ).rows[0];
-        if (!book) throw new LibraryError(404, "도서를 찾을 수 없습니다.");
-        if (book.version !== p.expectedBookVersion)
-          throw new LibraryError(
-            409,
-            "도서 정보가 변경되었습니다. 새로고침 후 확인해 주세요.",
-          );
-        let link;
-        try {
-          link = zoteroLink(p.url);
-        } catch {
-          throw new LibraryError(
-            400,
-            "Zotero 항목의 HTTPS 링크를 확인해 주세요. 인증키는 입력하지 마세요.",
-          );
-        }
-        const externalId = `${link.libraryType}/${link.libraryId}/${link.itemKey}`;
-        await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-          `zotero:${owner}:${externalId}`,
-        ]);
-        const before = (
-          await tx.query(
-            "SELECT * FROM library_external_links WHERE owner_id=$1 AND provider='zotero' AND external_id=$2 FOR UPDATE",
-            [owner, externalId],
-          )
-        ).rows[0];
-        if (before && before.book_id !== p.bookId)
-          throw new LibraryError(
-            409,
-            "이 Zotero 항목은 다른 소장 도서에 연결되어 있습니다.",
-          );
-        if ((before?.version ?? 0) !== p.expectedVersion)
-          throw new LibraryError(
-            409,
-            "연결이 다른 곳에서 변경되었습니다. 새로고침해 주세요.",
-          );
-        const id = before?.id ?? randomUUID();
-        const snapshot = {
-          book,
-          confirmedAt: new Date().toISOString(),
-          method: "user-linked-url",
-          remoteVerified: false,
-        };
-        const after = (
-          await tx.query(
-            "INSERT INTO library_external_links(id,owner_id,book_id,provider,external_id,url,state,snapshot) VALUES($1,$2,$3,'zotero',$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET state=excluded.state,snapshot=excluded.snapshot,version=library_external_links.version+1 RETURNING *",
-            [
-              id,
-              owner,
-              p.bookId,
-              externalId,
-              link.url,
-              p.state,
-              JSON.stringify(snapshot),
-            ],
-          )
-        ).rows[0];
-        await revise(id, c.type, before ?? null, after);
-        result = { id, version: after.version };
       } else if (c.type === "placeResearchItem") {
         const p = z
           .object({
