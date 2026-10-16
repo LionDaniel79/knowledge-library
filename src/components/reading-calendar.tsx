@@ -7,11 +7,7 @@ import {
   type Library,
   type ReadingCycle,
 } from "@/lib/domain";
-import {
-  useListPagination,
-  PageSizeSelect,
-  PageNavigation,
-} from "./list-pagination";
+import { useListPagination, PageNavigation } from "./list-pagination";
 import { usePagedResource } from "./use-paged-resource";
 import { BookCover } from "./book-cover";
 export function ReadingCalendar({
@@ -169,7 +165,6 @@ export function ReadingCalendar({
           <p className="muted">이날의 완독 기록이 없습니다.</p>
         )}
       </div>
-      <PageSizeSelect label="이날의 책" paging={paging} />
       {dayState.error && (
         <p role="alert">
           {dayState.error} <button onClick={dayState.reload}>다시 조회</button>
