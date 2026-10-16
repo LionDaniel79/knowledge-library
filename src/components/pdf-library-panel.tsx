@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { FileText, Search, RefreshCw, ExternalLink, Quote } from "lucide-react";
 import { PdfProgress } from "./pdf-progress";
 import { LibraryOperationsPanel } from "./library-operations";
+import { PdfConnection } from "./pdf-connection";
 import { PcAccess } from "./pc-access";
 import type { PdfSummary } from "../lib/pdf-progress";
 type PdfDoc = {
@@ -125,6 +126,7 @@ export function PdfLibraryPanel({
   }
   return (
     <section className="pdf-library">
+      {!documentId && <PdfConnection />}
       <PcAccess id={documentId} />
       {!documentId && (
         <>

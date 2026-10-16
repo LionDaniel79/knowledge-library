@@ -19,8 +19,10 @@ import {
   verifiedYes24Match,
   applyYes24Supplement,
   runYes24Queue,
+  runYes24Retries,
   acquireYes24Lock,
 } from "../src/local/curation/yes24-batch";
+import { importCatalogReview } from "../src/server/catalog-review-store";
 import type { CollectedBook } from "../src/local/curation/catalog";
 import type { Database } from "../src/server/library-store";
 
@@ -210,6 +212,115 @@ try {
   state.gapMinutes = 10;
   state.errorCode = null;
   await stateSave();
+  const processBook = async (book: any) => {
+    await checkStop();
+    state.stopped = "running";
+    state.currentBookId = book.id;
+    const current = (
+      await db.query(
+        "SELECT version FROM library_books WHERE owner_id=$1 AND id=$2",
+        [owner, book.id],
+      )
+    ).rows[0];
+    let records: CollectedBook[] = [],
+      result: any = { status: "not_found", applied: 0 };
+    if (!current || Number(current.version) !== book.version)
+      result = { status: "changed", applied: 0 };
+    else {
+      const isbn = isbn13(book.isbn);
+      if (isbn)
+        records =
+          (await request(
+            "itemDetail",
+            { searchType: "ISBN13", query: isbn, detail: "Y" },
+            (j) => parseYes24Records(j, isbn),
+          )) ?? [];
+      const verified = records.filter((r) => verifiedYes24Match(book, r));
+      if (verified.length === 1) {
+        const record = verified[0];
+        const hasToc =
+          (
+            await db.query(
+              "SELECT id FROM library_curation_items WHERE owner_id=$1 AND source_kind='book' AND source_id=$2 AND source_version=$3 AND kind='toc' AND state IN ('active','hidden') LIMIT 1",
+              [owner, book.id, String(book.version)],
+            )
+          ).rows.length > 0;
+        if (!hasToc && !record.toc?.length) {
+          const itemId = record.url.split("/").pop()!;
+          const toc = await request(
+            "content",
+            { searchType: "ItemId", query: itemId },
+            (j) => {
+              if (
+                String(j?.data?.data?.itemId) !== itemId ||
+                typeof j?.data?.data?.contents !== "string"
+              )
+                throw new Yes24RequestError(200, "INVALID_TOC");
+              return parseYes24Toc(j.data.data.contents);
+            },
+          );
+          if (toc) record.toc = toc;
+        }
+        result = await applyYes24Supplement(db, owner, book, record);
+      } else {
+        const title = String(book.title)
+          .normalize("NFKC")
+          .replace(/\.pdf$/i, "")
+          .trim();
+        const hints = supplementalTitleQueries(title);
+        const queries = [
+          `${title} ${book.author ?? ""}`.trim(),
+          title,
+          ...hints.slice(0, 2).map((h) => `${h.title} ${h.author}`.trim()),
+        ];
+        for (const query of [...new Set(queries)]
+          .filter((q) => q.length >= 2 && q.length <= 200)
+          .slice(0, 3)) {
+          if (records.length) break;
+          records =
+            (await request(
+              "itemList",
+              {
+                query,
+                pageSize: "10",
+                category: "ALL",
+                detail: "Y",
+                sort: "RELATION",
+              },
+              (j) => parseYes24Records(j),
+            )) ?? [];
+        }
+        result = {
+          status: records.length ? "review_required" : "not_found",
+          applied: 0,
+        };
+      }
+    }
+    await save(join(dir, "results", book.id + ".json"), {
+      bookId: book.id,
+      title: book.title,
+      sourceVersion: book.version,
+      ...result,
+      records,
+      collectedAt: new Date().toISOString(),
+    });
+    if (result.status === "review_required")
+      for (const record of records) {
+        try {
+          await importCatalogReview(db, owner, {
+            bookId: book.id,
+            sourceVersion: book.version,
+            record,
+          });
+        } catch (e) {
+          if ((e as Error).name !== "ZodError") throw e;
+          state.invalidCandidates = (state.invalidCandidates ?? 0) + 1;
+        }
+      }
+    state.consecutiveFailures = 0;
+    state.counts[result.status] = (state.counts[result.status] ?? 0) + 1;
+    state.appliedItems += result.applied;
+  };
   await runYes24Queue({
     items: job.books,
     state,
@@ -234,103 +345,52 @@ try {
           }),
         );
     },
-    process: async (book: any) => {
-      await checkStop();
-      state.stopped = "running";
-      state.currentBookId = book.id;
-      const current = (
-        await db.query(
-          "SELECT version FROM library_books WHERE owner_id=$1 AND id=$2",
-          [owner, book.id],
-        )
-      ).rows[0];
-      let records: CollectedBook[] = [],
-        result: any = { status: "not_found", applied: 0 };
-      if (!current || Number(current.version) !== book.version)
-        result = { status: "changed", applied: 0 };
-      else {
-        const isbn = isbn13(book.isbn);
-        if (isbn)
-          records =
-            (await request(
-              "itemDetail",
-              { searchType: "ISBN13", query: isbn, detail: "Y" },
-              (j) => parseYes24Records(j, isbn),
-            )) ?? [];
-        const verified = records.filter((r) => verifiedYes24Match(book, r));
-        if (verified.length === 1) {
-          const record = verified[0];
-          const hasToc =
-            (
-              await db.query(
-                "SELECT id FROM library_curation_items WHERE owner_id=$1 AND source_kind='book' AND source_id=$2 AND source_version=$3 AND kind='toc' AND state IN ('active','hidden') LIMIT 1",
-                [owner, book.id, String(book.version)],
-              )
-            ).rows.length > 0;
-          if (!hasToc && !record.toc?.length) {
-            const itemId = record.url.split("/").pop()!;
-            const toc = await request(
-              "content",
-              { searchType: "ItemId", query: itemId },
-              (j) => {
-                if (
-                  String(j?.data?.data?.itemId) !== itemId ||
-                  typeof j?.data?.data?.contents !== "string"
-                )
-                  throw new Yes24RequestError(200, "INVALID_TOC");
-                return parseYes24Toc(j.data.data.contents);
-              },
-            );
-            if (toc) record.toc = toc;
-          }
-          result = await applyYes24Supplement(db, owner, book, record);
-        } else {
-          const title = String(book.title)
-            .normalize("NFKC")
-            .replace(/\.pdf$/i, "")
-            .trim();
-          const hints = supplementalTitleQueries(title);
-          const queries = [
-            `${title} ${book.author ?? ""}`.trim(),
-            title,
-            ...hints.slice(0, 2).map((h) => `${h.title} ${h.author}`.trim()),
-          ];
-          for (const query of [...new Set(queries)]
-            .filter((q) => q.length >= 2 && q.length <= 200)
-            .slice(0, 3)) {
-            if (records.length) break;
-            records =
-              (await request(
-                "itemList",
-                {
-                  query,
-                  pageSize: "10",
-                  category: "ALL",
-                  detail: "Y",
-                  sort: "RELATION",
-                },
-                (j) => parseYes24Records(j),
-              )) ?? [];
-          }
-          result = {
-            status: records.length ? "review_required" : "not_found",
-            applied: 0,
-          };
-        }
-      }
+    onTransientError: async (book: any, error) => {
+      state.consecutiveFailures = (state.consecutiveFailures ?? 0) + 1;
       await save(join(dir, "results", book.id + ".json"), {
         bookId: book.id,
-        title: book.title,
         sourceVersion: book.version,
-        ...result,
-        records,
+        status: "retry_later",
+        errorCode: error.code,
         collectedAt: new Date().toISOString(),
       });
-      state.counts[result.status] = (state.counts[result.status] ?? 0) + 1;
-      state.appliedItems += result.applied;
+      state.counts.retry_later = (state.counts.retry_later ?? 0) + 1;
+      if (state.consecutiveFailures >= 3) throw error;
     },
+    process: processBook,
   });
-  state.stopped = state.cursor === state.total ? "complete" : "sample_complete";
+  if (state.cursor === state.total) {
+    const pending: string[] = [];
+    for (const b of job.books) {
+      const result = await read(join(dir, "results", b.id + ".json"));
+      if (result?.status === "retry_later") pending.push(b.id);
+    }
+    if (!state.retry || args.includes("--retry-failed"))
+      state.retry = { pending, pass: 0, remaining: 0, waitUntil: null };
+    const byId = new Map(job.books.map((b: any) => [b.id, b]));
+    state.stopped = "retrying";
+    await runYes24Retries({
+      state: state.retry,
+      gapMs: 600000,
+      maxPasses: 3,
+      sleep: async (ms) => {
+        await checkStop();
+        await sleep(ms);
+      },
+      save: stateSave,
+      process: async (id) => {
+        await checkStop();
+        const prior = await read(join(dir, "results", id + ".json"));
+        if (prior?.status !== "retry_later") return;
+        await processBook(byId.get(id));
+        state.counts.retry_later = Math.max(
+          0,
+          (state.counts.retry_later ?? 0) - 1,
+        );
+      },
+    });
+    state.stopped = state.retry.pending.length ? "retry_pending" : "complete";
+  } else state.stopped = "sample_complete";
   state.after = await fingerprint(owner);
   state.finishedAt = new Date().toISOString();
 } catch (e) {

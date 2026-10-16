@@ -135,6 +135,6 @@ it("keeps multiple topics and reviewed rejections across automatic reruns", asyn
     store.mutate("foreign", cmd("assignTopic", assign)),
   ).rejects.toMatchObject({ status: 404 });
   const exported = await library.exportLibrary("multi");
-  expect(exported.schemaVersion).toBe(6);
+  expect(exported.schemaVersion).toBe(7);
   expect(exported.thoughtMap.topics).toHaveLength(2);
 });

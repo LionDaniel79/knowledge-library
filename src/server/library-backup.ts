@@ -9,6 +9,8 @@ const optionalTables = [
   "library_book_relations",
   "library_research_placements",
   "library_external_links",
+  "library_catalog_reviews",
+  "library_book_introductions",
 ] as const;
 const tables = [
   "library_books",
@@ -181,6 +183,10 @@ function validateReferences(b: LibraryBackup) {
     // PDF chunks reside in the separately backed-up local index, not Postgres.
     else if (kind !== "pdf_chunk") invalid("지원하지 않는 자료 연결입니다.");
   };
+  for (const r of b.tables.library_book_introductions ?? [])
+    ref("library_books", r.book_id);
+  for (const r of b.tables.library_catalog_reviews ?? [])
+    ref("library_books", r.book_id);
   for (const r of b.tables.library_cycles) ref("library_books", r.book_id);
   for (const r of b.tables.library_notes) ref("library_books", r.book_id, true);
   for (const r of b.tables.library_note_trash ?? []) ref("library_notes", r.id);

@@ -1,3 +1,4 @@
+import { previewNoteSelect, readReadingSummary } from "./record-catalog";
 import { exportCuration } from "./curation-export";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
@@ -44,6 +45,26 @@ const cycleSelect =
 const noteSelect =
   'id,book_id AS "bookId",title,content,kind,page,tags,version,created_at AS "createdAt",updated_at AS "updatedAt",source_data AS "sourceData"';
 const serialize = <T>(value: unknown): T => JSON.parse(JSON.stringify(value));
+async function optionalExport(
+  tx: Executor,
+  owner: string,
+  table: "library_catalog_reviews" | "library_book_introductions",
+) {
+  if (
+    !(
+      await tx.query("SELECT to_regclass($1) AS table_name", [
+        "public." + table,
+      ])
+    ).rows[0].table_name
+  )
+    return [];
+  return (
+    await tx.query(
+      `SELECT * FROM ${table} WHERE owner_id=$1 ORDER BY created_at,id`,
+      [owner],
+    )
+  ).rows;
+}
 export function createLibraryStore(db: Database) {
   async function readSnapshot(
     tx: Executor,
@@ -64,18 +85,20 @@ export function createLibraryStore(db: Database) {
     const cycles = await tx.query(
       "SELECT " +
         cycleSelect +
-        " FROM library_cycles WHERE owner_id=$1 ORDER BY created_at,id",
+        " FROM library_cycles WHERE owner_id=$1" +
+        (compact ? " AND status='reading'" : "") +
+        " ORDER BY created_at,id",
       [owner],
     );
     await attachCatalogCovers(tx, owner, books.rows as any);
     const notes = await tx.query(
       "SELECT " +
-        noteSelect +
-        " FROM library_active_notes WHERE owner_id=$1 ORDER BY updated_at DESC,id",
+        (compact ? previewNoteSelect : noteSelect) +
+        " FROM library_active_notes n WHERE owner_id=$1 ORDER BY updated_at DESC,id",
       [owner],
     );
     const deletedNotes = await tx.query(
-      `SELECT ${noteSelect}, (SELECT deleted_at FROM library_note_trash t WHERE t.owner_id=n.owner_id AND t.id=n.id) AS "deletedAt"
+      `SELECT ${compact ? previewNoteSelect : noteSelect}, (SELECT deleted_at FROM library_note_trash t WHERE t.owner_id=n.owner_id AND t.id=n.id) AS "deletedAt"
        FROM library_notes n WHERE owner_id=$1 AND EXISTS (SELECT 1 FROM library_note_trash t WHERE t.owner_id=n.owner_id AND t.id=n.id AND t.restored_at IS NULL) ORDER BY updated_at DESC,id`,
       [owner],
     );
@@ -95,6 +118,9 @@ export function createLibraryStore(db: Database) {
           ).rows.map((r) => r.name),
         ]),
       ],
+      ...(compact
+        ? { readingSummary: await readReadingSummary(tx, owner) }
+        : {}),
       cycles: cycles.rows,
       notes: notes.rows,
       deletedNotes: deletedNotes.rows,
@@ -132,7 +158,17 @@ export function createLibraryStore(db: Database) {
         [owner],
       );
       return {
-        schemaVersion: 6,
+        schemaVersion: 7,
+        catalogReviews: await optionalExport(
+          tx,
+          owner,
+          "library_catalog_reviews",
+        ),
+        bookIntroductions: await optionalExport(
+          tx,
+          owner,
+          "library_book_introductions",
+        ),
         curation: await exportCuration(tx, owner),
         analysisJobs: (
           await tx.query(

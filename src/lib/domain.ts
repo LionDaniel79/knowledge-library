@@ -72,6 +72,8 @@ export interface ReadingCycle {
   createdAt: string;
 }
 export interface Note {
+  /** A display preview, never an editable body. */
+  summary?: boolean;
   tags?: string[];
   id: string;
   bookId: string | null;
@@ -98,6 +100,15 @@ export interface BookPage {
   nextCursor: string | null;
 }
 export interface Library {
+  readingSummary?: {
+    totalCompleted: number;
+    undatedCount: number;
+    completedIds: string[];
+    months: Record<
+      string,
+      { monthCount: number; uniqueBooks: number; rereads: number }
+    >;
+  };
   catalog?: {
     total: number;
     formatCounts: Record<Format, number>;

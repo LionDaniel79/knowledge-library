@@ -115,8 +115,16 @@ export function AssistPanel({
       setBusy(false);
     }
   }
-  function selection() {
-    const n = library.notes.find((n) => n.id === first);
+  async function selection() {
+    let n = library.notes.find((n) => n.id === first);
+    if (n?.summary && purpose === "excerpt_explanation") {
+      const r = await fetch("/api/notes/" + n.id, { cache: "no-store" }),
+        full = await r.json();
+      if (!r.ok) throw Error(full.error);
+      if (full.version !== n.version)
+        throw Error("기록이 변경되었습니다. 새로고침 후 다시 선택하세요.");
+      n = full;
+    }
     if (!n) throw Error("저장한 기록을 선택해 주세요.");
     const sources: any[] = [
       { source: { kind: "note", id: n.id, version: String(n.version) } },
@@ -231,10 +239,10 @@ export function AssistPanel({
           </p>
           <form
             className="thought-form"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               try {
-                void act("preview", selection());
+                await act("preview", await selection());
               } catch (e) {
                 setError((e as Error).message);
               }
@@ -328,10 +336,10 @@ export function AssistPanel({
               <button
                 className="primary"
                 disabled={busy || !state.policy.requestsEnabled}
-                onClick={() => {
+                onClick={async () => {
                   try {
-                    void act("request", {
-                      ...selection(),
+                    await act("request", {
+                      ...(await selection()),
                       requestId: requestId.current,
                       expectedPolicyVersion: preview.policy.version,
                       scopeHash: preview.scopeHash,

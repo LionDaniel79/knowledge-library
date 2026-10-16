@@ -161,7 +161,8 @@ it("initial overview includes only a page and books needed by reading/notes whil
   expect(overview.books.length).toBeLessThan(30);
   expect(overview.books.map((b) => b.id)).toContain(ids[0]);
   expect(overview.books.map((b) => b.id)).toContain(ids[1]);
-  expect(overview.cycles).toHaveLength(1);
+  expect(overview.cycles).toHaveLength(0);
+  expect(overview.readingSummary?.totalCompleted).toBe(1);
   expect(overview.notes).toHaveLength(1);
   expect((await store.snapshot("reader")).books).toHaveLength(55);
   expect(

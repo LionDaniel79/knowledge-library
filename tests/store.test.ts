@@ -122,7 +122,7 @@ describe("persistent library", () => {
       }),
     );
     const backup = await store.exportLibrary("exporter");
-    expect(backup.schemaVersion).toBe(6);
+    expect(backup.schemaVersion).toBe(7);
     expect(backup.library.notes).toHaveLength(1);
     expect(backup.revisions).toHaveLength(2);
     expect(JSON.stringify(backup)).toContain("처음");

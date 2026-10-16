@@ -28,7 +28,7 @@ it("exports auxiliary material separately with dates and without another owner's
       },
     ]);
     const out = await library.exportLibrary("a");
-    expect(out.schemaVersion).toBe(6);
+    expect(out.schemaVersion).toBe(7);
     expect((out as any).curation.items).toHaveLength(1);
     expect((out as any).curation.runs[0].created_at).toEqual(
       expect.stringMatching(/^20\d\d-/),

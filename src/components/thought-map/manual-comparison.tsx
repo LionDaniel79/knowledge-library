@@ -27,14 +27,35 @@ export function ManualComparison({
     [after, setAfter] = useState<Selection | null>(null),
     [relation, setRelation] = useState("expands"),
     [explanation, setExplanation] = useState(""),
-    [error, setError] = useState("");
-  const choose = (id: string) => {
-    const note = notes.find((n) => n.id === id),
-      event = events.find((e) => e.noteId === id);
-    return note && event
-      ? { note, event, quote: Array.from(note.content).slice(0, 800).join("") }
-      : null;
-  };
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(false);
+  async function choose(id: string, set: (s: Selection | null) => void) {
+    set(null);
+    setError("");
+    let note = notes.find((n) => n.id === id);
+    const event = events.find((e) => e.noteId === id);
+    if (!note || !event) return;
+    setLoading(true);
+    try {
+      if (note.summary) {
+        const r = await fetch("/api/notes/" + id, { cache: "no-store" }),
+          full = await r.json();
+        if (!r.ok) throw Error(full.error);
+        if (full.version !== note.version)
+          throw Error("기록이 변경되었습니다. 새로고침 후 다시 선택하세요.");
+        note = full;
+      }
+      set({
+        note: note!,
+        event,
+        quote: Array.from(note!.content).slice(0, 800).join(""),
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
   const stale = (s: Selection | null) =>
     !!s &&
     (notes.find((n) => n.id === s.note.id)?.version !== s.note.version ||
@@ -95,7 +116,8 @@ export function ManualComparison({
                 <select
                   required
                   value={selected?.note.id ?? ""}
-                  onChange={(e) => set(choose(e.target.value))}
+                  disabled={loading}
+                  onChange={(e) => void choose(e.target.value, set)}
                 >
                   <option value="">기록 선택</option>
                   {events.map((e) => (
@@ -176,7 +198,10 @@ export function ManualComparison({
             {error}
           </p>
         )}
-        <button className="primary" disabled={busy || !before || !after}>
+        <button
+          className="primary"
+          disabled={busy || loading || !before || !after}
+        >
           변화 연결 확정
         </button>
       </form>

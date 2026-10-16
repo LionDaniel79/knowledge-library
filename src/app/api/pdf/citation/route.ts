@@ -1,3 +1,4 @@
+import { connectedPdf } from "@/server/pdf-reconnect";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { validateWriteOrigin } from "@/server/access";
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
       .parse(JSON.parse(text));
     const doc = (
       await database.query(
-        'SELECT d.book_id AS "bookId",b.title FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2',
+        'SELECT d.id,d.path,d.relative_path,d.bytes::text,d.mtime_ns,d.book_id AS "bookId",b.title FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2',
         [owner, p.documentId],
       )
     ).rows[0];
@@ -51,9 +52,8 @@ export async function POST(request: Request) {
     const root = process.env.LIBRARY_PDF_ROOT;
     if (!root)
       throw new LibraryError(503, "원문 확인을 위해 외장하드를 연결해 주세요.");
-    const file = await resolvePdfPath(String(page.path), root);
-    const info = await stat(file, { bigint: true });
-    if (`${info.size}:${info.mtimeNs}` !== p.signature)
+    const connected = await connectedPdf(doc as any, owner);
+    if (connected.signature !== p.signature)
       throw new LibraryError(409, "원문이 변경되어 인용을 확인할 수 없습니다.");
     const result = await database.transaction(async (tx) => {
       const result = await createLibraryStore({

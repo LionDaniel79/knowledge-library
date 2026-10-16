@@ -3121,3 +3121,43 @@ textarea {
     min-width: 0;
   }
 }
+
+.review-table-wrap {
+  overflow: auto;
+}
+.review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.review-table td,
+.review-table th {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--line, #ddd);
+  text-align: left;
+  overflow-wrap: anywhere;
+  max-width: 18rem;
+}
+.review-list {
+  list-style: none;
+  padding: 0;
+}
+.review-list li button {
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.review-list span {
+  font-size: 0.85rem;
+}
+.checkbox-label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+.checkbox-label input {
+  width: auto;
+}

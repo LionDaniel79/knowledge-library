@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import type { Command, Library } from "@/lib/domain";
+import type { Command, Library, Note } from "@/lib/domain";
 export function NoteTrash({
   library,
   onSave,
@@ -42,7 +42,11 @@ export function NoteTrash({
           <p>{n.deletedAt.slice(0, 10)} 삭제</p>
           <details>
             <summary>내용 보기</summary>
-            <p className="quote">{n.content}</p>
+            {n.summary ? (
+              <TrashBody id={n.id} />
+            ) : (
+              <p className="quote">{n.content}</p>
+            )}
           </details>
           <button disabled={busy} onClick={() => void restore(n.id, n.version)}>
             복원
@@ -50,5 +54,29 @@ export function NoteTrash({
         </article>
       ))}
     </details>
+  );
+}
+
+function TrashBody({ id }: { id: string }) {
+  const [body, setBody] = useState("");
+  return (
+    <>
+      <button
+        onClick={async () => {
+          try {
+            const r = await fetch(`/api/notes/${id}?trash=true`, {
+                cache: "no-store",
+              }),
+              j = await r.json();
+            setBody(r.ok ? j.content : j.error);
+          } catch {
+            setBody("내용을 불러오지 못했습니다.");
+          }
+        }}
+      >
+        원문 불러오기
+      </button>
+      <p className="quote">{body}</p>
+    </>
   );
 }

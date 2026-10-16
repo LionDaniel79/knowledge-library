@@ -29,6 +29,7 @@ import {
   formatNames,
   type Format,
   type Library,
+  type ReadingCycle,
   type Book,
   type Note,
   type Command,
@@ -47,6 +48,10 @@ import { KnowledgePanel } from "./knowledge-panel";
 import { NavigationDrawer } from "./navigation-drawer";
 import { BookShelves } from "./shelf-picker";
 import { LibrarySearchPanel } from "./library-search-panel";
+import { BookRecords } from "./book-records";
+import { useNotePage } from "./use-note-page";
+import { BookIntroduction } from "./book-introduction";
+import { CatalogReviewPanel } from "./catalog-review-panel";
 import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
@@ -111,6 +116,7 @@ export function LibraryApp({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [importing, setImporting] = useState(false);
+  const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [view, setView] = useState<View>("home");
@@ -206,13 +212,25 @@ export function LibraryApp({
       });
     return () => controller.abort();
   }, [detail, remote, data]);
-  const stats = useMemo(
-    () => readingStats(data.cycles, month),
-    [data.cycles, month],
-  );
+  const statsFor = (m: string) =>
+    data.readingSummary
+      ? {
+          ...readingStats(data.cycles, m),
+          ...(data.readingSummary.months[m] ?? {
+            monthCount: 0,
+            uniqueBooks: 0,
+            rereads: 0,
+          }),
+          yearCount: Object.entries(data.readingSummary.months)
+            .filter(([key]) => key.startsWith(m.slice(0, 4)))
+            .reduce((sum, [, v]) => sum + v.monthCount, 0),
+          undatedCount: data.readingSummary.undatedCount,
+        }
+      : readingStats(data.cycles, m);
+  const stats = useMemo(() => statsFor(month), [data, month]);
   const currentStats = useMemo(
-    () => readingStats(data.cycles, today.slice(0, 7)),
-    [data.cycles, today],
+    () => statsFor(today.slice(0, 7)),
+    [data, today],
   );
   const readingIds = useMemo(
     () =>
@@ -224,11 +242,12 @@ export function LibraryApp({
   const completedIds = useMemo(
     () =>
       new Set(
-        data.cycles
-          .filter((c) => c.status === "completed")
-          .map((c) => c.bookId),
+        data.readingSummary?.completedIds ??
+          data.cycles
+            .filter((c) => c.status === "completed")
+            .map((c) => c.bookId),
       ),
-    [data.cycles],
+    [data],
   );
   const matchedBooks = remote
     ? catalog.items
@@ -273,28 +292,43 @@ export function LibraryApp({
                   a.id.localeCompare(b.id)),
         );
 
-  const matchedNotes = data.notes.filter(
-    (n) =>
-      (!needle ||
-        [
-          n.title,
-          n.content,
-          ...(n.tags ?? []),
-          n.bookId ? booksById.get(n.bookId)?.title : "",
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(needle)) &&
-      (noteTag === "all" ||
-        (noteTag === "untagged"
-          ? !(n.tags ?? []).length
-          : n.tags?.includes(noteTag))) &&
-      (noteType === "all" || n.kind === noteType) &&
-      (noteBook === "all" ||
-        (noteBook === "unlinked" ? !n.bookId : n.bookId === noteBook)) &&
-      (!dateFrom || n.createdAt.slice(0, 10) >= dateFrom) &&
-      (!dateTo || n.createdAt.slice(0, 10) <= dateTo),
+  const notePage = useNotePage(
+    remote && (view === "notes" || !!needle),
+    {
+      q: needle,
+      tag: noteTag,
+      kind: noteType,
+      book: noteBook,
+      from: dateFrom,
+      to: dateTo,
+    },
+    data,
   );
+  const matchedNotes =
+    remote && (view === "notes" || !!needle)
+      ? notePage.items
+      : data.notes.filter(
+          (n) =>
+            (!needle ||
+              [
+                n.title,
+                n.content,
+                ...(n.tags ?? []),
+                n.bookId ? booksById.get(n.bookId)?.title : "",
+              ]
+                .join(" ")
+                .toLocaleLowerCase()
+                .includes(needle)) &&
+            (noteTag === "all" ||
+              (noteTag === "untagged"
+                ? !(n.tags ?? []).length
+                : n.tags?.includes(noteTag))) &&
+            (noteType === "all" || n.kind === noteType) &&
+            (noteBook === "all" ||
+              (noteBook === "unlinked" ? !n.bookId : n.bookId === noteBook)) &&
+            (!dateFrom || n.createdAt.slice(0, 10) >= dateFrom) &&
+            (!dateTo || n.createdAt.slice(0, 10) <= dateTo),
+        );
   const matchedCount = remote ? catalog.total : matchedBooks.length;
   const hasMoreBooks = remote
     ? !!catalog.nextCursor
@@ -313,10 +347,52 @@ export function LibraryApp({
     setFilter("all");
     setLimit(24);
   };
+  async function openNote(id: string) {
+    if (preview || !remote) {
+      const note = data.notes.find((n) => n.id === id);
+      if (note) setEditor({ kind: "note", note });
+      return;
+    }
+    try {
+      const r = await fetch("/api/notes/" + id, { cache: "no-store" }),
+        note = await r.json();
+      if (!r.ok) throw Error(note.error);
+      setData((d) => ({
+        ...d,
+        notes: d.notes.map((n) => (n.id === id ? note : n)),
+      }));
+      setEditor({ kind: "note", note });
+    } catch (e) {
+      setFailure((e as Error).message);
+    }
+  }
   async function refresh() {
     const res = await fetch("/api/library", { cache: "no-store" });
     const json = await res.json();
     if (!res.ok) throw Error(json.error || "서재를 불러오지 못했습니다.");
+    if (remote && editor?.kind === "note" && editor.note) {
+      const r = await fetch("/api/notes/" + editor.note.id, {
+        cache: "no-store",
+      });
+      if (r.ok) {
+        const note = await r.json();
+        json.notes = json.notes.map((n: Note) => (n.id === note.id ? note : n));
+      }
+    }
+    if (remote && editor && "cycle" in editor) {
+      const r = await fetch("/api/reading?id=" + editor.cycle.id, {
+        cache: "no-store",
+      });
+      if (r.ok) {
+        const page = await r.json(),
+          latest = page.items[0];
+        if (latest)
+          json.cycles = [
+            ...json.cycles.filter((c: ReadingCycle) => c.id !== latest.id),
+            latest,
+          ];
+      }
+    }
     setData(json);
     setReadingIndex((index) =>
       Math.min(
@@ -431,10 +507,7 @@ export function LibraryApp({
         <span>{kindName[note.kind]}</span>
         <span>{note.updatedAt.slice(0, 10).replaceAll("-", ".")}</span>
       </div>
-      <button
-        className="title-button"
-        onClick={() => setEditor({ kind: "note", note })}
-      >
+      <button className="title-button" onClick={() => void openNote(note.id)}>
         <h3>{note.title}</h3>
       </button>
       <p>{note.content}</p>
@@ -778,7 +851,9 @@ export function LibraryApp({
                   onChange={(e) => setDateTo(e.target.value)}
                 />
               </label>
-              <span>{matchedNotes.length}개 기록</span>
+              <span>
+                {remote ? notePage.total : matchedNotes.length}개 기록
+              </span>
               <button
                 className="text-button"
                 onClick={() => {
@@ -794,13 +869,20 @@ export function LibraryApp({
               </button>
             </div>
           )}
+          {remote && (view === "notes" || needle) && notePage.error && (
+            <p role="alert" className="error">
+              {notePage.error}
+            </p>
+          )}
+          {remote && view === "notes" && notePage.loading && (
+            <p role="status">기록을 불러오는 중…</p>
+          )}
           {view === "search" ? (
             <LibrarySearchPanel
               onOpen={(kind, id) => {
                 if (kind === "book") setDetail(id);
                 else {
-                  const note = data.notes.find((n) => n.id === id);
-                  if (note) setEditor({ kind: "note", note });
+                  void openNote(id);
                 }
               }}
             />
@@ -817,10 +899,15 @@ export function LibraryApp({
                 )}
               </div>
               <h2 className="section-space">
-                기록과 생각 <span className="count">{matchedNotes.length}</span>
+                기록과 생각{" "}
+                <span className="count">
+                  {remote ? notePage.total : matchedNotes.length}
+                </span>
               </h2>
               <div className="notes-grid">
-                {matchedNotes.slice(0, limit).map(noteCard)}
+                {(remote ? matchedNotes : matchedNotes.slice(0, limit)).map(
+                  noteCard,
+                )}
               </div>
               {!catalog.loading &&
                 !matchedBooks.length &&
@@ -938,6 +1025,11 @@ export function LibraryApp({
               {view === "books" && (
                 <>
                   <div className="book-toolbar">
+                    {!preview && (
+                      <button onClick={() => setCatalogReviewOpen(true)}>
+                        도서정보 검토
+                      </button>
+                    )}
                     <div className="filter-tabs">
                       {[
                         ["all", "전체"],
@@ -994,7 +1086,9 @@ export function LibraryApp({
               {view === "notes" &&
                 (data.notes.length ? (
                   <div className="notes-grid">
-                    {matchedNotes.slice(0, limit).map(noteCard)}
+                    {(remote ? matchedNotes : matchedNotes.slice(0, limit)).map(
+                      noteCard,
+                    )}
                     {!matchedNotes.length && (
                       <p className="empty-state">
                         조건에 맞는 기록이 없습니다. 필터를 바꾸어 보세요.
@@ -1048,10 +1142,9 @@ export function LibraryApp({
                     <div className="stat-card">
                       <span>전체 완독 기록</span>
                       <strong>
-                        {
+                        {data.readingSummary?.totalCompleted ??
                           data.cycles.filter((c) => c.status === "completed")
-                            .length
-                        }
+                            .length}
                         <small>권</small>
                       </strong>
                     </div>
@@ -1089,6 +1182,9 @@ export function LibraryApp({
                         {[
                           ...new Set([
                             today.slice(0, 4),
+                            ...Object.keys(
+                              data.readingSummary?.months ?? {},
+                            ).map((m) => m.slice(0, 4)),
                             ...data.cycles.flatMap((c) =>
                               c.completedOn ? [c.completedOn.slice(0, 4)] : [],
                             ),
@@ -1108,14 +1204,13 @@ export function LibraryApp({
                         month.slice(0, 4) +
                         "-" +
                         String(i + 1).padStart(2, "0");
-                      const n = readingStats(data.cycles, m).monthCount;
+                      const n = statsFor(m).monthCount;
                       const max = Math.max(
                         1,
                         ...Array.from(
                           { length: 12 },
                           (_, j) =>
-                            readingStats(
-                              data.cycles,
+                            statsFor(
                               month.slice(0, 4) +
                                 "-" +
                                 String(j + 1).padStart(2, "0"),
@@ -1151,8 +1246,7 @@ export function LibraryApp({
                     onOpen={(kind, id) => {
                       if (kind === "book") setDetail(id);
                       else {
-                        const note = data.notes.find((n) => n.id === id);
-                        if (note) setEditor({ kind: "note", note });
+                        void openNote(id);
                       }
                     }}
                   />
@@ -1173,15 +1267,25 @@ export function LibraryApp({
               <button onClick={catalog.reload}>다시 조회</button>
             </p>
           )}
-          {((needle && (hasMoreBooks || matchedNotes.length > limit)) ||
+          {((needle &&
+            (hasMoreBooks ||
+              (remote
+                ? notePage.nextOffset !== null
+                : matchedNotes.length > limit))) ||
             (!needle && view === "books" && hasMoreBooks) ||
-            (!needle && view === "notes" && matchedNotes.length > limit)) && (
+            (!needle &&
+              view === "notes" &&
+              (remote
+                ? notePage.nextOffset !== null
+                : matchedNotes.length > limit))) && (
             <button
               className="secondary load-more"
               disabled={remote && catalog.loading}
               onClick={() => {
                 setLimit((n) => n + 24);
                 if (remote && (view === "books" || needle)) void catalog.more();
+                if (remote && (view === "notes" || needle))
+                  void notePage.more();
               }}
             >
               더 보기
@@ -1269,6 +1373,14 @@ export function LibraryApp({
           }
           onClose={() => setEditor(null)}
         />
+      )}
+      {catalogReviewOpen && (
+        <Modal
+          title="도서정보 후보 검토"
+          onClose={() => setCatalogReviewOpen(false)}
+        >
+          <CatalogReviewPanel onChanged={refresh} />
+        </Modal>
       )}
       {detail && remote && !detailBook && !editor && (
         <Modal title="책을 펼쳐 보기" onClose={() => setDetail(null)}>
@@ -1386,6 +1498,12 @@ export function LibraryApp({
               onChanged={refresh}
             />
           )}
+          {!preview && (
+            <BookIntroduction
+              key={detailBook.id + ":intro"}
+              id={detailBook.id}
+            />
+          )}
           <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
           {!preview && (
             <BookRelations
@@ -1410,37 +1528,55 @@ export function LibraryApp({
               />
             </>
           )}
-          <h3>독서 이력</h3>
-          <div className="cycle-list">
-            {data.cycles
-              .filter((c) => c.bookId === detailBook.id)
-              .map((c) => (
-                <div key={c.id}>
-                  <span>
-                    {c.status === "reading"
-                      ? "읽는 중"
-                      : c.completedOn + " 완독"}{" "}
-                    · {c.currentPage}쪽
-                  </span>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      setEditor({
-                        kind: c.status === "reading" ? "progress" : "date",
-                        cycle: c,
-                      })
-                    }
-                  >
-                    수정
-                  </button>
-                </div>
-              ))}
-            {!data.cycles.some((c) => c.bookId === detailBook.id) && (
-              <p className="muted">아직 독서 기록이 없습니다.</p>
-            )}
-          </div>
-          <h3>이 책에 남긴 기록</h3>
-          {data.notes.filter((n) => n.bookId === detailBook.id).map(noteCard)}
+          {!preview && remote ? (
+            <BookRecords
+              bookId={detailBook.id}
+              onNote={(id) => void openNote(id)}
+              onCycle={(cycle) =>
+                setEditor({
+                  kind: cycle.status === "reading" ? "progress" : "date",
+                  cycle,
+                })
+              }
+              revision={data}
+            />
+          ) : (
+            <>
+              <h3>독서 이력</h3>
+              <div className="cycle-list">
+                {data.cycles
+                  .filter((c) => c.bookId === detailBook.id)
+                  .map((c) => (
+                    <div key={c.id}>
+                      <span>
+                        {c.status === "reading"
+                          ? "읽는 중"
+                          : c.completedOn + " 완독"}{" "}
+                        · {c.currentPage}쪽
+                      </span>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          setEditor({
+                            kind: c.status === "reading" ? "progress" : "date",
+                            cycle: c,
+                          })
+                        }
+                      >
+                        수정
+                      </button>
+                    </div>
+                  ))}
+                {!data.cycles.some((c) => c.bookId === detailBook.id) && (
+                  <p className="muted">아직 독서 기록이 없습니다.</p>
+                )}
+              </div>
+              <h3>이 책에 남긴 기록</h3>
+              {data.notes
+                .filter((n) => n.bookId === detailBook.id)
+                .map(noteCard)}
+            </>
+          )}
         </Modal>
       )}
       {revisions && (

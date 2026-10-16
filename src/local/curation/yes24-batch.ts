@@ -225,6 +225,7 @@ export async function runYes24Queue<T>(options: {
   batchSize: number;
   gapMs: number;
   process: (item: T) => Promise<void>;
+  onTransientError?: (item: T, error: Yes24RequestError) => Promise<void>;
   save: () => Promise<void>;
   maxItems?: number;
   now?: () => number;
@@ -241,7 +242,17 @@ export async function runYes24Queue<T>(options: {
     while (state.waitUntil && now() < state.waitUntil)
       await sleep(Math.min(30000, state.waitUntil - now()));
     state.waitUntil = null;
-    await options.process(items[state.cursor]);
+    try {
+      await options.process(items[state.cursor]);
+    } catch (e) {
+      if (
+        !(e instanceof Yes24RequestError) ||
+        e.status !== 503 ||
+        !options.onTransientError
+      )
+        throw e;
+      await options.onTransientError(items[state.cursor], e);
+    }
     state.cursor++;
     processed++;
     state.waitUntil = batchWaitUntil(
@@ -253,6 +264,51 @@ export async function runYes24Queue<T>(options: {
     );
     await options.save();
   }
+}
+
+/** Persisted finite retries. Authentication/quota failures always stop the job. */
+export async function runYes24Retries(options: {
+  state: {
+    pending: string[];
+    pass: number;
+    remaining: number;
+    waitUntil: number | null;
+  };
+  process: (id: string) => Promise<void>;
+  save: () => Promise<void>;
+  gapMs: number;
+  maxPasses: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}) {
+  const { state } = options,
+    now = options.now ?? Date.now,
+    sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  while (state.pending.length) {
+    if (!state.remaining) {
+      if (state.pass >= options.maxPasses) break;
+      state.pass++;
+      state.remaining = state.pending.length;
+      state.waitUntil = now() + options.gapMs;
+      await options.save();
+    }
+    while (state.waitUntil && now() < state.waitUntil)
+      await sleep(Math.min(30000, state.waitUntil - now()));
+    state.waitUntil = null;
+    const id = state.pending[0];
+    let failed = false;
+    try {
+      await options.process(id);
+    } catch (e) {
+      if (!(e instanceof Yes24RequestError) || e.status !== 503) throw e;
+      failed = true;
+    }
+    state.pending.shift();
+    if (failed) state.pending.push(id);
+    state.remaining--;
+    await options.save();
+  }
+  return { complete: state.pending.length === 0 };
 }
 
 /** SQLite serializes ownership checks. A dead process cannot leave a permanent file lock. */

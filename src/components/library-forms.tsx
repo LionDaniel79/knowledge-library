@@ -103,6 +103,10 @@ export function LibraryForm({
       );
       return;
     }
+    if (editor.kind === "note" && editor.note?.summary) {
+      setError("전체 기록을 다시 열어 주세요.");
+      return;
+    }
     const f = new FormData(e.currentTarget);
     const text = (name: string) => String(f.get(name) || "").trim();
     const number = (name: string) => (text(name) ? Number(text(name)) : null);

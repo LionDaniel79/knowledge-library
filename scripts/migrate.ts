@@ -32,7 +32,17 @@ try {
   await client.query(await readFile("db/018_cover_assets.sql", "utf8"));
   await client.query(await readFile("db/019_server_assist.sql", "utf8"));
   await client.query(await readFile("db/020_mcp_oauth.sql", "utf8"));
+  await client.query(await readFile("db/021_catalog_reviews.sql", "utf8"));
+  await client.query(await readFile("db/022_book_introductions.sql", "utf8"));
   if (role) {
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_book_introductions TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_catalog_reviews TO "' + role + '"',
+    );
     if (!/^[a-z_][a-z0-9_]*$/.test(role))
       throw Error("Invalid application role");
     await client.query(

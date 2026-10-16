@@ -1,3 +1,4 @@
+import { connectedPdf } from "@/server/pdf-reconnect";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
@@ -31,7 +32,7 @@ export async function GET(
         .parse(url.searchParams.get("page") ?? 1);
     const doc = (
       await database.query(
-        "SELECT path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
+        "SELECT id,path,relative_path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
         [owner, id],
       )
     ).rows[0];
@@ -41,13 +42,18 @@ export async function GET(
     if (!root || !python)
       throw new LibraryError(503, "이 컴퓨터의 PDF 열람 설정이 필요합니다.");
     let path: string;
+    let originalSignature: string;
+    let actualSignature: string;
     try {
-      path = await resolvePdfPath(doc.path, root);
+      const connected = await connectedPdf(doc as any, owner);
+      path = connected.path;
+      originalSignature = connected.signature;
+      actualSignature = connected.actualSignature;
     } catch {
       throw new LibraryError(404, "원문을 열려면 외장하드를 연결해 주세요.");
     }
     const info = await stat(path, { bigint: true }),
-      signature = `${info.size}:${info.mtimeNs}`;
+      signature = originalSignature!;
     verifyCitationSignature(url.searchParams.get("signature"), signature);
     verifyCitationSignature(`${doc.bytes}:${doc.mtime_ns}`, signature);
     if (active >= 2)
@@ -68,7 +74,10 @@ export async function GET(
         },
       );
       const after = await stat(path, { bigint: true });
-      verifyCitationSignature(signature, `${after.size}:${after.mtimeNs}`);
+      verifyCitationSignature(
+        actualSignature!,
+        `${after.size}:${after.mtimeNs}`,
+      );
       return new Response(new Uint8Array(stdout), {
         headers: {
           "Content-Type": "image/png",

@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState, useRef } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import {
   monthCells,
@@ -24,13 +25,75 @@ export function ReadingCalendar({
   onEdit: (c: ReadingCycle) => void;
   today: string;
 }) {
-  const completed = library.cycles.filter(
-    (c) => c.status === "completed" && c.completedOn,
-  );
+  const dayGeneration = useRef(0),
+    morePending = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const remote = !!library.readingSummary;
+  const [calendar, setCalendar] = useState<any>(null),
+    [dayPage, setDayPage] = useState<any>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    if (!remote) return;
+    const c = new AbortController();
+    setCalendar(null);
+    setError("");
+    fetch(`/api/reading?month=${month}`, {
+      signal: c.signal,
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw Error(j.error);
+        setCalendar(j);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      });
+    return () => c.abort();
+  }, [remote, month, library]);
+  useEffect(() => {
+    if (!remote) return;
+    const c = new AbortController();
+    dayGeneration.current++;
+    morePending.current = false;
+    setLoadingMore(false);
+    setDayPage(null);
+    fetch(`/api/reading?date=${selected}`, {
+      signal: c.signal,
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw Error(j.error);
+        setDayPage(j);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      });
+    return () => c.abort();
+  }, [remote, selected, library]);
+  const books = remote
+    ? [...(calendar?.books ?? []), ...(dayPage?.books ?? [])]
+    : library.books;
+  const completed: ReadingCycle[] = (
+    remote ? (calendar?.days ?? []) : library.cycles
+  ).filter((c: ReadingCycle) => c.status === "completed" && c.completedOn);
   const forDay = (day: string) =>
     completed.filter((c) => c.completedOn === day);
+  const dayCount = (day: string) =>
+    remote
+      ? (calendar?.days.find((c: any) => c.completedOn === day)?.total ?? 0)
+      : forDay(day).length;
+  const selectedCycles: ReadingCycle[] = remote
+    ? (dayPage?.items ?? [])
+    : forDay(selected);
+  const selectedCount = remote ? (dayPage?.total ?? 0) : selectedCycles.length;
   return (
     <section className="panel calendar-panel">
+      {error && <p role="alert">{error}</p>}
+      {remote && !calendar && !error && (
+        <p role="status">달력을 불러오는 중…</p>
+      )}
       <div className="section-heading">
         <div>
           <span className="eyebrow">READING DAYS</span>
@@ -65,7 +128,7 @@ export function ReadingCalendar({
       <div className="calendar-grid">
         {monthCells(month).map((day) => {
           const list = forDay(day);
-          const book = library.books.find((b) => b.id === list[0]?.bookId);
+          const book = books.find((b) => b.id === list[0]?.bookId);
           return (
             <button
               key={day}
@@ -86,7 +149,7 @@ export function ReadingCalendar({
               {book && (
                 <div className="calendar-cover">
                   <BookCover book={book} small />
-                  {list.length > 1 && <i>+{list.length - 1}</i>}
+                  {dayCount(day) > 1 && <i>+{dayCount(day) - 1}</i>}
                 </div>
               )}
             </button>
@@ -96,12 +159,12 @@ export function ReadingCalendar({
       <div className="date-detail" data-testid="selected-date-books">
         <div className="date-label">
           {Number(selected.slice(5, 7))}월 {Number(selected.slice(8))}일{" "}
-          <span>{forDay(selected).length}권 완독</span>
+          <span>{selectedCount}권 완독</span>
         </div>
-        {forDay(selected).length ? (
-          forDay(selected).map((c) => (
+        {selectedCycles.length ? (
+          selectedCycles.map((c) => (
             <div className="completed-row" key={c.id}>
-              <span>{library.books.find((b) => b.id === c.bookId)?.title}</span>
+              <span>{books.find((b) => b.id === c.bookId)?.title}</span>
               <button className="text-button" onClick={() => onEdit(c)}>
                 날짜 수정
               </button>
@@ -111,6 +174,41 @@ export function ReadingCalendar({
           <p className="muted">이날의 완독 기록이 없습니다.</p>
         )}
       </div>
+      {remote && dayPage?.nextOffset != null && (
+        <button
+          disabled={loadingMore}
+          onClick={async () => {
+            if (morePending.current) return;
+            morePending.current = true;
+            setLoadingMore(true);
+            const epoch = dayGeneration.current;
+            try {
+              const r = await fetch(
+                  `/api/reading?date=${selected}&offset=${dayPage.nextOffset}`,
+                  { cache: "no-store" },
+                ),
+                j = await r.json();
+              if (!r.ok) throw Error(j.error);
+              if (epoch !== dayGeneration.current) return;
+              setDayPage((p: any) => ({
+                ...j,
+                items: [...p.items, ...j.items],
+                books: [...p.books, ...j.books],
+              }));
+            } catch (e) {
+              if (epoch === dayGeneration.current)
+                setError((e as Error).message);
+            } finally {
+              if (epoch === dayGeneration.current) {
+                morePending.current = false;
+                setLoadingMore(false);
+              }
+            }
+          }}
+        >
+          이날의 책 더 보기
+        </button>
+      )}
     </section>
   );
 }

@@ -49,13 +49,12 @@ export function OfflineDrafts({
         }),
         j = await r.json();
       if (r.status === 409 && d.command.type === "editNote") {
-        const current = await fetch("/api/library", { cache: "no-store" });
+        const current = await fetch("/api/notes/" + d.command.payload.id, {
+          cache: "no-store",
+        });
         if (!current.ok)
           throw Error("로그인 후 최신 기록을 다시 확인해 주세요.");
-        const library = await current.json(),
-          latest = library.notes.find(
-            (n: Note) => n.id === d.command.payload.id,
-          );
+        const latest = await current.json();
         if (latest) setConflicts((c) => ({ ...c, [d.id]: latest }));
         throw Error(
           "다른 기기의 수정 내용과 충돌했습니다. 두 글을 비교한 후 결정하세요.",

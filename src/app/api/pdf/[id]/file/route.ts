@@ -1,3 +1,4 @@
+import { connectedPdf } from "@/server/pdf-reconnect";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
@@ -25,7 +26,7 @@ export async function GET(
       .parse((await params).id);
     const doc = (
       await database.query(
-        "SELECT path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
+        "SELECT id,path,relative_path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
         [owner, id],
       )
     ).rows[0];
@@ -33,8 +34,13 @@ export async function GET(
     if (!process.env.LIBRARY_PDF_ROOT)
       throw new LibraryError(503, "이 컴퓨터에 PDF 폴더를 연결해 주세요.");
     let path: string;
+    let originalSignature: string;
+    let actualSignature: string;
     try {
-      path = await resolvePdfPath(doc.path, process.env.LIBRARY_PDF_ROOT);
+      const connected = await connectedPdf(doc as any, owner);
+      path = connected.path;
+      originalSignature = connected.signature;
+      actualSignature = connected.actualSignature;
     } catch (e) {
       if (e instanceof LibraryError) throw e;
       throw new LibraryError(
@@ -46,10 +52,10 @@ export async function GET(
     const size = Number(info.size);
     verifyCitationSignature(
       new URL(request.url).searchParams.get("signature"),
-      `${info.size}:${info.mtimeNs}`,
+      originalSignature!,
     );
     if (size === 0) throw new LibraryError(422, "비어 있는 PDF 파일입니다.");
-    if (info.mtimeNs.toString() !== doc.mtime_ns || size !== Number(doc.bytes))
+    if (`${info.size}:${info.mtimeNs}` !== actualSignature!)
       throw new LibraryError(
         409,
         "원본 파일이 변경되었습니다. PDF 목록을 다시 등록해 주세요.",

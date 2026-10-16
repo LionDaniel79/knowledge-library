@@ -1,3 +1,5 @@
+import { introductionSourceSchema } from "../lib/book-introduction";
+import { collectedReviewSchema } from "../lib/catalog-review";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { dateInput } from "../lib/domain";
@@ -226,6 +228,15 @@ const fields: Record<string, Record<string, z.ZodType>> = {
   library_analysis_feedback: {
     original_output: comparisonSchema,
     corrected_output: comparisonSchema.nullable(),
+  },
+  library_book_introductions: {
+    sources: z.array(introductionSourceSchema).max(10),
+  },
+  library_catalog_reviews: {
+    record: collectedReviewSchema,
+    book_snapshot: rawObject,
+    document_versions: z.array(rawObject),
+    decision: rawObject,
   },
   library_reference_sources: { facts: rawObject },
   library_curation_items: {
