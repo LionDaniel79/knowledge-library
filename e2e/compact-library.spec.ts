@@ -308,13 +308,11 @@ test("cover controls cannot overwrite a pending upload", async ({ page }) => {
   await page.getByRole("button", { name: "책 추가", exact: true }).click();
   await page.getByLabel("표지 이미지 주소").fill("https://example.com/old.jpg");
   await page.getByLabel("파일 선택", { exact: true }).check();
-  await page
-    .getByLabel("표지 파일 선택")
-    .setInputFiles({
-      name: "cover.png",
-      mimeType: "image/png",
-      buffer: barcode,
-    });
+  await page.getByLabel("표지 파일 선택").setInputFiles({
+    name: "cover.png",
+    mimeType: "image/png",
+    buffer: barcode,
+  });
   await expect(
     page.getByText("표지를 저장하고 있습니다…", { exact: true }),
   ).toBeVisible();
