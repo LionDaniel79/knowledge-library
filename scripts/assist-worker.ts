@@ -11,6 +11,10 @@ import {
   assistModel,
   pricingVersion,
 } from "../src/local/ai/openai";
+if (process.env.LIBRARY_SERVER_ASSIST_ENABLED === "true") {
+  console.log("AI 요청은 서버에서 처리합니다. PC 작업기는 시작하지 않습니다.");
+  process.exit(0);
+}
 const configPath = process.env.LIBRARY_WORKER_CONFIG;
 if (!configPath) throw Error("PC 연결 파일을 설정해 주세요.");
 const device = JSON.parse(await readFile(configPath, "utf8")),
