@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, it, expect } from "vitest";
+import { beforeAll, afterAll, it, expect, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { readFile } from "node:fs/promises";
 import type { Database } from "../src/server/library-store";
@@ -17,6 +17,23 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await pg?.close();
+});
+it("rejects missing or malformed worker credentials without reaching the database", async () => {
+  const query = vi.fn(async () => {
+    throw new Error("Database unavailable");
+  });
+  const disconnected: Database = {
+    query,
+    transaction: async () => {
+      throw new Error("No transaction expected");
+    },
+  };
+  const deviceAuth = createDeviceAuth(disconnected);
+  for (const header of ["", "Bearer wrong", "Basic klw_" + "a".repeat(43)])
+    await expect(deviceAuth.authenticate(header)).rejects.toMatchObject({
+      status: 401,
+    });
+  expect(query).not.toHaveBeenCalled();
 });
 it("returns tokens once, stores only hashes and rejects revoked or expired devices", async () => {
   const now = new Date("2030-01-01"),

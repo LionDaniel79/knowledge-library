@@ -41,6 +41,8 @@ export function createDeviceAuth(db: Database) {
     );
   }
   async function authenticate(authorization: string, now = new Date()) {
+    const token = /^Bearer (klw_[A-Za-z0-9_-]{43})$/.exec(authorization)?.[1];
+    if (!token) throw new LibraryError(401, "PC 연결 인증이 필요합니다.");
     const limit = (
       await db.query(
         "INSERT INTO library_worker_limits(id,window_start,requests) VALUES('worker-auth',$1,1) ON CONFLICT(id) DO UPDATE SET requests=CASE WHEN library_worker_limits.window_start<=$1-interval '1 minute' THEN 1 ELSE library_worker_limits.requests+1 END,window_start=CASE WHEN library_worker_limits.window_start<=$1-interval '1 minute' THEN $1 ELSE library_worker_limits.window_start END RETURNING requests",
@@ -49,8 +51,6 @@ export function createDeviceAuth(db: Database) {
     ).rows[0];
     if (limit.requests > 200)
       throw new LibraryError(429, "잠시 후 다시 시도해 주세요.");
-    const token = /^Bearer (klw_[A-Za-z0-9_-]{43})$/.exec(authorization)?.[1];
-    if (!token) throw new LibraryError(401, "PC 연결 인증이 필요합니다.");
     const row = (
       await db.query(
         "SELECT id,owner_id FROM library_analysis_devices WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>$2",
