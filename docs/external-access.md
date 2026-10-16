@@ -17,7 +17,7 @@ GitHub의 지식서재 전용 비공개 저장소와 Vercel의 전용 프로젝�
 
 Vercel에는 앱 전용 권한의 DATABASE_URL, NEON_AUTH_BASE_URL, NEON_AUTH_COOKIE_SECRET, LIBRARY_OWNER_EMAIL, 확정된 HTTPS APP_ORIGIN을 비밀 환경변수로 설정한다. 관리자 DB URL·정보나루 키·PC 경로·OPENAI_API_KEY는 배포에 필요하지 않다. Neon Auth의 허용 origin과 Google 로그인 콜백은 실제 배포 주소에 맞춰 확인한다. 미인증·다른 계정·잘못된 Origin 요청이 차단되는지 확인한 다음 본인 휴대폰에서 로그인·기록·새로고침을 검수한다.
 
-전용 비공개 GitHub 저장소 `LionDaniel79/knowledge-library`에 개인 자료를 제외한 코드가 올라갔다. 배포 빌드와 비밀 파일 제외 검사는 통과했다. Vercel 연결 도구는 해당 팀 접근을 거절했고 PC 도구에는 로그인 정보가 없어 사용자 기기 인증을 기다리고 있다. 이 문서는 외부 웹 배포 완료를 뜻하지 않는다.
+전용 비공개 GitHub 저장소 `LionDaniel79/knowledge-library`를 Vercel의 `knowledge-library` 프로젝트에 연결했다. 실제 운영 주소는 **https://knowledge-library-inky.vercel.app** 이다. Next.js 16.4 빌드와 배포가 완료됐다. 사용자 기기 인증 후 CLI로 진행했으며 기존 목회 비서 프로젝트는 수정하지 않았다. Google 인증 초기 요청은 200, Neon 인증 중계를 거쳐 Google 계정 선택으로 302 전환됨을 확인했다. 비인증 서재/API 접근은 401, 잘못된 Origin 저장은 403이다. 사용자가 Google 로그인 후 소장 도서 목록 표시를 확인했다. 휴대폰 설치/오프라인/재접속 검수는 별도다.
 
 2026-10-16 실제 DB의 `library_web_runtime` 계정 생성과 권한 검수를 완료했다. 상위 역할 멤버십·관리 권한이 없으며 실제 저장을 롤백으로 검증했다. DELETE·이력 UPDATE·스키마 생성·인증 자료 접근은 거절된다. 접속 정보는 PC의 비공개 설정에 DPAPI로 보호한다. 기존 개발/수집 계정은 그대로 유지한다. [DB 운영 절차](../db/operations/README.md).
 
