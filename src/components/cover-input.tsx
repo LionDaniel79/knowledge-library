@@ -18,10 +18,13 @@ export function CoverInput({
   const field = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
     if (focus) {
-      field.current?.scrollIntoView({ block: "center" });
-      field.current
-        ?.querySelector<HTMLInputElement>('input[type="radio"]')
-        ?.focus();
+      const frame = requestAnimationFrame(() => {
+        field.current?.scrollIntoView({ block: "center" });
+        field.current
+          ?.querySelector<HTMLInputElement>('input[type="radio"]')
+          ?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(frame);
     }
   }, [focus]);
   const [mode, setMode] = useState(
