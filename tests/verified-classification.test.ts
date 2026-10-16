@@ -128,6 +128,32 @@ it("adopts an ISBN/title-matched official category while keeping introduction, c
     await adoptCollectedClassification(f.db, owner, id, 2, true),
   ).toMatchObject({ applied: false });
 });
+it("adopts an official subtitle variant only with matching primary author and publisher", async () => {
+  const owner = "classification-subtitle",
+    { id } = await setup(owner);
+  await f.db.query(
+    "UPDATE library_books SET author='저자',publisher='출판사' WHERE id=$1",
+    [id],
+  );
+  await f.db.query(
+    "UPDATE library_reference_sources SET facts=jsonb_set(facts,'{title}','\"정서의 발견 :감정을 이해하는 길\"') WHERE owner_id=$1",
+    [owner],
+  );
+  expect(
+    await adoptCollectedClassification(f.db, owner, id, 1, false),
+  ).toMatchObject({ ready: true });
+  expect(
+    await adoptCollectedClassification(f.db, owner, id, 1, true),
+  ).toMatchObject({ applied: true });
+  expect(
+    (
+      await f.db.query(
+        "SELECT title,author,publisher FROM library_books WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+  ).toEqual({ title: "정서의 발견", author: "저자", publisher: "출판사" });
+});
 it("preserves manual or hidden data and rejects other owners, stale versions and conflicting source facts", async () => {
   for (const mode of [
     "manual",

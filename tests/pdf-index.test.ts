@@ -1,4 +1,4 @@
-import { it, expect, afterAll } from "vitest";
+import { it, expect, afterAll, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -31,4 +31,34 @@ it("keeps indexed quotations searchable when the external drive is disconnected"
       status: "missing",
     },
   ]);
+});
+it("streams ranked FTS results without sorting the entire external-drive match set", () => {
+  process.env.LIBRARY_PDF_INDEX = file;
+  const fixture = new DatabaseSync(file);
+  fixture.exec(
+    "CREATE VIRTUAL TABLE pages_fts USING fts5(text,content='pages',content_rowid='id',tokenize='trigram'); INSERT INTO pages_fts(pages_fts) VALUES('rebuild');",
+  );
+  const original = DatabaseSync.prototype.prepare;
+  let captured = "";
+  const spy = vi
+    .spyOn(DatabaseSync.prototype, "prepare")
+    .mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (sql.startsWith("SELECT p.document_id")) captured = sql;
+      return original.call(this, sql);
+    });
+  try {
+    expect(searchPdfPages("이야기를")).toMatchObject([
+      { documentId: "doc", pageNumber: 7 },
+    ]);
+    const plan = fixture
+      .prepare("EXPLAIN QUERY PLAN " + captured)
+      .all('"이야기를"');
+    expect(
+      plan.some((r) => String(r.detail).includes("TEMP B-TREE FOR ORDER BY")),
+    ).toBe(false);
+    expect(searchPdfPages("이야기를", "paper")).toEqual([]);
+  } finally {
+    spy.mockRestore();
+    fixture.close();
+  }
 });

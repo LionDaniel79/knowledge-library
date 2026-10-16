@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { isbn13, sameTitle } from "../../lib/bibliography";
+import { isbn13 } from "../../lib/bibliography";
+import { classificationTitleMatches } from "./verified-metadata-match";
 import type { Database } from "../../server/library-store";
 import { collectBookReference, type CollectedBook } from "./catalog";
 
@@ -75,7 +76,15 @@ export async function adoptCollectedClassification(
         ].includes(r.url) &&
         typeof facts?.title === "string" &&
         typeof facts.isbn === "string" &&
-        sameTitle(book.title, facts.title) &&
+        classificationTitleMatches(
+          {
+            title: book.title,
+            author: book.author,
+            publisher: book.publisher,
+            isbn: book.isbn,
+          },
+          facts,
+        ) &&
         isbn13(facts.isbn) === isbn13(book.isbn) &&
         classification?.verified === true &&
         classification.method === "ISBN 일치" &&

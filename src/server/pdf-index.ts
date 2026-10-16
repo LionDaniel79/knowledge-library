@@ -126,7 +126,9 @@ export function searchPdfPages(query: string, documentId?: string) {
       ? [terms.map((t) => '"' + t.replaceAll('"', '""') + '"').join(" AND ")]
       : terms;
     if (documentId) args.push(documentId);
-    const sql = `SELECT p.document_id AS documentId,p.page_number AS pageNumber,p.text,p.method,d.signature,d.title,d.status FROM pages p JOIN documents d ON d.id=p.document_id ${useFts ? "JOIN pages_fts ON pages_fts.rowid=p.id" : ""} WHERE ${where} AND ${searchablePdfScope(db)} ${documentId ? "AND d.id=?" : ""} ORDER BY ${useFts ? "pages_fts.rank," : ""} p.document_id,p.page_number LIMIT 40`;
+    // FTS5 can stream by rank and stop at 40 eligible pages. Extra tie-break
+    // columns force an all-matches sort and random reads on the external drive.
+    const sql = `SELECT p.document_id AS documentId,p.page_number AS pageNumber,p.text,p.method,d.signature,d.title,d.status FROM pages p JOIN documents d ON d.id=p.document_id ${useFts ? "JOIN pages_fts ON pages_fts.rowid=p.id" : ""} WHERE ${where} AND ${searchablePdfScope(db)} ${documentId ? "AND d.id=?" : ""} ORDER BY ${useFts ? "pages_fts.rank" : "p.document_id,p.page_number"} LIMIT 40`;
     return db
       .prepare(sql)
       .all(...args)
