@@ -1,0 +1,44 @@
+[
+  {
+    "group": "unrelated",
+    "before": "나는 소설을 읽으며 타인의 관점을 배우는 일이 중요하다고 생각한다.",
+    "after": "오늘은 망원경으로 달의 크레이터를 관찰했다.",
+    "voice": "self",
+    "expected": "uncertain"
+  },
+  {
+    "group": "quotation",
+    "before": "저자는 인간에게 자유의지가 없다고 말한다.",
+    "after": "다른 저자는 인간에게 자유의지가 있다고 말한다.",
+    "voice": "quote",
+    "expected": "uncertain"
+  },
+  {
+    "group": "negation",
+    "before": "나는 인간의 고통을 개인의 노력 부족만으로 설명할 수 없다고 생각한다.",
+    "after": "지금도 고통을 개인의 노력만으로 설명하는 데 반대한다.",
+    "voice": "self",
+    "expected": "maintains"
+  },
+  {
+    "group": "expansion",
+    "before": "문학은 다른 사람의 삶을 이해하게 한다고 생각한다.",
+    "after": "문학은 다른 사람의 삶을 이해하게 한다. 여기에 내 관점을 성찰하게 하는 역할도 있다고 생각한다.",
+    "voice": "self",
+    "expected": "expands"
+  },
+  {
+    "group": "revision",
+    "before": "나는 모든 공부 모임을 온라인으로 진행하는 것이 좋다고 생각한다.",
+    "after": "온라인 모임의 장점은 유지하되, 실습이 필요한 모임은 대면으로 진행하는 편이 좋다고 생각한다.",
+    "voice": "self",
+    "expected": "revises"
+  },
+  {
+    "group": "reversal",
+    "before": "신앙에는 의심이 있어서는 안 된다고 생각한다.",
+    "after": "나는 의심이 없어야 한다는 예전 입장을 철회했다. 의심이 신앙을 성찰하는 데 도움이 된다고 생각한다.",
+    "voice": "self",
+    "expected": "reverses"
+  }
+]

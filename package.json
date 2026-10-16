@@ -1,0 +1,47 @@
+{
+  "name": "personal-knowledge-library",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "mcp:stdio": "node --env-file=.env.local --import tsx scripts/library-mcp.ts",
+    "assist:worker": "node --env-file=.env.local --import tsx scripts/assist-worker.ts",
+    "curation": "node --env-file=.env.local --import tsx scripts/curate-library.ts",
+    "catalog:collect": "node --env-file=.env.local --import tsx scripts/collect-catalog.ts",
+    "dev": "node scripts/next-runtime.mjs dev",
+    "build": "node scripts/next-runtime.mjs build",
+    "verify:build": "node --import tsx scripts/verify-build-artifact.ts",
+    "start": "node scripts/next-runtime.mjs start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts",
+    "test:e2e": "playwright test",
+    "verify:live": "node --env-file=.env.local --import tsx scripts/verify-live.ts",
+    "format": "prettier --write src tests e2e scripts package.json tsconfig.json",
+    "format:check": "prettier --check src tests e2e scripts package.json tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@neondatabase/auth": "0.5.0-beta",
+    "@vercel/functions": "3.9.11",
+    "lucide-react": "1.55.0",
+    "next": "16.4.0",
+    "pg": "8.23.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@playwright/test": "1.64.0",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "type": "module"
+}

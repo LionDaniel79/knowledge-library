@@ -1,0 +1,13 @@
+.env*
+private-data/
+.git/
+.superpowers/
+.local-python/
+.next/
+test-results/
+playwright-report/
+**/__pycache__/
+**/*.sqlite*
+**/*.private.json
+**/*.pdf
+ireaditnow-library.json

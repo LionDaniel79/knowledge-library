@@ -1,0 +1,20 @@
+node_modules/
+.next/
+.next-external-old-*/
+.env*
+!.env.example
+*.tsbuildinfo
+playwright-report/
+test-results/
+.superpowers/
+
+# Personal imports and local analysis never belong in source control.
+private-data/
+.local-python/
+**/__pycache__/
+*.sqlite
+*.sqlite-*
+ireaditnow-library.json
+
+# Device pairing secrets
+*.private.json
