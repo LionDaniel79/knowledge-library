@@ -1,6 +1,6 @@
 # 외부 사용과 오프라인 기록
 
-2026-10-14 구현 및 운영 기준. 온라인 배포, 개인 PC 연결, GPT 접근을 별도로 활성화한다.
+2026-10-16 현재 기준. 온라인 배포, 개인 PC 연결, GPT 접근을 별도로 활성화한다.
 
 ## 현재 구현
 
@@ -17,9 +17,9 @@ GitHub의 지식서재 전용 비공개 저장소와 Vercel의 전용 프로젝�
 
 Vercel에는 앱 전용 권한의 DATABASE_URL, NEON_AUTH_BASE_URL, NEON_AUTH_COOKIE_SECRET, LIBRARY_OWNER_EMAIL, 확정된 HTTPS APP_ORIGIN을 비밀 환경변수로 설정한다. 관리자 DB URL·정보나루 키·PC 경로·OPENAI_API_KEY는 배포에 필요하지 않다. Neon Auth의 허용 origin과 Google 로그인 콜백은 실제 배포 주소에 맞춰 확인한다. 미인증·다른 계정·잘못된 Origin 요청이 차단되는지 확인한 다음 본인 휴대폰에서 로그인·기록·새로고침을 검수한다.
 
-현재 연결 계정에서 지식서재 GitHub 저장소와 Vercel 프로젝트는 확인되지 않았다. 이 문서는 배포 완료를 뜻하지 않는다. 외부 공개 배포 및 계정 권한 설정은 검수된 코드가 준비된 뒤 별도 실행한다.
+전용 비공개 GitHub 저장소 `LionDaniel79/knowledge-library`에 개인 자료를 제외한 코드가 올라갔다. 배포 빌드와 비밀 파일 제외 검사는 통과했다. Vercel 연결 도구는 해당 팀 접근을 거절했고 PC 도구에는 로그인 정보가 없어 사용자 기기 인증을 기다리고 있다. 이 문서는 외부 웹 배포 완료를 뜻하지 않는다.
 
-2026-10-15 추가 점검: 기존 개발 DB 접속은 상위 역할에서 넓은 권한을 상속하고 있다. 전용 배포 계정 구성은 [DB 운영 절차](../db/operations/README.md)에 저장했고 별도 시험 DB에서 저장 허용·삭제 및 권한 상승 거절을 검증했다. 실제 온라인 계정은 아직 만들지 않았다.
+2026-10-16 실제 DB의 `library_web_runtime` 계정 생성과 권한 검수를 완료했다. 상위 역할 멤버십·관리 권한이 없으며 실제 저장을 롤백으로 검증했다. DELETE·이력 UPDATE·스키마 생성·인증 자료 접근은 거절된다. 접속 정보는 PC의 비공개 설정에 DPAPI로 보호한다. 기존 개발/수집 계정은 그대로 유지한다. [DB 운영 절차](../db/operations/README.md).
 
 현재 Google 로그인은 Neon의 공유 OAuth 설정이다. 공식 문서는 이를 시험·프로토타입 용도로 설명한다. 외부 운영 주소에서는 허용 origin을 등록하고 로그인 검수와 전용 Google OAuth 자격 증명 필요 여부를 확인한다. 공유 설정만 확인한 상태를 운영 인증 완료로 표시하지 않는다. [Neon 공식 인증 개요](https://github.com/neondatabase/website/blob/main/content/docs/auth/overview.md).
 

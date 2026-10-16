@@ -13,3 +13,5 @@ Windows 로그인 때 자동 실행하는 설정은 설치하지 않았다. 재�
 개발·빌드 임시 산출물 .next는 D:/지식서재 작업/cache/knowledge-library-next-20261015로 옮겨 기존 프로젝트 경로에 디렉터리 연결을 만들었다. E:의 exFAT는 Next.js가 만드는 디렉터리 연결을 지원하지 않아 NTFS인 D:를 사용한다. PDF·색인·수집 자료는 E:를 유지한다. 소스·메모·PDF 원본은 이동하지 않았다. npm의 dev/build/start 실행 도구는 이 위치에서도 필요한 패키지를 찾도록 구성했다.
 
 운영 점검: scripts/start-library.ps1 -ConfigPath <개인 설정 파일> -Check. 재개: 같은 명령에 -ResumeIndexing. 이 명령은 PowerShell 7에서 실행하며 시스템 실행 정책을 바꾸지 않는다.
+
+2026-10-16 복구: OCR은 한 작업씩 실행하고 내부 문자 인식 프로세스는 250쪽마다 교체한다. 이 교체는 정상 동작이며 누적 결과를 잃지 않는다. 자원 부족으로 멈춘 쪽은 미처리 상태로 남아 다음 실행에서 이어간다. 실행 상태는 `E:/지식서재 작업/색인/pdf-library.ocr-status.json`, 수집 단계는 `E:/지식서재 작업/검수/priority-isbn-20261015/catalog-incremental/queue-status.json`에서 확인한다. 상태 파일의 processed는 해당 실행에서 처리한 수치다. 전체 누적 수치와 혼동하지 않는다. 수집기 로그는 실행별 하위 폴더에 보존한다.
