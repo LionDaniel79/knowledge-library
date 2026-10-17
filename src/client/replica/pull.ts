@@ -80,14 +80,19 @@ export async function pullReplica(input: {
         transport,
         signal,
       );
+      const entityRevisions = { ...state.entityRevisions };
+      for (const row of rows)
+        if (BigInt(row.revision) > BigInt(entityRevisions[row.entity] ?? "0"))
+          entityRevisions[row.entity] = row.revision;
       const patch: Pick<
         ReplicaGeneration,
-        "cursor" | "rows" | "bytes" | "lastSyncedAt"
+        "cursor" | "rows" | "bytes" | "lastSyncedAt" | "entityRevisions"
       > = {
         cursor: page.cursor,
         rows: state.rows + countDelta,
         bytes: state.bytes + byteDelta,
         lastSyncedAt: new Date().toISOString(),
+        entityRevisions,
       };
       await storage.transaction((tx) => {
         tx.stageRows(state!.generation, rows);

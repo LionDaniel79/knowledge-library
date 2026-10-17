@@ -170,10 +170,10 @@ type OutboxEntry = {
 
 **Interfaces:** `createReplicaRepository(storage): ReplicaRepository`. `overview()`, `books(query)`, `book(id)`, `notes(query)`, `note(id)`, `reading(query)`, `calendar(month)`, `search(query)`, `history(id)`, `read(route)`는 기존 UI와 맞는 자료 형식을 반환한다.
 
-- [ ] RED: 같은 fixture의 SQL/로컬 페이지·개수·분류·태그·띄어쓰기 무시 검색·표지 참조·서울 시간 기준 날짜·제외/휴지통 결과를 비교한다.
-- [ ] 실행: `vitest run tests/replica-query-parity.test.ts`, `playwright test e2e/replica-queries.spec.ts`.
-- [ ] 순수 변환을 공용 라이브러리로 분리하되 SQL·Node 전용 모듈은 브라우저에 넣지 않는다. 색인을 워커에서 갱신하고 정렬의 동순위 ID까지 계약으로 고정한다.
-- [ ] 전체 자료를 보관하면서도 화면에는 필요한 행만 읽는지 검사하고 통과 후 커밋한다.
+- [x] RED: 같은 fixture의 SQL/로컬 페이지·개수·분류·태그·띄어쓰기 무시 검색·표지 참조·서울 시간 기준 날짜·제외/휴지통 결과를 비교한다.
+- [x] 실행: `vitest run tests/replica-query-parity.test.ts`, `playwright test e2e/replica-queries.spec.ts`.
+- [x] 순수 변환을 공용 라이브러리로 분리하되 SQL·Node 전용 모듈은 브라우저에 넣지 않는다. 색인을 워커에서 갱신하고 정렬의 동순위 ID까지 계약으로 고정한다.
+- [x] 전체 자료를 보관하면서도 화면에는 필요한 행만 읽는지 검사하고 통과 후 커밋한다.
 
 ### Task 10: 첫 화면·목록·상세의 로컬 표시
 

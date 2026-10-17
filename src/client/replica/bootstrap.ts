@@ -132,8 +132,15 @@ export async function bootstrapReplica(input: {
               page.rows.reduce((n, r) => n + r.bytes, 0),
           },
         };
+        const entityRevisions = { ...state.entityRevisions };
+        entityRevisions[entity] = page.rows.reduce(
+          (max, row) =>
+            BigInt(row.revision) > BigInt(max) ? row.revision : max,
+          entityRevisions[entity] ?? "0",
+        );
         state = {
           ...state,
+          entityRevisions,
           scan,
           rows: Object.values(scan).reduce((n, p) => n + (p.rows ?? 0), 0),
           bytes: Object.values(scan).reduce((n, p) => n + (p.bytes ?? 0), 0),
@@ -144,6 +151,7 @@ export async function bootstrapReplica(input: {
             scan: state!.scan,
             rows: state!.rows,
             bytes: state!.bytes,
+            entityRevisions: state!.entityRevisions,
           });
         });
         after = page.cursor;
@@ -177,11 +185,19 @@ export async function bootstrapReplica(input: {
           transport,
           signal,
         );
+        const entityRevisions = { ...state.entityRevisions };
+        for (const row of page.rows)
+          if (BigInt(row.revision) > BigInt(entityRevisions[row.entity] ?? "0"))
+            entityRevisions[row.entity] = row.revision;
         await storage.transaction((tx) => {
           tx.stageRows(generation, page.rows);
-          tx.setCheckpoint(generation, { cursor: page.cursor });
+          tx.setCheckpoint(generation, {
+            cursor: page.cursor,
+            entityRevisions,
+          });
         });
         state.cursor = page.cursor;
+        state.entityRevisions = entityRevisions;
         if (!page.hasMore) break;
       } catch (error) {
         if (

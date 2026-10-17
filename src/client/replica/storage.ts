@@ -37,6 +37,7 @@ export interface ReplicaBackend {
   close(): void;
 }
 export interface ReplicaGeneration extends ReplicaCheckpoint {
+  entityRevisions?: Partial<Record<SyncEntity, string>>;
   startCursor: string;
   startedAt: string;
   scan: Partial<
