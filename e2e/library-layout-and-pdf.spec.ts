@@ -146,6 +146,9 @@ test("cover/list preference survives reload and list opens the same book on a na
       .getByRole("button", { name: "도서정보 검토", exact: true })
       .boundingBox();
   expect(chooser!.x + chooser!.width).toBeLessThanOrEqual(review!.x);
+  expect(
+    Math.abs(chooser!.y + chooser!.height / 2 - review!.y - review!.height / 2),
+  ).toBeLessThanOrEqual(1);
   await expect(page.locator(".book-list-row")).toHaveCount(3);
   expect(
     await page.evaluate(

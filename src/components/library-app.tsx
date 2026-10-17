@@ -1131,29 +1131,31 @@ export function LibraryApp({
                   <div className="book-toolbar">
                     <div className="book-view-actions">
                       <PageSizeSelect label="소장 도서" paging={bookPaging} />
-                      <select
-                        aria-label="도서 보기 방식"
-                        value={bookLayout}
-                        onChange={(e) =>
-                          chooseBookLayout(
-                            e.target.value === "list" ? "list" : "covers",
-                          )
-                        }
-                      >
-                        <option value="list">목록형</option>
-                        <option value="covers">표지형</option>
-                      </select>
+                      <div className="book-view-review">
+                        <select
+                          aria-label="도서 보기 방식"
+                          value={bookLayout}
+                          onChange={(e) =>
+                            chooseBookLayout(
+                              e.target.value === "list" ? "list" : "covers",
+                            )
+                          }
+                        >
+                          <option value="list">목록형</option>
+                          <option value="covers">표지형</option>
+                        </select>
+                        {!preview && (
+                          <button onClick={() => setCatalogReviewOpen(true)}>
+                            도서정보 검토
+                          </button>
+                        )}
+                      </div>
                       {!preview && (
                         <button
                           className="secondary"
                           onClick={() => setExclusionsOpen(true)}
                         >
                           제외한 자료
-                        </button>
-                      )}
-                      {!preview && (
-                        <button onClick={() => setCatalogReviewOpen(true)}>
-                          도서정보 검토
                         </button>
                       )}
                     </div>

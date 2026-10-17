@@ -3190,6 +3190,12 @@ textarea {
   min-height: 38px;
   padding: 7px 10px;
 }
+.book-view-review {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
 .book-list-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;

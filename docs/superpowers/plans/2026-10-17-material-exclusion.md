@@ -67,4 +67,4 @@
 - [x] Obtain one independent whole-change review; address material findings.
 - [x] Test migration and the frozen 5,208 selection on an expiring copy of the existing production branch.
 - [x] Apply schema and exact guarded batch to the existing owner only; verify 37 deferred records, notes, cycles and originals are unchanged.
-- [ ] Commit/push and deploy the public app and a new immutable private-PC release; verify counts and recovery UI without restoring the user's real records during tests.
+- [x] Commit/push and deploy the public app and a new immutable private-PC release; verify counts and recovery UI without restoring the user's real records during tests.
