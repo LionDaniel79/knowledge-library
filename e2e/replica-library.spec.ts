@@ -136,6 +136,11 @@ test("puts real change synchronization left of add book and opens local books, i
   await page.route("https://replica.test/api/sync/session", (r) =>
     r.fulfill({ json: { ownerId: owner } }),
   );
+  await page.route("https://replica.test/api/auth/get-session", (r) =>
+    r.fulfill({
+      json: { user: { id: owner }, session: { id: "fixture-session" } },
+    }),
+  );
   await page.route("https://replica.test/api/sync/meta?*", async (r) => {
     heads++;
     await new Promise((resolve) => setTimeout(resolve, 100));

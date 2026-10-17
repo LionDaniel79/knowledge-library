@@ -102,6 +102,7 @@ async function boundedBody(response: Response, max: number) {
 export function createSyncTransport(
   baseUrl = "",
   fetcher: typeof fetch = fetch,
+  owner?: string,
 ): SyncTransport {
   const root = baseUrl.replace(/\/$/, "");
   if (root) {
@@ -113,13 +114,57 @@ export function createSyncTransport(
     )
       throw Error("같은 서재 주소에서 동기화해 주세요.");
   }
+  let sessionChecked = -Infinity,
+    sessionCheck: Promise<void> | null = null;
+  async function ensureSession(signal?: AbortSignal, force = false) {
+    if (!owner || (!force && Date.now() - sessionChecked < 60000)) return;
+    if (!sessionCheck)
+      sessionCheck = (async () => {
+        // The SDK handler renews its signed local session cache from the existing
+        // HttpOnly login token. Business getSession() alone does not renew it.
+        const response = await fetcher(root + "/api/auth/get-session", {
+          cache: "no-store",
+          credentials: "same-origin",
+          redirect: "error",
+          signal,
+        });
+        const bytes = await boundedBody(response, MAX_JSON_RESPONSE_BYTES);
+        if (!response.ok)
+          throw new SyncHttpError(
+            response.status,
+            "로그인 연결을 확인한 뒤 동기화를 재개해 주세요.",
+          );
+        const session = JSON.parse(new TextDecoder().decode(bytes));
+        if (!session?.session || typeof session?.user?.id !== "string")
+          throw new SyncHttpError(401, "Google 계정으로 다시 로그인해 주세요.");
+        if (session.user.id !== owner)
+          throw new SyncHttpError(403, "로그인한 서재 계정이 변경되었습니다.");
+        sessionChecked = Date.now();
+      })().finally(() => {
+        sessionCheck = null;
+      });
+    await sessionCheck;
+  }
+  async function authenticatedFetch(
+    input: RequestInfo | URL,
+    init: RequestInit,
+  ) {
+    await ensureSession(init.signal ?? undefined);
+    let response = await fetcher(input, init);
+    if (owner && response.status === 401) {
+      await response.body?.cancel();
+      await ensureSession(init.signal ?? undefined, true);
+      response = await fetcher(input, init);
+    }
+    return response;
+  }
   async function get(
     path: string,
     params: Record<string, string> = {},
     signal?: AbortSignal,
     binary = false,
   ) {
-    const response = await fetcher(
+    const response = await authenticatedFetch(
       root + "/api/sync/" + path + "?" + new URLSearchParams(params),
       {
         cache: "no-store",
@@ -147,7 +192,7 @@ export function createSyncTransport(
   }
   return {
     async push(entry, signal) {
-      const response = await fetcher(root + "/api/sync/push", {
+      const response = await authenticatedFetch(root + "/api/sync/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(syncCommandEnvelope(entry)),

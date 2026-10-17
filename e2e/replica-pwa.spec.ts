@@ -47,6 +47,14 @@ test.beforeAll(async () => {
       for await (const part of req) body += part;
       epoch = JSON.parse(body).epoch;
       res.end("ok");
+    } else if (url.pathname === "/api/auth/get-session") {
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          user: { id: owner },
+          session: { id: "fixture-session" },
+        }),
+      );
     } else if (url.pathname === "/api/sync/session") {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ ownerId: owner }));

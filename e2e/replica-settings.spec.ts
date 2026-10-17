@@ -39,6 +39,11 @@ async function setup(context: any) {
   await context.route("https://settings.test/api/sync/session", (r: any) =>
     r.fulfill({ json: { ownerId: "resources" } }),
   );
+  await context.route("https://settings.test/api/auth/get-session", (r: any) =>
+    r.fulfill({
+      json: { user: { id: "resources" }, session: { id: "fixture-session" } },
+    }),
+  );
   await context.route(
     "https://settings.test/api/sync/meta?*",
     async (r: any) => {

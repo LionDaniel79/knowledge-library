@@ -11,7 +11,9 @@ import {
 import type { SyncEntity } from "../../lib/replica/entities";
 import { LibraryError, type Database, type Executor } from "../library-store";
 import { syncInput, syncRead, syncSql, validateSyncKey } from "./registry";
-const INLINE_BYTES = 8 * 1024;
+// Batch typical cover images with the scan page. Large originals still use
+// bounded value parts; the SQL running byte budget keeps every page <=512KiB.
+const INLINE_BYTES = 128 * 1024;
 export async function selectSyncRows(
   tx: Executor,
   owner: string,

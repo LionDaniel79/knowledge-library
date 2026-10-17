@@ -42,14 +42,16 @@ export async function readSyncMeta(
     const head = await syncHead(tx, owner);
     const entities: Record<string, { rows: number; bytes: number }> = {};
     if (inventory) {
-      const union = Object.keys(syncEntities)
-        .map((name) => {
-          const sql = syncSql(name as SyncEntity);
-          return `SELECT '${name}' AS entity,count(*)::int AS rows,coalesce(sum(octet_length((${sql.value})::text)),0)::text AS bytes FROM ${sql.table} t WHERE owner_id=$1`;
-        })
-        .join(" UNION ALL ");
-      for (const r of (await tx.query(union, [owner])).rows)
-        entities[r.entity] = { rows: Number(r.rows), bytes: Number(r.bytes) };
+      for (const name of Object.keys(syncEntities)) {
+        const sql = syncSql(name as SyncEntity);
+        const r = (
+          await tx.query(
+            `SELECT count(*)::int AS rows,coalesce(sum(octet_length((${sql.value})::text)),0)::text AS bytes FROM ${sql.table} t WHERE owner_id=$1`,
+            [owner],
+          )
+        ).rows[0];
+        entities[name] = { rows: Number(r.rows), bytes: Number(r.bytes) };
+      }
     }
     return {
       ...head,

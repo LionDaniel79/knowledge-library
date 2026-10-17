@@ -107,6 +107,46 @@ it("keeps escaped JSON pages bounded and paginates without losing a record", asy
   }
   expect(found.size).toBe(45);
 });
+it("batches complete ordinary covers into bounded pages without a separate value request for each image", async () => {
+  const owner = randomUUID(),
+    expected = new Set<string>();
+  for (let i = 0; i < 45; i++) {
+    const id = randomUUID(),
+      bytes = Buffer.alloc(12000, i + 1);
+    expected.add(JSON.stringify([id]));
+    await f.db.query(
+      "INSERT INTO library_cover_assets(id,owner_id,sha256,data_base64,mime) VALUES($1,$2,$3,$4,'image/webp')",
+      [id, owner, hash(bytes), bytes.toString("base64")],
+    );
+  }
+  let after: string | undefined;
+  const found = new Set<string>();
+  let pages = 0;
+  do {
+    const page = await scanSyncRows(f.db, owner, {
+      entity: "library_cover_assets",
+      limit: 200,
+      after,
+    });
+    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(
+      MAX_JSON_RESPONSE_BYTES,
+    );
+    for (const row of page.rows) {
+      expect(row.inline).toBeDefined();
+      expect(row.parts).toBeUndefined();
+      expect(hash(Buffer.from(row.inline!))).toBe(row.sha256);
+      expect(
+        Buffer.from(JSON.parse(row.inline!).data_base64, "base64"),
+      ).toHaveLength(12000);
+      found.add(row.key);
+    }
+    pages++;
+    after = page.cursor;
+    if (!page.hasMore) break;
+  } while (pages < 10);
+  expect(found).toEqual(expected);
+  expect(pages).toBeGreaterThan(1);
+});
 it("assembles a four MiB original JSON and every image byte with SQL-sized value reads, then rejects a changed revision", async () => {
   const owner = randomUUID(),
     id = await book(owner, { original: "한글🙂".repeat(430000) });

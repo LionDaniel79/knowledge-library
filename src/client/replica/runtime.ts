@@ -41,7 +41,7 @@ export function createLibraryRuntime(
     coordinator = createReplicaCoordinator({
       owner,
       storage,
-      transport: createSyncTransport(),
+      transport: createSyncTransport("", fetch, owner),
     }),
     abort = new AbortController(),
     listeners = new Set<() => void>();
