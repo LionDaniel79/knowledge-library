@@ -52,7 +52,7 @@ type SyncKey = string; // owner를 제외한 기본키들을 순서가 고정된
 type SyncRow = {
   entity: SyncEntity; key: SyncKey; revision: SyncRevision;
   deleted: boolean; sha256: string | null; bytes: number;
-  inline?: Record<string, unknown>;
+  inline?: string; // 정확한 원본 수치와 해시를 보존하는 직렬화된 JSON
   parts?: { index: number; bytes: number; sha256: string }[];
 };
 type SyncPage = {
@@ -80,10 +80,10 @@ type OutboxEntry = {
 
 **Interfaces:** `syncEntities`, `projectSyncRow(entity,row): Record<string,unknown>`, `syncKey(entity,row): SyncKey`, `encodeSyncValue(row): Uint8Array`. `SyncRow`·`SyncPage`·`OutboxEntry`의 Zod 검증을 제공한다.
 
-- [ ] RED: `includes_all_owner_application_tables`에서 아래 38개 자료 유형을 명시적으로 비교한다. `rejects_secret_fields_and_foreign_keys`에서 `token_hash`, `lease_token`, MCP 인증값, 허용되지 않은 자료 이름, 다른 계정의 키를 거절한다.
-- [ ] 실행: `node node_modules/vitest/vitest.mjs run tests/replica-contracts.test.ts`; 아직 없는 계약 때문에 실패해야 한다.
-- [ ] 공개 필드와 기본키를 각 유형에 명시한다. 서버 접속 정보나 전체 `information_schema`를 클라이언트 요청에 따라 노출하지 않는다. 큰 문자열·배열·날짜·null과 원본 JSON의 내용이 직렬화 왕복에서 보존되게 한다.
-- [ ] GREEN: 위 검사와 `node node_modules/typescript/bin/tsc --noEmit` 통과 후 커밋한다.
+- [x] RED: `includes_all_owner_application_tables`에서 아래 38개 자료 유형을 명시적으로 비교한다. `rejects_secret_fields_and_foreign_keys`에서 `token_hash`, `lease_token`, MCP 인증값, 허용되지 않은 자료 이름, 다른 계정의 키를 거절한다.
+- [x] 실행: `node node_modules/vitest/vitest.mjs run tests/replica-contracts.test.ts`; 아직 없는 계약 때문에 실패해야 한다.
+- [x] 공개 필드와 기본키를 각 유형에 명시한다. 서버 접속 정보나 전체 `information_schema`를 클라이언트 요청에 따라 노출하지 않는다. 큰 문자열·배열·날짜·null과 원본 JSON의 내용이 직렬화 왕복에서 보존되게 한다.
+- [x] GREEN: 위 검사와 `node node_modules/typescript/bin/tsc --noEmit` 통과 후 커밋한다.
 
 대상 테이블: `library_ai_policy`, `library_ai_usage`, `library_analysis_devices`(안전 필드), `library_analysis_feedback`, `library_annual_metrics`, `library_assist_receipts`, `library_assist_requests`(lease 비밀 제외), `library_assist_results`, `library_book_exclusions`, `library_book_introductions`, `library_book_relations`, `library_books`, `library_catalog_reviews`, `library_connections`, `library_cover_assets`, `library_cover_mirrors`, `library_curation_items`, `library_curation_runs`, `library_cycles`, `library_documents`, `library_evolution_candidates`, `library_external_links`, `library_field_origins`, `library_imports`, `library_note_trash`, `library_notes`, `library_operations`, `library_reference_sources`, `library_research`, `library_research_items`, `library_research_placements`, `library_revisions`, `library_shelves`, `library_thought_events`, `library_thought_jobs`, `library_topic_links`, `library_topic_memberships`, `library_topics`.
 
@@ -185,6 +185,7 @@ type OutboxEntry = {
 - [ ] 실행: `playwright test e2e/replica-library.spec.ts e2e/list-pagination.spec.ts e2e/note-mobile.spec.ts`.
 - [ ] 첫 HTML의 DB overview 대기를 없애고 가벼운 클라이언트 셸로 진입한다. 최초 인증은 세션 API로, 기존 사본의 오프라인 읽기는 기기 저장소로 처리한다. 온라인 조작 권한은 계속 서버가 검증한다. 기존 로그인과 돌아올 주소를 유지한다.
 - [ ] 저장 뒤 overview 재다운로드를 로컬 다시 읽기로 바꾸고, 목록이 빈 화면으로 바뀌지 않는지 검사한 뒤 커밋한다.
+- [ ] 사용자의 추가 요청대로 ‘나의 서재’ 상단 ‘책 추가’ 왼쪽에 ‘동기화’를 배치한다. Task 8의 실제 `syncReplica`에 연결하고 중복 실행 방지·진행/결과를 표시한다. 버튼이 전체 DB 재다운로드를 실행하거나 동작 없이 성공을 표시하지 않는지 E2E로 확인한다.
 
 ### Task 11: 과거 이력·검토·지도·연구·AI 결과도 로컬 조회
 
