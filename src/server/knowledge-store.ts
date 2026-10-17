@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
@@ -67,7 +68,7 @@ export function createKnowledgeStore(db: Database) {
           }),
         )
         .digest("hex");
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const claimed = await tx.query(
         "INSERT INTO library_operations(owner_id,request_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING request_id",
         [owner, c.requestId, fingerprint],

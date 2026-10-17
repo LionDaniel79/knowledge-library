@@ -1,3 +1,5 @@
+import { createPoolDatabase } from "../src/server/sync/pool-database";
+import { syncQuery } from "../src/server/sync/write";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { lookupLibrary } from "../src/server/catalog-provider";
@@ -30,7 +32,9 @@ try {
   for (const book of books) {
     const result = await lookupLibrary(book.isbn, key);
     if (result && sameTitle(book.title, result.title) && result.category) {
-      const r = await pool.query(
+      const r = await syncQuery(
+        createPoolDatabase(pool),
+        owner,
         `WITH updated AS (UPDATE library_books SET category=$3,classification=$4,cover_url=CASE WHEN cover_url='' AND source_data->'cover' IS NULL THEN $5 ELSE cover_url END,author=CASE WHEN author='' THEN $6 ELSE author END,publisher=CASE WHEN publisher='' THEN $7 ELSE publisher END,version=version+1 WHERE owner_id=$1 AND id=$2 AND version=$8 RETURNING *) INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) SELECT $9,$1,id,'verifyLibraryClassification',$10::jsonb,to_jsonb(updated) FROM updated RETURNING entity_id`,
         [
           owner,

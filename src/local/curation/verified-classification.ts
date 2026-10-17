@@ -1,3 +1,4 @@
+import { withSyncWrite } from "../../server/sync/write";
 import { randomUUID } from "node:crypto";
 import { isbn13 } from "../../lib/bibliography";
 import { classificationTitleMatches } from "./verified-metadata-match";
@@ -14,7 +15,7 @@ export async function adoptCollectedClassification(
 ) {
   const skip = (reason: string) => ({ ready: false, applied: false, reason });
   if (!owner) return skip("소유자 확인 필요");
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const book = (
       await tx.query(
         "SELECT * FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE",

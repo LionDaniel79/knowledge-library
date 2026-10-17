@@ -1,3 +1,4 @@
+import { withSyncWrite } from "../../server/sync/write";
 import { isbn13 } from "../../lib/bibliography";
 import { providerText } from "../../lib/provider-text";
 import { secureImage } from "../../server/catalog-provider";
@@ -146,7 +147,7 @@ export async function applyYes24Supplement(
   expected: { id: string; version: number },
   record: CollectedBook,
 ) {
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const skip = (status: string) => ({ status, applied: 0 });
     const book = (
       await tx.query(

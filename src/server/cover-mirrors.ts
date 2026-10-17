@@ -1,3 +1,4 @@
+import { syncQuery } from "./sync/write";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import type { Book } from "../lib/domain";
 import { randomUUID } from "node:crypto";
@@ -28,7 +29,9 @@ export async function storeCoverMirror(
   const existing = await saved(db, owner, source);
   if (existing) return existing;
   const asset = await createCoverStore(db).upload(owner, input);
-  await db.query(
+  await syncQuery(
+    db,
+    owner,
     "INSERT INTO library_cover_mirrors(id,owner_id,source,asset_id) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,source) DO NOTHING",
     [randomUUID(), owner, source, asset.id],
   );

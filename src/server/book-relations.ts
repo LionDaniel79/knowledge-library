@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
@@ -30,7 +31,7 @@ export function createBookRelationStore(
       fingerprint = contentHash(JSON.stringify(["book-relation", p]));
     if (p.leftId === p.rightId)
       throw new LibraryError(400, "서로 다른 도서를 선택해 주세요.");
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const claimed = await tx.query(
         "INSERT INTO library_operations(owner_id,request_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING request_id",
         [owner, p.requestId, fingerprint],

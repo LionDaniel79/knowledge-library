@@ -1,3 +1,4 @@
+import { syncQuery } from "./sync/write";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database } from "./library-store";
@@ -9,7 +10,9 @@ export function createDeviceAuth(db: Database) {
     const id = randomUUID(),
       token = "klw_" + randomBytes(32).toString("base64url"),
       expiresAt = new Date(+now + 90 * 86400000).toISOString();
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "INSERT INTO library_analysis_devices(id,owner_id,name,token_hash,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6)",
       [
         id,
@@ -35,7 +38,9 @@ export function createDeviceAuth(db: Database) {
     assertOwner(owner);
     z.string().uuid().parse(id);
     await ownRow(db, "library_analysis_devices", owner, id);
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "UPDATE library_analysis_devices SET revoked_at=coalesce(revoked_at,$3) WHERE owner_id=$1 AND id=$2",
       [owner, id, now],
     );
@@ -58,7 +63,9 @@ export function createDeviceAuth(db: Database) {
       )
     ).rows[0];
     if (!row) throw new LibraryError(401, "PC 연결을 다시 확인해 주세요.");
-    await db.query(
+    await syncQuery(
+      db,
+      String(row.owner_id),
       "UPDATE library_analysis_devices SET last_seen=$2 WHERE id=$1",
       [row.id, now],
     );

@@ -1,3 +1,4 @@
+import { withSyncWrite } from "../../server/sync/write";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../../server/library-store";
 import { compactTitle } from "../../lib/bibliography";
@@ -23,7 +24,7 @@ export async function applyPdfIdentity(
     )
   )
     return skip("제공자 또는 소유자 확인 필요");
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const old = (
       await tx.query(
         "SELECT * FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE",

@@ -1,3 +1,4 @@
+import { withSyncWrite, syncQuery } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { sourceRefSchema, type CurationItem } from "../lib/curation";
@@ -226,7 +227,7 @@ export function createAssistStore(
   }
   async function configure(owner: string, raw: unknown) {
     const p = policySchema.parse(raw);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const current = await lockPolicy(tx, owner);
       if (current.version !== p.expectedPolicyVersion)
         throw new LibraryError(409, "설정이 바뀌었습니다. 다시 확인해 주세요.");
@@ -261,7 +262,7 @@ export function createAssistStore(
   async function request(owner: string, raw: unknown) {
     const p = requestSchema.parse(raw);
     checkPurpose(p.purpose);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const policy = await lockPolicy(tx, owner);
       if (
         !policy.requestsEnabled ||
@@ -332,7 +333,7 @@ export function createAssistStore(
       .object({ keyReady: z.boolean(), priceVersion: z.string().max(100) })
       .strict()
       .parse(raw);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       await liveDevice(tx, d);
       await tx.query(
         "INSERT INTO library_assist_workers(owner_id,device_id,key_ready,price_version,last_seen) VALUES($1,$2,$3,$4,now()) ON CONFLICT(owner_id,device_id) DO UPDATE SET key_ready=excluded.key_ready,price_version=excluded.price_version,last_seen=now()",
@@ -342,7 +343,7 @@ export function createAssistStore(
     });
   }
   async function claim(d: AssistDevice) {
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       const policy = await lockPolicy(tx, d.ownerId);
       await liveDevice(tx, d);
       const worker = (
@@ -389,7 +390,7 @@ export function createAssistStore(
     });
   }
   async function begin(d: AssistDevice, id: string, leaseToken: string) {
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       const policy = await lockPolicy(tx, d.ownerId);
       await liveDevice(tx, d);
       const row = (
@@ -430,7 +431,7 @@ export function createAssistStore(
     });
   }
   async function renew(d: AssistDevice, id: string, leaseToken: string) {
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       await liveDevice(tx, d);
       const r = await tx.query(
         "UPDATE library_assist_requests SET lease_expires_at=now()+interval '120 seconds' WHERE owner_id=$1 AND id=$2 AND lease_device=$3 AND lease_token=$4 AND status IN ('claimed','sending') AND lease_expires_at>now() RETURNING id",
@@ -448,7 +449,7 @@ export function createAssistStore(
     raw: unknown,
   ) {
     const result = resultInput.parse(raw);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       const policy = await lockPolicy(tx, d.ownerId);
       await liveDevice(tx, d);
       const row = (
@@ -556,14 +557,16 @@ export function createAssistStore(
     });
   }
   async function cancel(owner: string, id: string) {
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "UPDATE library_assist_requests SET status='cancelled',error_code='user_cancelled',updated_at=now() WHERE owner_id=$1 AND id=$2 AND status IN ('queued','claimed')",
       [owner, id],
     );
     return { ok: true };
   }
   async function failClaim(d: AssistDevice, id: string, leaseToken: string) {
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, d.ownerId, async (tx) => {
       await liveDevice(tx, d);
       await tx.query(
         "UPDATE library_assist_requests SET status='failed',error_code='preflight_failed',updated_at=now() WHERE owner_id=$1 AND id=$2 AND lease_device=$3 AND lease_token=$4 AND status='claimed'",
@@ -574,7 +577,7 @@ export function createAssistStore(
   }
   async function resolveCost(owner: string, id: string, costUsd: string) {
     nullableMoney.parse(costUsd);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       await lockPolicy(tx, owner);
       const r = (
         await tx.query(
@@ -627,7 +630,7 @@ export function createAssistStore(
   async function adopt(owner: string, id: string, index: number) {
     if (!Number.isInteger(index) || index < 0 || index > 4)
       throw new LibraryError(400, "제안을 선택해 주세요.");
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const r = (
         await tx.query(
           "SELECT r.*,s.id AS result_id,s.result,s.adoption FROM library_assist_requests r JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.id=$2 FOR UPDATE",

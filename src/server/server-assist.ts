@@ -1,3 +1,4 @@
+import { syncQuery } from "./sync/write";
 import { createAssistStore, type AssistDevice } from "./assist-store";
 import type { Database } from "./library-store";
 import {
@@ -38,7 +39,9 @@ export async function runServerAssistStep(
     result: AiTaskResult,
   ) => {
     const receipt = await store.finish(d, id, lease, result);
-    await db.query(
+    await syncQuery(
+      db,
+      d.ownerId,
       "UPDATE library_assist_receipts SET completed_at=now() WHERE owner_id=$1 AND request_id=$2 AND device_id=$3",
       [d.ownerId, id, d.deviceId],
     );
@@ -81,7 +84,9 @@ export async function runServerAssistStep(
       },
     };
   }
-  await db.query(
+  await syncQuery(
+    db,
+    d.ownerId,
     "INSERT INTO library_assist_receipts(owner_id,request_id,device_id,lease_token,result) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_id,request_id) DO NOTHING",
     [d.ownerId, job.id, d.deviceId, job.leaseToken, JSON.stringify(result)],
   );

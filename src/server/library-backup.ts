@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash } from "node:crypto";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import { invalidBackupJsonField } from "./backup-json";
@@ -343,7 +344,7 @@ export async function restoreLibraryBackup(
 ) {
   const b = validateEnvelope(input);
   try {
-    return await db.transaction(async (tx) => {
+    return await withSyncWrite(db, owner, async (tx) => {
       // Hold writes while checking emptiness; a preview never grants later overwrite permission.
       await tx.query(
         `LOCK TABLE ${tables.join(",")} IN SHARE ROW EXCLUSIVE MODE`,

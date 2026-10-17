@@ -1,3 +1,5 @@
+import { createPoolDatabase } from "../src/server/sync/pool-database";
+import { syncQuery } from "../src/server/sync/write";
 import { Pool } from "pg";
 import { createLegacyReadingStore } from "../src/server/legacy-reading-store";
 import type { Database } from "../src/server/library-store";
@@ -36,7 +38,9 @@ try {
   );
   // This metric is a user-confirmed source-app figure, not a rewritten cycle count.
   if (process.argv.includes("--apply"))
-    await pool.query(
+    await syncQuery(
+      createPoolDatabase(pool),
+      owners[0].id,
       `INSERT INTO library_annual_metrics(owner_id,year,reported_books,source,explanation) VALUES($1,2026,25.5,'iReadItNow HD','사용자가 원본 앱의 2026년 통계로 확인한 독서량. 완독 날짜 기준 횟수와 계산 기준이 다릅니다.') ON CONFLICT DO NOTHING`,
       [owners[0].id],
     );

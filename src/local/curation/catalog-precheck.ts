@@ -1,3 +1,4 @@
+import { syncQuery } from "../../server/sync/write";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { catalogPrecheck } from "../../lib/catalog-precheck";
@@ -54,7 +55,9 @@ export async function precheckCatalogReviews(
   if (!apply) return report;
   // Annotating changes the review version, so an already-open human form cannot silently apply stale information.
   for (let i = 0; i < annotations.length; i += 100)
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       `UPDATE library_catalog_reviews r SET decision=coalesce(r.decision,'{}'::jsonb)||jsonb_build_object('precheck',x.proof),version=r.version+1,updated_at=now()
     FROM jsonb_to_recordset($2::jsonb) x(id uuid,version integer,proof jsonb) WHERE r.owner_id=$1 AND r.id=x.id AND r.version=x.version AND r.status='pending'`,
       [owner, JSON.stringify(annotations.slice(i, i + 100))],

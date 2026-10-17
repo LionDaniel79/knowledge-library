@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { LibraryError, type Database } from "./library-store";
 import { mapLegacyReading } from "../lib/legacy-reading";
@@ -18,7 +19,7 @@ export function createLegacyReadingStore(db: Database) {
       added: 0,
     };
     if (!apply) return summary;
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const rows = candidates.map((c) => {
         const hash = createHash("sha256")
           .update(owner + ":" + c.sourceKey)

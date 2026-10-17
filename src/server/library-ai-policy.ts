@@ -1,3 +1,4 @@
+import { syncQuery } from "./sync/write";
 import {
   defaultAiPolicy,
   type LibraryAiPolicy,
@@ -27,12 +28,16 @@ export async function retireAutomaticJobs(
   owner: string,
 ): Promise<number> {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
-  await tx.query(
+  await syncQuery(
+    tx,
+    owner,
     "INSERT INTO library_ai_policy(owner_id) VALUES($1) ON CONFLICT(owner_id) DO UPDATE SET version=library_ai_policy.version+1,updated_at=now()",
     [owner],
   );
   return (
-    await tx.query(
+    await syncQuery(
+      tx,
+      owner,
       "UPDATE library_thought_jobs SET status='superseded',lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE owner_id=$1 AND kind='compare' AND status IN ('queued','running','failed') RETURNING id",
       [owner],
     )

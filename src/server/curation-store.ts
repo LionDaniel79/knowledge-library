@@ -1,3 +1,4 @@
+import { syncQuery, withSyncWrite } from "./sync/write";
 import { randomUUID, createHash } from "node:crypto";
 import { readActiveNote } from "./active-note";
 import { z } from "zod";
@@ -116,7 +117,9 @@ export function createCurationStore(db: Database) {
   async function begin(owner: string, scopeHash: string, executor: string) {
     if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
     const id = randomUUID();
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "INSERT INTO library_curation_runs(id,owner_id,scope_hash,executor) VALUES($1,$2,$3,$4)",
       [id, owner, scopeHash, executor],
     );
@@ -125,7 +128,7 @@ export function createCurationStore(db: Database) {
   async function apply(owner: string, runId: string, items: CurationItem[]) {
     if (items.length > 100)
       throw new LibraryError(413, "100건씩 반영해 주세요.");
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const run = (
         await tx.query(
           "SELECT * FROM library_curation_runs WHERE owner_id=$1 AND id=$2 FOR UPDATE",
@@ -257,7 +260,7 @@ export function createCurationStore(db: Database) {
       ])
       .parse(input.value);
     z.enum(["active", "hidden"]).parse(input.state);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const old = (
         await tx.query(
           "SELECT * FROM library_curation_items WHERE owner_id=$1 AND id=$2 AND version=$3 FOR UPDATE",
@@ -312,7 +315,7 @@ export function createCurationStore(db: Database) {
     });
   }
   async function rollback(owner: string, runId: string) {
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const run = (
         await tx.query(
           "SELECT id FROM library_curation_runs WHERE owner_id=$1 AND id=$2 FOR UPDATE",
@@ -342,7 +345,9 @@ export function createCurationStore(db: Database) {
     });
   }
   async function seal(owner: string, id: string) {
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "UPDATE library_curation_runs SET state='sealed',completed_at=now() WHERE owner_id=$1 AND id=$2 AND state='open'",
       [owner, id],
     );

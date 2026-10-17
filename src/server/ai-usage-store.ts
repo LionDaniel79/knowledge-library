@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { usdUnits, usdSchema, type UsageReservation } from "../lib/assist";
@@ -88,7 +89,7 @@ export const reserveAiUsage = (
   db: Database,
   owner: string,
   input: Parameters<typeof reserveInTransaction>[2],
-) => db.transaction((tx) => reserveInTransaction(tx, owner, input));
+) => withSyncWrite(db, owner, (tx) => reserveInTransaction(tx, owner, input));
 export async function markSendingInTransaction(
   tx: Executor,
   owner: string,
@@ -108,7 +109,7 @@ export async function markSendingInTransaction(
   return dto(row);
 }
 export const markAiUsageSending = (db: Database, owner: string, id: string) =>
-  db.transaction((tx) => markSendingInTransaction(tx, owner, id));
+  withSyncWrite(db, owner, (tx) => markSendingInTransaction(tx, owner, id));
 export type UsageOutcome =
   | { status: "unknown" }
   | { status: "not_sent" }
@@ -163,4 +164,5 @@ export const settleAiUsage = (
   owner: string,
   id: string,
   outcome: UsageOutcome,
-) => db.transaction((tx) => settleInTransaction(tx, owner, id, outcome));
+) =>
+  withSyncWrite(db, owner, (tx) => settleInTransaction(tx, owner, id, outcome));

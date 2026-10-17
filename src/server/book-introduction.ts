@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { introductionSchema } from "../lib/book-introduction";
@@ -43,7 +44,7 @@ export async function saveBookIntroduction(
 ) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const p = introductionSchema.parse(raw);
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     await readCurationSource(
       tx,
       owner,

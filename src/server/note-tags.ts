@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { type Database, LibraryError } from "./library-store";
@@ -45,7 +46,7 @@ export function createNoteTagStore(db: Database) {
     async remove(owner: string, raw: unknown) {
       requireOwner(owner);
       const command = input.parse(raw);
-      return db.transaction(async (tx) => {
+      return withSyncWrite(db, owner, async (tx) => {
         const opHash = createHash("sha256")
           .update(
             JSON.stringify(["removeNoteTag", command.tag, command.fingerprint]),

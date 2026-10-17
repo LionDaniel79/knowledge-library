@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { LibraryError, type Database } from "./library-store";
 export interface PdfCatalogDocument {
@@ -26,7 +27,7 @@ export async function importPdfCatalog(
     throw Error("PDF 범위 분류(scope)를 먼저 실행해 주세요.");
   let added = 0;
   for (let offset = 0; offset < files.length; offset += 250) {
-    const count = await db.transaction(async (tx) => {
+    const count = await withSyncWrite(db, owner, async (tx) => {
       const rows = files.slice(offset, offset + 250).map((d) => {
         const h = createHash("sha256")
           .update(owner + ":pdf:" + d.id)

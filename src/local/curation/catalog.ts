@@ -1,3 +1,4 @@
+import { syncQuery } from "../../server/sync/write";
 import { randomUUID } from "node:crypto";
 import { isbn13 } from "../../lib/bibliography";
 import { providerText as plain } from "../../lib/provider-text";
@@ -164,7 +165,9 @@ export async function collectBookReference(
   if (!apply) return { dryRun: true, applied: 0, duplicate: !!existing };
   const id = existing?.id ?? randomUUID();
   if (!existing)
-    await db.query(
+    await syncQuery(
+      db,
+      owner,
       "INSERT INTO library_reference_sources(id,owner_id,source_kind,source_id,source_version,url,provider,title,content_hash,excerpt,facts,edition_match) VALUES($1,$2,'book',$3,$4,$5,$6,$7,$8,$9,$10,'isbn')",
       [
         id,

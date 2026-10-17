@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { insertCandidate, mutateCandidate } from "./thought-candidates";
 import { readActiveNote } from "./active-note";
 import type { CandidateInput } from "../lib/thought-map/types";
@@ -212,7 +213,7 @@ export function createThoughtMapStore(db: Database) {
         }),
       )
       .digest("hex");
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       // Serialize this owner's taxonomy and decisions; note locks also protect source edits.
       await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "thought:" + owner,
@@ -270,7 +271,7 @@ export function createThoughtMapStore(db: Database) {
   }
   async function saveCandidate(owner: string, input: CandidateInput) {
     assertOwner(owner);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "thought:" + owner,
       ]);

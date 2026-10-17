@@ -1,3 +1,4 @@
+import { syncQuery, withSyncWrite } from "./sync/write";
 import { catalogPrecheck } from "../lib/catalog-precheck";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -70,7 +71,9 @@ export async function importCatalogReviewBatch(
         .digest("hex"),
     };
   });
-  const r = await db.query(
+  const r = await syncQuery(
+    db,
+    owner,
     `INSERT INTO library_catalog_reviews(id,owner_id,book_id,source_version,record,fingerprint,book_snapshot,document_versions)
  SELECT x.id,$1,b.id,b.version,x.record,x.fingerprint,
  jsonb_build_object('id',b.id,'title',b.title,'author',b.author,'publisher',b.publisher,'isbn',b.isbn,'coverUrl',b.cover_url,'version',b.version),
@@ -92,7 +95,7 @@ export async function importCatalogReview(
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   z.string().uuid().parse(input.bookId);
   const record = collectedReviewSchema.parse(input.record);
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const b = (
       await tx.query(
         `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE`,
@@ -196,7 +199,7 @@ export async function decideCatalogReview(
   const automatic = reviewer === "catalog_precheck";
   if (automatic && input.action !== "apply")
     throw new LibraryError(400, "자동 검토는 확실한 후보만 반영합니다.");
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const row = (
       await tx.query(
         "SELECT * FROM library_catalog_reviews WHERE owner_id=$1 AND id=$2 FOR UPDATE",

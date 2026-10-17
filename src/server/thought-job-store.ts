@@ -1,3 +1,4 @@
+import { withSyncWrite, syncQuery } from "./sync/write";
 import { mutateTopics } from "./thought-topics";
 import { readSourcePage } from "./thought-source-pages";
 import {
@@ -111,7 +112,7 @@ export function createThoughtJobStore(
   ): Promise<AnalysisJob | null> {
     assertOwner(owner);
     if (!diagnostic) return null;
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "jobs:" + owner,
       ]);
@@ -159,7 +160,9 @@ export function createThoughtJobStore(
     assertOwner(owner);
     return (
       (
-        await db.query(
+        await syncQuery(
+          db,
+          owner,
           "UPDATE library_thought_jobs SET lease_expires_at=$4,updated_at=$5 WHERE owner_id=$1 AND id=$2 AND lease_token=$3 AND status='running' AND lease_expires_at>$5 RETURNING id",
           [owner, id, token, new Date(+now + 120000), now],
         )
@@ -202,7 +205,7 @@ export function createThoughtJobStore(
     )
       throw new LibraryError(400, "분석 결과 형식을 확인해 주세요.");
     const digest = hash(result);
-    const completed = await db.transaction(async (tx) => {
+    const completed = await withSyncWrite(db, owner, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "thought:" + owner,
       ]);
@@ -292,7 +295,7 @@ export function createThoughtJobStore(
       "lease_expired",
     ];
     if (!allowed.includes(code)) code = "inference_failed";
-    await db.transaction(async (tx) => {
+    await withSyncWrite(db, owner, async (tx) => {
       const row = await leased(tx, owner, id, token, now, true);
       const terminal =
         row.attempts >= 3 ||
@@ -389,7 +392,7 @@ export function createThoughtJobStore(
   ) {
     assertOwner(owner);
     if (!diagnostic) return 0;
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "thought:" + owner,
       ]);
@@ -497,7 +500,9 @@ export function createThoughtJobStore(
     assertOwner(owner);
     if (!diagnostic) return 0;
     return (
-      await db.query(
+      await syncQuery(
+        db,
+        owner,
         "UPDATE library_thought_jobs SET status='queued',attempts=0,available_at=now(),error_code=NULL WHERE owner_id=$1 AND status='failed' RETURNING id",
         [owner],
       )

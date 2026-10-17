@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { previewNoteSelect, readReadingSummary } from "./record-catalog";
 import { exportCuration } from "./curation-export";
 import { randomUUID, createHash } from "node:crypto";
@@ -24,7 +25,7 @@ export interface Executor {
   query: (
     sql: string,
     params?: unknown[],
-  ) => Promise<{ rows: Record<string, any>[] }>;
+  ) => Promise<{ rows: Record<string, any>[]; rowCount?: number | null }>;
 }
 export interface Database extends Executor {
   transaction: <T>(fn: (tx: Executor) => Promise<T>) => Promise<T>;
@@ -278,7 +279,7 @@ export function createLibraryStore(db: Database) {
       .update(JSON.stringify({ type: cmd.type, payload: cmd.payload }))
       .digest("hex");
     try {
-      return await db.transaction(async (tx) => {
+      return await withSyncWrite(db, owner, async (tx) => {
         const claimed = await tx.query(
           "INSERT INTO library_operations(owner_id,request_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING request_id",
           [owner, cmd.requestId, fingerprint],

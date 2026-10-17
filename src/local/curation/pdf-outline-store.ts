@@ -1,3 +1,4 @@
+import { withSyncWrite } from "../../server/sync/write";
 import { randomUUID } from "node:crypto";
 import { pdfOutlineSchema, type PdfOutline } from "../../lib/pdf-outline";
 import type { SourceRef } from "../../lib/curation";
@@ -52,7 +53,7 @@ export async function retireUnusablePdfOutlines(
 ) {
   if (!owner || source.kind !== "book" || document.processingScope !== "full")
     return 0;
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const book = (
       await tx.query(
         "SELECT id FROM library_books WHERE owner_id=$1 AND id=$2 AND version::text=$3 FOR UPDATE",
@@ -104,7 +105,7 @@ export async function collectPdfOutline(
   const skip = (reason: string) => ({ applied: 0, reason });
   if (!owner || source.kind !== "book" || outline.method !== "embedded_outline")
     return skip("대상 확인 필요");
-  return db.transaction(async (tx) => {
+  return withSyncWrite(db, owner, async (tx) => {
     const book = (
       await tx.query(
         "SELECT * FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE",

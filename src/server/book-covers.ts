@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import sharp from "sharp";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -47,7 +48,7 @@ export function createCoverStore(db: Database) {
           "이미지가 너무 복잡합니다. 크기를 줄여 주세요.",
         );
       const hash = createHash("sha256").update(bytes).digest("hex");
-      return db.transaction(async (tx) => {
+      return withSyncWrite(db, owner, async (tx) => {
         await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
           owner + ":covers",
         ]);

@@ -1,3 +1,4 @@
+import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import {
   importPackageInput,
@@ -76,7 +77,7 @@ export function createImportStore(db: Database) {
   async function apply(owner: string, input: unknown) {
     requireOwner(owner);
     const data = importPackageInput.parse(input);
-    return db.transaction(async (tx) => {
+    return withSyncWrite(db, owner, async (tx) => {
       const summary = await summarize(tx, owner, data);
       const books = data.books.map((b) => ({
         id: entityId(owner, key(data.sourceLibraryId, "book", b.sourceId)),

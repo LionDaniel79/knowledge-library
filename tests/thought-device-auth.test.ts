@@ -8,6 +8,7 @@ let pg: PGlite, auth: ReturnType<typeof createDeviceAuth>;
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(await readFile("db/009_analysis_devices.sql", "utf8"));
+  await pg.exec(await readFile("db/026_device_sync.sql", "utf8"));
   const db: Database = {
     query: (s, p = []) => pg.query(s, p),
     transaction: (fn) =>

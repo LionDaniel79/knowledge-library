@@ -1,3 +1,5 @@
+import { createPoolDatabase } from "../src/server/sync/pool-database";
+import { syncQuery } from "../src/server/sync/write";
 /** Resumable, conservative enrichment. Original files/notes and user edits are preserved. */
 import { Pool } from "pg";
 import { createCurationStore } from "../src/server/curation-store";
@@ -315,7 +317,9 @@ try {
       const batch = patches
         .slice(offset, offset + 200)
         .map((p) => ({ ...p.next, before: p.old, revision: randomUUID() }));
-      const result = await pool.query(
+      const result = await syncQuery(
+        createPoolDatabase(pool),
+        owner,
         `WITH changed AS (UPDATE library_books b SET title=p.title,author=p.author,publisher=p.publisher,isbn=p.isbn,total_pages=p.total_pages,category=p.category,classification=p.classification,source_data=p.source_data,cover_url=p.cover_url,enrichment=p.enrichment,version=b.version+1 FROM jsonb_to_recordset($2::jsonb) AS p(id uuid,title text,author text,publisher text,isbn text,total_pages integer,category text,classification jsonb,source_data jsonb,cover_url text,enrichment jsonb,version integer) WHERE b.owner_id=$1 AND b.id=p.id AND b.version=p.version RETURNING b.*) INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) SELECT p.revision,$1,c.id,'enrichBibliography',p.before,to_jsonb(c) FROM changed c JOIN jsonb_to_recordset($2::jsonb) AS p(id uuid,revision uuid,before jsonb) ON c.id=p.id RETURNING entity_id`,
         [owner, JSON.stringify(batch)],
       );
