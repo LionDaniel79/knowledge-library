@@ -7,6 +7,7 @@ import {
   VALUE_PART_BYTES,
   type SyncPage,
   type SyncRow,
+  type OutboxEntry,
 } from "../../lib/replica/contracts";
 import type { SyncEntity } from "../../lib/replica/entities";
 const stats = z
@@ -44,6 +45,7 @@ const coverageInput = z
 export type SyncMeta = z.infer<typeof metaInput>;
 export type ReplicaCoverage = z.infer<typeof coverageInput>;
 export interface SyncTransport {
+  push?(entry: OutboxEntry, signal?: AbortSignal): Promise<unknown>;
   meta(inventory?: boolean, signal?: AbortSignal): Promise<SyncMeta>;
   scan(
     entity: SyncEntity,
@@ -143,6 +145,43 @@ export function createSyncTransport(
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   }
   return {
+    async push(entry, signal) {
+      const change = entry.command as { path: string; body: unknown };
+      const response = await fetcher(root + "/api/sync/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: entry.requestId,
+          family: entry.family,
+          path: change.path,
+          body: change.body,
+        }),
+        credentials: "same-origin",
+        redirect: "error",
+        cache: "no-store",
+        signal,
+      });
+      const bytes = await boundedBody(response, MAX_JSON_RESPONSE_BYTES);
+      let value: any;
+      try {
+        value = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        );
+      } catch {
+        throw new SyncHttpError(
+          response.status === 200 ? 502 : response.status,
+          "전송 결과를 확인하지 못했습니다. 입력은 보관됩니다.",
+        );
+      }
+      if (!response.ok)
+        throw new SyncHttpError(
+          response.status,
+          typeof value.error === "string"
+            ? value.error
+            : "변경 내용을 확인해 주세요.",
+        );
+      return value;
+    },
     meta: async (inventory = true, signal) =>
       metaInput.parse(
         await get("meta", { inventory: inventory ? "1" : "0" }, signal),

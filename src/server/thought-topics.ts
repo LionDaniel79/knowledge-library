@@ -13,6 +13,7 @@ export async function mutateTopics(
   owner: string,
   type: string,
   payload: unknown,
+  entityId?: string,
 ) {
   if (type === "proposeTopics") {
     const sources = (
@@ -83,7 +84,7 @@ export async function mutateTopics(
   let before: Record<string, any> | undefined, after: Record<string, any>;
   if (type === "upsertTopic") {
     const p = topicCommand.parse(payload),
-      id = p.id ?? randomUUID();
+      id = p.id ?? entityId ?? randomUUID();
     if (p.id) {
       before = await ownRow(tx, "library_topics", owner, p.id, true);
       checkVersion(before, p.expectedVersion ?? 0);
@@ -159,7 +160,7 @@ export async function mutateTopics(
       await tx.query(
         "INSERT INTO library_topic_memberships(id,owner_id,topic_id,source_kind,source_id,source_version,status,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(owner_id,topic_id,source_kind,source_id) DO UPDATE SET status=excluded.status,source_version=excluded.source_version,method=excluded.method,version=library_topic_memberships.version+1 RETURNING *",
         [
-          before?.id ?? randomUUID(),
+          before?.id ?? entityId ?? randomUUID(),
           owner,
           p.topicId,
           p.sourceKind,
@@ -198,7 +199,13 @@ export async function mutateTopics(
     after = (
       await tx.query(
         "INSERT INTO library_topic_links(id,owner_id,source_topic_id,target_topic_id,status,supporting_pairs) VALUES($1,$2,$3,$4,'suggested',$5) RETURNING *",
-        [randomUUID(), owner, a, b, JSON.stringify(p.supportingPairs)],
+        [
+          entityId ?? randomUUID(),
+          owner,
+          a,
+          b,
+          JSON.stringify(p.supportingPairs),
+        ],
       )
     ).rows[0];
   } else if (type === "decideTopicLink") {

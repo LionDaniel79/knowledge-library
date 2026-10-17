@@ -34,6 +34,7 @@ import {
 } from "./queries";
 import { createQueryWorker } from "./query-worker";
 import { createResourceReader } from "./resources";
+import type { QueuedChange } from "./optimistic";
 export class UnsupportedLocalRoute extends Error {}
 const indexEntities: SyncEntity[] = [
   "library_books",
@@ -56,16 +57,41 @@ const indexEntities: SyncEntity[] = [
   "library_cover_mirrors",
 ];
 const indexStamp = (state: {
+  localRevision?: number;
+  localEntityRevisions?: Partial<Record<SyncEntity, number>>;
   entityRevisions?: Partial<Record<SyncEntity, string>>;
 }) =>
   JSON.stringify(
-    indexEntities.map((e) => [e, state.entityRevisions?.[e] ?? "0"]),
+    indexEntities.map((e) => [
+      e,
+      state.entityRevisions?.[e] ?? "0",
+      state.localEntityRevisions?.[e] ?? 0,
+    ]),
   );
 export function createReplicaRepository(storage: ReplicaStorage) {
   const worker = createQueryWorker(storage.owner);
   let cached: { token: string; data: LocalIndex } | undefined,
     loading: Promise<LocalIndex> | undefined;
+  let overlayCache:
+    { token: string; rows: Map<string, RawRecord | null> } | undefined;
+  async function overlay(generation: string) {
+    const cp = await storage.checkpoint(generation),
+      token = generation + ":" + (cp?.localRevision ?? 0);
+    if (overlayCache?.token === token) return overlayCache.rows;
+    const rows = new Map<string, RawRecord | null>();
+    for (const entry of (await storage.listOutbox()).sort(
+      (a, b) => a.order - b.order || binaryCompare(a.requestId, b.requestId),
+    )) {
+      const change = entry.command as QueuedChange;
+      for (const e of change?.effects ?? [])
+        rows.set(e.entity + "\0" + e.key, e.after);
+    }
+    overlayCache = { token, rows };
+    return rows;
+  }
   async function* records(entity: SyncEntity, generation: string) {
+    const pending = await overlay(generation),
+      seen = new Set<string>();
     let after: string | undefined;
     while (true) {
       const p = await storage.readPage(entity, {
@@ -75,6 +101,13 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       });
       for (const row of p.rows)
         if (!row.deleted) {
+          const key = entity + "\0" + row.key;
+          seen.add(key);
+          if (pending.has(key)) {
+            const value = pending.get(key);
+            if (value) yield value;
+            continue;
+          }
           const value = JSON.parse(
             new TextDecoder("utf-8", { fatal: true }).decode(
               await readReplicaValue(storage, row, generation),
@@ -85,13 +118,20 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       after = p.after;
       if (!p.hasMore) break;
     }
+    for (const [key, value] of pending)
+      if (key.startsWith(entity + "\0") && !seen.has(key) && value) yield value;
   }
   async function raw(entity: SyncEntity, id: string, generation?: string) {
-    const row = await storage.readRow(
-      entity,
-      JSON.stringify(entityDefinition(entity).keys.length ? [id] : []),
-      generation,
+    generation ??= (await storage.checkpoint())?.generation;
+    const key = JSON.stringify(
+      entityDefinition(entity).keys.length ? [id] : [],
     );
+    if (generation) {
+      const pending = await overlay(generation),
+        fullKey = entity + "\0" + key;
+      if (pending.has(fullKey)) return pending.get(fullKey) ?? undefined;
+    }
+    const row = await storage.readRow(entity, key, generation);
     if (!row || row.deleted) return undefined;
     return JSON.parse(
       new TextDecoder("utf-8", { fatal: true }).decode(
@@ -512,7 +552,10 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       z.string().uuid().parse(id);
       const cp = await storage.checkpoint();
       if (!cp) throw new ReplicaQueryError(503, "기기 자료가 없습니다.");
-      const stamp = cp.entityRevisions?.library_revisions ?? "0";
+      const stamp =
+        (cp.entityRevisions?.library_revisions ?? "0") +
+        ":" +
+        (cp.localEntityRevisions?.library_revisions ?? 0);
       let indexed = (await storage.readIndex(
         "revision-index-v1",
         cp.generation,
@@ -543,7 +586,10 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         const latest = await storage.checkpoint();
         if (
           latest?.generation !== cp.generation ||
-          (latest.entityRevisions?.library_revisions ?? "0") !== stamp
+          (latest.entityRevisions?.library_revisions ?? "0") +
+            ":" +
+            (latest.localEntityRevisions?.library_revisions ?? 0) !==
+            stamp
         )
           throw new ReplicaQueryError(
             409,
@@ -587,16 +633,14 @@ export function createReplicaRepository(storage: ReplicaStorage) {
               category: n.bookCategory ?? "",
               version: n.version,
             })),
-            ...books.items
-              .slice(0, limit - notes.items.length)
-              .map((b) => ({
-                id: b.id,
-                kind: "book",
-                title: b.title,
-                text: [b.author, b.publisher].filter(Boolean).join(" · "),
-                category: b.category ?? "",
-                version: b.version,
-              })),
+            ...books.items.slice(0, limit - notes.items.length).map((b) => ({
+              id: b.id,
+              kind: "book",
+              title: b.title,
+              text: [b.author, b.publisher].filter(Boolean).join(" · "),
+              category: b.category ?? "",
+              version: b.version,
+            })),
           ],
         };
       }
@@ -729,6 +773,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     },
     invalidate() {
       cached = undefined;
+      overlayCache = undefined;
     },
     close() {
       worker.close();

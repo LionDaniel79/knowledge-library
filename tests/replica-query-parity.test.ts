@@ -256,7 +256,7 @@ it("matches server contracts for review detail, sources, thought events, researc
   ] as const)
     expect(clean(await repo.read(path)), path).toEqual(clean(server));
   const reviews = await readCatalogReviews(f.db, owner, {});
-  const id = reviews.items[0].id;
+  const id = reviews.items![0].id;
   expect(clean(await repo.read("/api/catalog-review?id=" + id))).toEqual(
     clean(await readCatalogReviews(f.db, owner, { id })),
   );

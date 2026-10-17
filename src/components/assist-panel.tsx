@@ -75,10 +75,14 @@ export function AssistPanel({
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => {
-      void load().catch((e) => setError(e.message));
+      void (async () => {
+        if (replica?.ready)
+          await replica.runtime.sync({ reason: "requested-ai-result" });
+        await load();
+      })().catch((e) => setError(e.message));
     }, 5000);
     return () => clearInterval(timer);
-  }, [active, load]);
+  }, [active, load, replica?.ready, replica?.runtime]);
   useEffect(() => {
     setPreview(null);
   }, [first, second, purpose, excerpt]);

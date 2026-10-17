@@ -10,6 +10,7 @@ const uuid = z.string().uuid(),
   reason = z.string().trim().max(2000);
 const command = z.object({
   requestId: uuid,
+  entityId: uuid.optional(),
   type: z.enum([
     "suggest",
     "connect",
@@ -65,6 +66,7 @@ export function createKnowledgeStore(db: Database) {
             namespace: "knowledge",
             type: c.type,
             payload: c.payload,
+            ...(c.entityId ? { entityId: c.entityId } : {}),
           }),
         )
         .digest("hex");
@@ -133,7 +135,7 @@ export function createKnowledgeStore(db: Database) {
           await tx.query(
             "INSERT INTO library_connections(id,owner_id,source_kind,source_id,target_kind,target_id,relation,status,reason,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(owner_id,source_kind,source_id,target_kind,target_id) DO NOTHING RETURNING *",
             [
-              randomUUID(),
+              (c.type === "connect" ? c.entityId : undefined) ?? randomUUID(),
               owner,
               p.sourceKind,
               p.sourceId,
@@ -248,7 +250,7 @@ export function createKnowledgeStore(db: Database) {
             question: z.string().trim().max(2000),
           })
           .parse(c.payload);
-        const id = randomUUID();
+        const id = c.entityId ?? randomUUID();
         const after = (
           await tx.query(
             "INSERT INTO library_research(id,owner_id,title,kind,question) VALUES($1,$2,$3,$4,$5) RETURNING *",
@@ -346,7 +348,7 @@ export function createKnowledgeStore(db: Database) {
           await tx.query(
             "INSERT INTO library_research_items(id,owner_id,research_id,note_id,snapshot) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_id,research_id,note_id) DO NOTHING RETURNING *",
             [
-              randomUUID(),
+              c.entityId ?? randomUUID(),
               owner,
               p.researchId,
               p.noteId,

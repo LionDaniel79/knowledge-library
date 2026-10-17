@@ -276,7 +276,13 @@ export function createLibraryStore(db: Database) {
     requiredOwner(owner);
     const cmd = commandInput.parse(input);
     const fingerprint = createHash("sha256")
-      .update(JSON.stringify({ type: cmd.type, payload: cmd.payload }))
+      .update(
+        JSON.stringify({
+          type: cmd.type,
+          payload: cmd.payload,
+          ...(cmd.entityId ? { entityId: cmd.entityId } : {}),
+        }),
+      )
       .digest("hex");
     try {
       return await withSyncWrite(db, owner, async (tx) => {
@@ -298,7 +304,7 @@ export function createLibraryStore(db: Database) {
             );
           return old.result as MutationResult;
         }
-        let id: string = randomUUID();
+        let id: string = cmd.entityId ?? randomUUID();
         let version = 1;
         let before: unknown = null;
         let after: unknown;

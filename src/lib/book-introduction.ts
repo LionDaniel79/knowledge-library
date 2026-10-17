@@ -21,4 +21,5 @@ export const introductionSchema = z.object({
   text: z.string().trim().min(1).max(8000),
   sources: z.array(introductionSourceSchema).max(10),
   requestId: z.string().uuid(),
+  entityId: z.string().uuid().optional(),
 });

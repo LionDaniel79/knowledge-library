@@ -4,6 +4,7 @@ import type { SyncTransport } from "./transport";
 import { SyncHttpError } from "./transport";
 import { bootstrapReplica } from "./bootstrap";
 import { pullReplica } from "./pull";
+import { pushReplica } from "./push";
 export function createReplicaCoordinator(input: {
   owner: string;
   storage: ReplicaStorage;
@@ -118,6 +119,39 @@ export function createReplicaCoordinator(input: {
         state = { ...current, lastSyncedAt };
       }
       if (!state) throw Error("기기 자료가 준비되지 않았습니다.");
+      if (transport.push && (await storage.listOutbox()).length) {
+        update({ phase: "pushing" });
+        await pushReplica({
+          storage,
+          send: (entry) => transport.push!(entry, options.signal),
+          pull: async () => {
+            const meta = await transport.meta(false, options.signal),
+              cp = (await storage.checkpoint())!;
+            if (
+              cp.epoch !== meta.epoch ||
+              BigInt(parseSyncCursor(cp.cursor, owner, meta.epoch).after) <
+                BigInt(meta.floor)
+            )
+              state = await bootstrapReplica({
+                owner,
+                storage,
+                transport,
+                signal: options.signal,
+                fresh: true,
+              });
+            else
+              state = await pullReplica({
+                owner,
+                storage,
+                transport,
+                meta,
+                signal: options.signal,
+              });
+          },
+        });
+        state = await storage.checkpoint();
+        if (!state) throw Error("기기 자료를 다시 확인해 주세요.");
+      }
       update({
         phase: "complete",
         rows: state.rows,

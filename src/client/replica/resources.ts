@@ -47,7 +47,10 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     if (!cp?.complete)
       throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
     const key = "resource-index-v1:" + e,
-      stamp = cp.entityRevisions?.[e] ?? "0";
+      stamp =
+        (cp.entityRevisions?.[e] ?? "0") +
+        ":" +
+        (cp.localEntityRevisions?.[e] ?? 0);
     let saved = await storage.readIndex(key, cp.generation);
     if (saved?.stamp !== stamp) {
       const rows = [];
@@ -85,7 +88,10 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
       const latest = await storage.checkpoint();
       if (
         latest?.generation !== cp.generation ||
-        (latest.entityRevisions?.[e] ?? "0") !== stamp
+        (latest.entityRevisions?.[e] ?? "0") +
+          ":" +
+          (latest.localEntityRevisions?.[e] ?? 0) !==
+          stamp
       )
         throw new ReplicaQueryError(
           409,
@@ -670,21 +676,19 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             }
             rows.sort(order);
           }
-          const items = rows
-            .slice(offset, offset + limit)
-            .map((r) => ({
-              ...fields(r, [
-                "id",
-                "book_id",
-                "title",
-                "candidate_title",
-                "isbn",
-                "status",
-                "version",
-                "precheck",
-              ]),
-              ...(group === "book" ? { candidateCount: r.candidateCount } : {}),
-            }));
+          const items = rows.slice(offset, offset + limit).map((r) => ({
+            ...fields(r, [
+              "id",
+              "book_id",
+              "title",
+              "candidate_title",
+              "isbn",
+              "status",
+              "version",
+              "precheck",
+            ]),
+            ...(group === "book" ? { candidateCount: r.candidateCount } : {}),
+          }));
           value = {
             items,
             total: rows.length,

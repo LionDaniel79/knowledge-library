@@ -210,6 +210,7 @@ export function createThoughtMapStore(db: Database) {
           namespace: "thought",
           type: c.type,
           payload: c.payload,
+          ...(c.entityId ? { entityId: c.entityId } : {}),
         }),
       )
       .digest("hex");
@@ -248,7 +249,7 @@ export function createThoughtMapStore(db: Database) {
           await tx.query(
             "INSERT INTO library_thought_events(id,owner_id,note_id,occurred_on,date_source,voice) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(owner_id,note_id) DO UPDATE SET occurred_on=excluded.occurred_on,date_source=excluded.date_source,voice=excluded.voice,version=library_thought_events.version+1 RETURNING *",
             [
-              before?.id ?? randomUUID(),
+              before?.id ?? c.entityId ?? randomUUID(),
               owner,
               p.noteId,
               p.occurredOn,
@@ -260,8 +261,15 @@ export function createThoughtMapStore(db: Database) {
         await reviseThought(tx, owner, after.id, c.type, before ?? null, after);
         result = { id: after.id, version: after.version };
       } else if (c.type === "connectThoughts" || c.type === "decideCandidate")
-        result = await mutateCandidate(tx, owner, c.type, c.payload);
-      else result = await mutateTopics(tx, owner, c.type, c.payload);
+        result = await mutateCandidate(
+          tx,
+          owner,
+          c.type,
+          c.payload,
+          c.entityId,
+        );
+      else
+        result = await mutateTopics(tx, owner, c.type, c.payload, c.entityId);
       await tx.query(
         "UPDATE library_operations SET result=$3 WHERE owner_id=$1 AND request_id=$2",
         [owner, c.requestId, JSON.stringify(result)],

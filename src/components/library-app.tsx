@@ -494,11 +494,13 @@ export function LibraryApp({
     try {
       await refresh();
       setMessage(
-        command.type === "emptyNoteTrash"
-          ? "휴지통의 기록을 영구 삭제했습니다."
-          : json.connectionsReady === false
-            ? "서재에 저장했습니다. 연결 후보는 사유의 지도에서 다시 찾을 수 있습니다."
-            : "서재에 저장했습니다.",
+        json.queued
+          ? "기기에 저장했습니다. 연결되면 동기화합니다."
+          : command.type === "emptyNoteTrash"
+            ? "휴지통의 기록을 영구 삭제했습니다."
+            : json.connectionsReady === false
+              ? "서재에 저장했습니다. 연결 후보는 사유의 지도에서 다시 찾을 수 있습니다."
+              : "서재에 저장했습니다.",
       );
       setFailure("");
     } catch {

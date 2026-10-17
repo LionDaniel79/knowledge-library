@@ -38,6 +38,7 @@ export async function insertCandidate(
   owner: string,
   input: CandidateInput,
   status: "pending" | "accepted" = "pending",
+  entityId?: string,
 ) {
   if (JSON.stringify(input).length > 100000)
     throw new LibraryError(413, "비교 결과가 너무 큽니다.");
@@ -132,7 +133,7 @@ export async function insertCandidate(
     await reviseThought(tx, owner, row.id, "refreshThoughtCandidate", old, row);
     return { id: row.id, version: row.version };
   }
-  const id = randomUUID(),
+  const id = entityId ?? randomUUID(),
     row = (
       await tx.query(
         "INSERT INTO library_evolution_candidates(id,owner_id,before_id,after_id,topic_id,before_record,after_record,comparison,provenance,context,pair_key,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
@@ -160,6 +161,7 @@ export async function mutateCandidate(
   owner: string,
   type: string,
   payload: unknown,
+  entityId?: string,
 ) {
   if (type === "connectThoughts") {
     const p = connectCommand.parse(payload),
@@ -239,6 +241,7 @@ export async function mutateCandidate(
         },
       },
       "accepted",
+      entityId,
     );
     const row = await ownRow(
       tx,

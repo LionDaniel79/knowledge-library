@@ -6,6 +6,7 @@ const uuid = z.string().uuid(),
   explanation = z.string().trim().min(1).max(1200);
 export const thoughtCommand = z.object({
   requestId: uuid,
+  entityId: uuid.optional(),
   type: z.enum([
     "setThoughtEvent",
     "upsertTopic",

@@ -2,6 +2,7 @@ import { UnsupportedLocalRoute } from "./repository";
 import { ReplicaQueryError } from "./queries";
 import type { LibraryRuntime } from "./runtime";
 import { onlineOnlyGet } from "./online-routes";
+import { commandFamily } from "./optimistic";
 let current: LibraryRuntime | null = null;
 export const isLocalReplicaReady = () => !!current?.getSnapshot().ready;
 export function registerLibraryRuntime(runtime: LibraryRuntime) {
@@ -32,6 +33,37 @@ export async function libraryRequest(
     runtime?.getSnapshot().ready &&
     (typeof location === "undefined" || url.origin === location.origin) &&
     url.pathname.startsWith("/api/");
+  if (local && method === "POST" && commandFamily(url.pathname)) {
+    try {
+      const body =
+        typeof init?.body === "string"
+          ? JSON.parse(init.body)
+          : input instanceof Request
+            ? await input.clone().json()
+            : null;
+      if (!body) throw Error("저장할 내용을 확인해 주세요.");
+      // Same-file verification needs the external PC's original files.
+      if (!(
+        url.pathname === "/api/book-relations" &&
+        body.relation === "same_file" &&
+        body.state === "accepted"
+      ))
+        return Response.json(await runtime.queue(url.pathname, body), {
+          headers: {
+            "Cache-Control": "private, no-store",
+            "X-Library-Source": "device",
+          },
+        });
+    } catch (error) {
+      return Response.json(
+        { error: (error as Error).message },
+        {
+          status: error instanceof ReplicaQueryError ? error.status : 400,
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
+    }
+  }
   if (local && method === "GET") {
     init?.signal?.throwIfAborted();
     try {

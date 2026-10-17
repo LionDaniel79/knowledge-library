@@ -4,6 +4,7 @@ import type { ReplicaStorage, ReplicaGeneration } from "./storage";
 import { createReplicaRepository } from "./repository";
 import { createReplicaCoordinator } from "./coordinator";
 import { createSyncTransport, SyncHttpError } from "./transport";
+import { queueReplicaCommand } from "./outbox";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
   const response = await fetch("/api/sync/session", {
     cache: "no-store",
@@ -64,9 +65,15 @@ export function createLibraryRuntime(
     snapshot = Object.freeze({ ...snapshot, ...patch });
     for (const listener of listeners) listener();
   }
-  const unsubscribe = coordinator.subscribe(() =>
-    emit({ status: coordinator.getStatus() }),
-  );
+  const unsubscribe = coordinator.subscribe(() => {
+    const status = coordinator.getStatus();
+    emit({
+      status:
+        active && status.phase === "complete"
+          ? { ...status, phase: "checking" }
+          : status,
+    });
+  });
   function verifyOwner(actual: string) {
     if (actual !== owner)
       throw new SyncHttpError(403, "로그인한 서재 계정이 변경되었습니다.");
@@ -78,22 +85,26 @@ export function createLibraryRuntime(
     rebuild?: boolean;
   }): Promise<SyncStatus> {
     if (active) {
-      if (options.reason === "server-save")
+      if (["server-save", "local-save"].includes(options.reason))
         return active.then(() => sync(options));
       return active;
     }
+    emit({ status: { ...snapshot.status, phase: "preparing", error: "" } });
     active = Promise.resolve()
       .then(async () => {
         try {
-          if (!verified) verifyOwner(await verifiedSyncOwner(abort.signal));
+          verifyOwner(await verifiedSyncOwner(abort.signal));
           const status = await coordinator.syncReplica({
             ...options,
             signal: abort.signal,
           });
           const cp = await storage.checkpoint(),
-            token = cp ? cp.generation + "\0" + cp.cursor : "";
+            token = cp
+              ? cp.generation + "\0" + cp.cursor + ":" + (cp.localRevision ?? 0)
+              : "";
           emit({
             ready: !!cp?.complete,
+            status,
             revision: snapshot.revision + (token !== dataToken ? 1 : 0),
             authRequired: false,
           });
@@ -141,6 +152,7 @@ export function createLibraryRuntime(
         } catch (error) {
           const authRequired =
             error instanceof SyncHttpError && error.status === 401;
+          if (authRequired) verified = false;
           emit({
             authRequired,
             status: {
@@ -169,6 +181,26 @@ export function createLibraryRuntime(
     repository,
     coordinator,
     sync,
+    async queue(path: string, body: unknown) {
+      const result = await queueReplicaCommand({
+        storage,
+        repository,
+        path,
+        body,
+      });
+      const pending = await storage.listOutbox();
+      emit({
+        revision: snapshot.revision + 1,
+        status: {
+          ...snapshot.status,
+          pending: pending.filter((e) =>
+            ["pending", "sending"].includes(e.state),
+          ).length,
+        },
+      });
+      void sync({ reason: "local-save" }).catch(() => {});
+      return result;
+    },
     verifyOwner,
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {

@@ -1,0 +1,615 @@
+import { z } from "zod";
+import { introductionSchema } from "../../lib/book-introduction";
+import { reviewDecisionSchema } from "../../lib/catalog-review";
+import {
+  bookInput,
+  noteInput,
+  dateInput,
+  commandInput,
+} from "../../lib/domain";
+import type { RawRecord } from "../../lib/replica/projections";
+import { projectNote } from "../../lib/replica/projections";
+import type { SyncEntity } from "../../lib/replica/entities";
+import { syncKey } from "../../lib/replica/entities";
+import { ReplicaQueryError } from "./queries";
+import type { ReplicaRepository } from "./repository";
+import {
+  resolveThoughtRecord,
+  withEvent,
+  contentHash,
+} from "../../lib/thought-map/records";
+import {
+  eventCommand,
+  topicCommand,
+  assignmentCommand,
+  linkCommand,
+  decideLinkCommand,
+  connectCommand,
+  decisionCommand,
+  thoughtCommand,
+} from "../../lib/thought-map/commands";
+import type { OutboxEntry } from "../../lib/replica/contracts";
+export interface OptimisticEffect {
+  entity: SyncEntity;
+  key: string;
+  after: RawRecord | null;
+}
+export interface QueuedChange {
+  path: string;
+  body: any;
+  at: string;
+  base: any;
+  effects: OptimisticEffect[];
+  result: any;
+  ack?: unknown;
+  error?: string;
+  inputHash: string;
+}
+export function commandFamily(path: string): OutboxEntry["family"] | null {
+  return path === "/api/library"
+    ? "library"
+    : path === "/api/knowledge"
+      ? "knowledge"
+      : path === "/api/thought-map"
+        ? "thought-map"
+        : path === "/api/book-exclusions"
+          ? "exclusions"
+          : [
+                "/api/catalog-review",
+                "/api/curation",
+                "/api/book-introduction",
+                "/api/note-tags",
+                "/api/book-relations",
+              ].includes(path)
+            ? "catalog"
+            : null;
+}
+export async function prepareOptimistic(
+  repository: ReplicaRepository,
+  path: string,
+  original: any,
+  at: string,
+) {
+  const body = structuredClone(original),
+    effects: OptimisticEffect[] = [],
+    id = body.entityId ?? body.payload?.id ?? body.id ?? crypto.randomUUID();
+  let entityId = id,
+    base: any = null,
+    result: any = { id, version: 1 };
+  const put = (entity: SyncEntity, after: RawRecord) =>
+    effects.push({ entity, key: syncKey(entity, after), after });
+  const remove = (entity: SyncEntity, row: RawRecord) =>
+    effects.push({ entity, key: syncKey(entity, row), after: null });
+  const own = async (entity: SyncEntity, key: string) => {
+    z.string().uuid().parse(key);
+    const row = await repository.raw(entity, key);
+    if (!row) throw new ReplicaQueryError(404, "자료를 찾을 수 없습니다.");
+    return row;
+  };
+  const check = (row: RawRecord | undefined, v: number) => {
+    if ((row?.version ?? 0) !== v)
+      throw new ReplicaQueryError(
+        409,
+        "기기에 저장된 내용이 변경되었습니다. 입력을 확인해 주세요.",
+      );
+  };
+  const edit = (entity: SyncEntity, row: RawRecord, value: RawRecord) => {
+    base = row;
+    entityId = row.id;
+    const after = { ...row, ...value, version: (row.version ?? 0) + 1 };
+    put(entity, after);
+    result = { id: row.id, version: after.version };
+    return after;
+  };
+  const note = async (noteId: string) => {
+    const row = await own("library_notes", noteId),
+      trash = await repository.raw("library_note_trash", noteId);
+    if (trash?.restored_at === null)
+      throw new ReplicaQueryError(409, "휴지통에 있는 기록입니다.");
+    return row;
+  };
+  if (path === "/api/library") {
+    const cmd = commandInput.parse(body),
+      p: any = cmd.payload;
+    body.entityId = id;
+    if (cmd.type === "addBook" || cmd.type === "editBook") {
+      const value = bookInput.parse(p),
+        old = cmd.type === "editBook" ? await own("library_books", p.id) : null;
+      if (old) check(old, p.expectedVersion);
+      const after: RawRecord = {
+        ...(old ?? {
+          id,
+          created_at: at,
+          source_data: null,
+          source_key: null,
+          classification: {},
+          enrichment: {},
+        }),
+        title: value.title,
+        author: value.author,
+        publisher: value.publisher,
+        isbn: value.isbn,
+        formats: value.formats,
+        total_pages: value.totalPages,
+        shelf: value.shelf,
+        tags: value.tags,
+        category: value.category,
+        bookshelves: value.bookshelves,
+        cover_url: value.coverUrl,
+        version: (old?.version ?? 0) + 1,
+      };
+      base = old;
+      put("library_books", after);
+      result = { id: after.id, version: after.version };
+      entityId = after.id;
+    } else if (cmd.type === "addNote" || cmd.type === "editNote") {
+      const value = noteInput.parse(p),
+        old = cmd.type === "editNote" ? await note(p.id) : null;
+      if (old) check(old, p.expectedVersion);
+      if (value.bookId) await own("library_books", value.bookId);
+      const after: RawRecord = {
+        ...(old ?? { id, created_at: at, source_data: null, source_key: null }),
+        book_id: value.bookId,
+        title: value.title,
+        content: value.content,
+        kind: value.kind,
+        page: value.page,
+        tags: value.tags,
+        updated_at: at,
+        version: (old?.version ?? 0) + 1,
+      };
+      base = old;
+      put("library_notes", after);
+      result = { id: after.id, version: after.version };
+      entityId = after.id;
+    } else if (cmd.type === "createShelf") {
+      const name = z.string().trim().min(1).max(80).parse(p.name);
+      if ((await repository.index()).shelves.includes(name))
+        throw new ReplicaQueryError(409, "이미 있는 책장입니다.");
+      put("library_shelves", { id, name, created_at: at });
+    } else if (cmd.type === "startReading") {
+      await own("library_books", p.bookId);
+      put("library_cycles", {
+        id,
+        book_id: p.bookId,
+        status: "reading",
+        started_on: p.startedOn == null ? null : dateInput.parse(p.startedOn),
+        completed_on: null,
+        current_page: 0,
+        version: 1,
+        created_at: at,
+      });
+    } else if (
+      ["updateProgress", "completeReading", "editCompletion"].includes(cmd.type)
+    ) {
+      const old = await own("library_cycles", p.id);
+      check(old, p.expectedVersion);
+      if (cmd.type === "updateProgress") {
+        const current_page = z
+          .number()
+          .int()
+          .min(0)
+          .max(100000)
+          .parse(p.currentPage);
+        const b = await own("library_books", old.book_id);
+        if (
+          old.status !== "reading" ||
+          (b.total_pages && current_page > b.total_pages)
+        )
+          throw new ReplicaQueryError(400, "읽는 쪽수를 확인해 주세요.");
+        edit("library_cycles", old, { current_page });
+      } else {
+        const completed_on = dateInput.parse(p.completedOn),
+          b = await own("library_books", old.book_id);
+        if (
+          (cmd.type === "completeReading"
+            ? old.status !== "reading"
+            : old.status !== "completed") ||
+          (old.started_on && completed_on < old.started_on)
+        )
+          throw new ReplicaQueryError(409, "독서 상태와 날짜를 확인해 주세요.");
+        edit("library_cycles", old, {
+          status: "completed",
+          completed_on,
+          current_page: b.total_pages ?? old.current_page,
+        });
+      }
+    } else if (cmd.type === "deleteNote" || cmd.type === "restoreNote") {
+      const old = await own("library_notes", p.id);
+      check(old, p.expectedVersion);
+      const trash = await repository.raw("library_note_trash", p.id);
+      if ((trash?.restored_at === null) !== (cmd.type === "restoreNote"))
+        throw new ReplicaQueryError(409, "휴지통 상태가 변경되었습니다.");
+      edit("library_notes", old, { updated_at: at });
+      put("library_note_trash", {
+        id: p.id,
+        deleted_at: trash?.deleted_at ?? at,
+        restored_at: cmd.type === "restoreNote" ? at : null,
+      });
+    } else if (cmd.type === "emptyNoteTrash") {
+      const rows = z
+        .array(
+          z.object({
+            id: z.string().uuid(),
+            expectedVersion: z.number().int().positive(),
+          }),
+        )
+        .min(1)
+        .max(10000)
+        .parse(p.notes);
+      for (const n of rows) {
+        const old = await own("library_notes", n.id);
+        check(old, n.expectedVersion);
+        const trash = await own("library_note_trash", n.id);
+        if (trash.restored_at !== null)
+          throw new ReplicaQueryError(409, "휴지통 상태가 변경되었습니다.");
+        remove("library_notes", old);
+        remove("library_note_trash", trash);
+      }
+      result = { id, version: 1 };
+    }
+  } else if (path === "/api/knowledge") {
+    const p = body.payload;
+    body.entityId = id;
+    if (body.type === "createResearch") {
+      put("library_research", {
+        id,
+        title: z.string().trim().min(1).max(300).parse(p.title),
+        kind: z.enum(["sermon", "thesis"]).parse(p.kind),
+        question: z.string().trim().max(2000).parse(p.question),
+        created_at: at,
+      });
+    } else if (body.type === "addResearchNote") {
+      await own("library_research", p.researchId);
+      const n = await note(p.noteId),
+        b = n.book_id ? await own("library_books", n.book_id) : null;
+      put("library_research_items", {
+        id,
+        research_id: p.researchId,
+        note_id: p.noteId,
+        snapshot: {
+          note: { ...projectNote(n), sourceData: n.source_data },
+          book: b
+            ? {
+                id: b.id,
+                title: b.title,
+                author: b.author,
+                publisher: b.publisher,
+                isbn: b.isbn,
+              }
+            : null,
+        },
+        created_at: at,
+      });
+    } else if (body.type === "placeResearchItem") {
+      await own("library_research_items", p.itemId);
+      const old = await repository.raw("library_research_placements", p.itemId);
+      check(old, p.expectedVersion);
+      base = old;
+      entityId = p.itemId;
+      put("library_research_placements", {
+        id: p.itemId,
+        role: z
+          .enum([
+            "question",
+            "claim",
+            "evidence",
+            "counterargument",
+            "background",
+          ])
+          .parse(p.role),
+        section: z.string().trim().max(300).parse(p.section),
+        position: z.number().int().positive().max(100000).parse(p.position),
+        comment: z.string().max(10000).parse(p.comment),
+        state: z.enum(["active", "removed"]).parse(p.state),
+        version: (old?.version ?? 0) + 1,
+        updated_at: at,
+      });
+      result = { id: entityId, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "connect" || body.type === "editConnection") {
+      const relation = z
+          .enum(["related", "supports", "challenges", "revises"])
+          .parse(p.relation),
+        reason = z.string().trim().max(2000).parse(p.reason);
+      if (body.type === "editConnection") {
+        const old = await own("library_connections", p.id);
+        check(old, p.expectedVersion);
+        edit("library_connections", old, {
+          relation,
+          reason,
+          status: z.enum(["suggested", "accepted", "rejected"]).parse(p.status),
+        });
+      } else {
+        await own(
+          p.sourceKind === "book" ? "library_books" : "library_notes",
+          p.sourceId,
+        );
+        await own(
+          p.targetKind === "book" ? "library_books" : "library_notes",
+          p.targetId,
+        );
+        if (p.sourceId === p.targetId && p.sourceKind === p.targetKind)
+          throw new ReplicaQueryError(400, "다른 자료를 선택해 주세요.");
+        put("library_connections", {
+          id,
+          source_kind: z.enum(["book", "note"]).parse(p.sourceKind),
+          source_id: p.sourceId,
+          target_kind: z.enum(["book", "note"]).parse(p.targetKind),
+          target_id: p.targetId,
+          relation,
+          reason,
+          status: "accepted",
+          method: "manual",
+          version: 1,
+          created_at: at,
+        });
+      }
+    } else if (body.type !== "suggest")
+      throw new ReplicaQueryError(400, "허용하지 않은 변경입니다.");
+  } else if (path === "/api/thought-map") {
+    thoughtCommand.parse(body);
+    body.entityId = id;
+    const p = body.payload;
+    if (body.type === "setThoughtEvent") {
+      const v = eventCommand.parse(p);
+      await note(v.noteId);
+      const old = (await repository.all("library_thought_events")).find(
+        (e) => e.note_id === v.noteId,
+      );
+      check(old, v.expectedVersion);
+      base = old;
+      entityId = old?.id ?? id;
+      put("library_thought_events", {
+        id: entityId,
+        note_id: v.noteId,
+        occurred_on: v.occurredOn,
+        date_source: v.occurredOn ? "user" : "unknown",
+        voice: v.voice,
+        version: (old?.version ?? 0) + 1,
+      });
+      result = { id: entityId, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "upsertTopic") {
+      const v = topicCommand.parse(p),
+        old = v.id ? await own("library_topics", v.id) : null;
+      if (old) check(old, v.expectedVersion ?? 0);
+      base = old;
+      entityId = old?.id ?? id;
+      put("library_topics", {
+        id: entityId,
+        name: v.name,
+        parent_id: v.parentId,
+        aliases: v.aliases,
+        description: v.description,
+        kdc_codes: v.kdcCodes,
+        confirmed: true,
+        version: (old?.version ?? 0) + 1,
+        created_at: old?.created_at ?? at,
+      });
+      result = { id: entityId, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "assignTopic") {
+      const v = assignmentCommand.parse(p);
+      await own("library_topics", v.topicId);
+      const old = (await repository.all("library_topic_memberships")).find(
+        (m) =>
+          m.topic_id === v.topicId &&
+          m.source_kind === v.sourceKind &&
+          m.source_id === v.sourceId,
+      );
+      check(old, v.expectedVersion ?? 0);
+      base = old;
+      entityId = old?.id ?? id;
+      put("library_topic_memberships", {
+        id: entityId,
+        topic_id: v.topicId,
+        source_kind: v.sourceKind,
+        source_id: v.sourceId,
+        source_version: v.sourceVersion,
+        status: v.status,
+        method: "manual",
+        evidence: [],
+        version: (old?.version ?? 0) + 1,
+      });
+      result = { id: entityId, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "linkTopics") {
+      const v = linkCommand.parse(p);
+      put("library_topic_links", {
+        id,
+        source_topic_id: v.sourceTopicId,
+        target_topic_id: v.targetTopicId,
+        status: "suggested",
+        supporting_pairs: v.supportingPairs,
+        version: 1,
+      });
+    } else if (body.type === "decideTopicLink") {
+      const v = decideLinkCommand.parse(p),
+        old = await own("library_topic_links", v.id);
+      check(old, v.expectedVersion);
+      edit("library_topic_links", old, { status: v.status });
+    } else if (body.type === "connectThoughts") {
+      const v = connectCommand.parse(p),
+        events = await repository.all("library_thought_events"),
+        record = async (key: string) =>
+          withEvent(
+            resolveThoughtRecord(projectNote(await note(key))),
+            events.find((e) => e.note_id === key)
+              ? ({
+                  ...events.find((e) => e.note_id === key)!,
+                  occurredOn: events.find((e) => e.note_id === key)!
+                    .occurred_on,
+                  eventVersion: events.find((e) => e.note_id === key)!.version,
+                } as any)
+              : undefined,
+          ),
+        before = await record(v.beforeId),
+        after = await record(v.afterId),
+        evidence = (r: any) => {
+          const quote = Array.from(r.content as string)
+            .slice(0, 800)
+            .join("");
+          return {
+            noteId: r.id,
+            noteVersion: r.version,
+            start: 0,
+            end: quote.length,
+            quote,
+          };
+        };
+      put("library_evolution_candidates", {
+        id,
+        before_id: before.id,
+        after_id: after.id,
+        topic_id: v.topicId ?? null,
+        before_record: before,
+        after_record: after,
+        comparison: {
+          relation: v.relation,
+          before: v.reviewedRecords?.before ?? evidence(before),
+          after: v.reviewedRecords?.after ?? evidence(after),
+          explanation: v.explanation,
+        },
+        context: [],
+        provenance: {
+          modelDigest: "manual",
+          promptVersion: "manual",
+          retrievalVersion: "manual",
+        },
+        pair_key: contentHash([before.id, after.id, v.topicId ?? ""].join(":")),
+        status: "accepted",
+        version: 1,
+        created_at: at,
+      });
+    } else if (body.type === "decideCandidate") {
+      const v = decisionCommand.parse(p),
+        old = await own("library_evolution_candidates", v.id);
+      check(old, v.expectedVersion);
+      edit("library_evolution_candidates", old, {
+        status:
+          v.decision === "accept"
+            ? "accepted"
+            : v.decision === "reject"
+              ? "rejected"
+              : "pending",
+        comparison: {
+          ...old.comparison,
+          relation: v.relation,
+          explanation: v.explanation,
+        },
+      });
+    }
+  } else if (path === "/api/curation") {
+    const old = await own("library_curation_items", body.id);
+    check(old, body.version);
+    edit("library_curation_items", old, {
+      value: body.value,
+      state: z.enum(["active", "hidden"]).parse(body.state),
+    });
+  } else if (path === "/api/book-introduction") {
+    introductionSchema.parse(body);
+    body.entityId = id;
+    await own("library_books", body.bookId);
+    const old = (await repository.all("library_book_introductions")).find(
+      (r) => r.book_id === body.bookId,
+    );
+    check(old, body.expectedVersion);
+    base = old;
+    entityId = old?.id ?? id;
+    put("library_book_introductions", {
+      id: entityId,
+      book_id: body.bookId,
+      book_version: body.bookVersion,
+      text: body.text.trim(),
+      sources: body.sources,
+      version: (old?.version ?? 0) + 1,
+      request_id: body.requestId,
+      created_at: old?.created_at ?? at,
+      updated_at: at,
+    });
+    result = { id: entityId, version: (old?.version ?? 0) + 1 };
+  } else if (path === "/api/book-exclusions") {
+    const old = await own("library_book_exclusions", body.id);
+    check(old, body.expectedVersion);
+    edit("library_book_exclusions", old, { state: "restored", updated_at: at });
+  } else if (path === "/api/note-tags") {
+    const tag = z.string().trim().min(1).max(40).parse(body.tag),
+      all = await repository.all("library_notes");
+    for (const n of all)
+      if ((n.tags ?? []).includes(tag))
+        put("library_notes", {
+          ...n,
+          tags: n.tags.filter((t: string) => t !== tag),
+          version: n.version + 1,
+          updated_at: at,
+        });
+    result = { removed: effects.length };
+  } else if (path === "/api/catalog-review") {
+    reviewDecisionSchema.parse(body);
+    const old = await own("library_catalog_reviews", body.id);
+    check(old, body.expectedVersion);
+    edit("library_catalog_reviews", old, {
+      status:
+        body.action === "apply"
+          ? "applied"
+          : body.action === "reject"
+            ? "rejected"
+            : "deferred",
+    });
+    if (body.action === "apply") {
+      if (!body.sameEdition || !body.fields.length)
+        throw new ReplicaQueryError(400, "판본과 반영할 항목을 확인해 주세요.");
+      const book = await own("library_books", old.book_id);
+      check(book, old.source_version);
+      const selected: any = {};
+      for (const field of body.fields)
+        selected[field === "coverUrl" ? "cover_url" : field] =
+          old.record.facts[field];
+      put("library_books", { ...book, ...selected, version: book.version + 1 });
+    }
+  } else if (path === "/api/book-relations") {
+    if (body.relation === "same_file" && body.state === "accepted")
+      throw new ReplicaQueryError(
+        409,
+        "파일 확인은 원본이 있는 PC에 연결해 주세요.",
+      );
+    body.entityId = id;
+    const books = await Promise.all([
+        own("library_books", body.leftId),
+        own("library_books", body.rightId),
+      ]),
+      ids = [body.leftId, body.rightId].sort(),
+      old = (await repository.all("library_book_relations")).find(
+        (r) => r.left_id === ids[0] && r.right_id === ids[1],
+      );
+    check(old, body.expectedVersion);
+    base = old;
+    entityId = old?.id ?? id;
+    put("library_book_relations", {
+      id: entityId,
+      left_id: ids[0],
+      right_id: ids[1],
+      relation: body.relation,
+      state: body.state,
+      reason: body.reason,
+      evidence: { books, file: null, confirmedAt: at },
+      version: (old?.version ?? 0) + 1,
+      created_at: old?.created_at ?? at,
+    });
+    result = { id: entityId, version: (old?.version ?? 0) + 1 };
+  } else throw new ReplicaQueryError(400, "허용하지 않은 변경입니다.");
+  const primary = effects.find((e) => e.after?.id === entityId);
+  if (primary)
+    put("library_revisions", {
+      id: body.requestId,
+      entity_id: path === "/api/book-introduction" ? body.bookId : entityId,
+      action: body.type ?? path.slice(5),
+      before_data: base ?? null,
+      after_data: primary.after,
+      created_at: at,
+    });
+  return {
+    body,
+    effects,
+    entityId,
+    base,
+    result: { ...result, queued: true, connectionsReady: true },
+  };
+}

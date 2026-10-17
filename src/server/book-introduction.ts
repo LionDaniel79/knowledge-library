@@ -84,7 +84,7 @@ export async function saveBookIntroduction(
     await tx.query(
       `INSERT INTO library_book_introductions(id,owner_id,book_id,book_version,text,sources,version,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(owner_id,book_id) DO UPDATE SET book_version=excluded.book_version,text=excluded.text,sources=excluded.sources,version=excluded.version,request_id=excluded.request_id,updated_at=now()`,
       [
-        old?.id ?? randomUUID(),
+        old?.id ?? p.entityId ?? randomUUID(),
         owner,
         p.bookId,
         p.bookVersion,

@@ -163,6 +163,7 @@ test("puts real change synchronization left of add book and opens local books, i
   const sync = page.getByRole("button", { name: "동기화", exact: true }),
     add = page.getByRole("button", { name: "책 추가", exact: true });
   await expect(sync).toBeEnabled();
+  await expect(page.getByText("동기화 완료", { exact: true })).toBeVisible();
   const a = await sync.boundingBox(),
     b = await add.boundingBox();
   expect(a!.x + a!.width).toBeLessThanOrEqual(b!.x + 1);

@@ -5,6 +5,7 @@ import { LibraryError, type Database, type Executor } from "./library-store";
 import { contentHash } from "./curation-store";
 const command = z.object({
   requestId: z.string().uuid(),
+  entityId: z.string().uuid().optional(),
   leftId: z.string().uuid(),
   rightId: z.string().uuid(),
   leftVersion: z.number().int().positive(),
@@ -97,7 +98,7 @@ export function createBookRelationStore(
         await tx.query(
           "INSERT INTO library_book_relations(id,owner_id,left_id,right_id,relation,state,reason,evidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(owner_id,left_id,right_id) DO UPDATE SET relation=excluded.relation,state=excluded.state,reason=excluded.reason,evidence=excluded.evidence,version=library_book_relations.version+1 RETURNING *",
           [
-            old?.id ?? randomUUID(),
+            old?.id ?? p.entityId ?? randomUUID(),
             owner,
             ...ids,
             p.relation,

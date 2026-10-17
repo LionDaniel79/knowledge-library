@@ -204,10 +204,10 @@ type OutboxEntry = {
 
 **Interfaces:** `queueReplicaCommand(storage,entry): Promise<void>`, `pushReplica({owner,storage,transport}): Promise<PushReport>`. `PushReport`는 확정한 요청·남은 요청·충돌·실패를 구분한다. 서버는 family별 기존 명령 검증·권한·version/requestId를 사용하며 임의 행 업로드를 허용하지 않는다.
 
-- [ ] RED: 같은 메모를 오프라인에서 3번 수정, 서버 성공 뒤 응답 유실, 재시작, 새 책과 메모의 의존성, 편집 뒤 오래된 응답 수신을 검증한다.
-- [ ] 실행: `vitest run tests/replica-outbox.test.ts tests/sync-commands.test.ts`, `playwright test e2e/replica-editing.spec.ts`.
-- [ ] 표시용 변경과 보낼 명령을 원자적으로 저장한다. 후속 입력을 과거 명령의 성공 응답으로 덮어쓰지 않는다. 새 UUID 검증과 기존 API 호환성을 유지하고 거절된 입력을 보존한다.
-- [ ] AI를 자동 실행하지 않고 비용 예약이 중복되지 않으며 서버 응답으로 새 입력이 사라지지 않는지 확인한 뒤 커밋한다.
+- [x] RED: 같은 메모를 오프라인에서 3번 수정, 서버 성공 뒤 응답 유실, 재시작, 새 책과 메모의 의존성, 편집 뒤 오래된 응답 수신을 검증한다.
+- [x] 실행: `vitest run tests/replica-outbox.test.ts tests/sync-commands.test.ts`, `playwright test e2e/replica-editing.spec.ts`.
+- [x] 표시용 변경과 보낼 명령을 원자적으로 저장한다. 후속 입력을 과거 명령의 성공 응답으로 덮어쓰지 않는다. 새 UUID 검증과 기존 API 호환성을 유지하고 거절된 입력을 보존한다.
+- [x] AI를 자동 실행하지 않고 비용 예약이 중복되지 않으며 서버 응답으로 새 입력이 사라지지 않는지 확인한 뒤 커밋한다.
 
 ### Task 13: 충돌 해결과 기존 오프라인 기록 이전
 
