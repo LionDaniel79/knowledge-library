@@ -258,6 +258,7 @@ export const commandInput = z.object({
     "editNote",
     "deleteNote",
     "restoreNote",
+    "emptyNoteTrash",
   ]),
   payload: z.unknown(),
 });

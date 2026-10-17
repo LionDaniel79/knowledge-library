@@ -539,10 +539,11 @@ export function LibraryForm({
                   placeholder="책에서 만난 문장과 나의 생각을 구분해 남겨 보세요."
                 />
               </label>
-              <p className="form-hint">
-                하이라이트는 직접 확인한 원문과 쪽수를 입력합니다. 수정해도 이전
-                내용은 이력에 남습니다.
-              </p>
+              {noteKind === "highlight" && (
+                <p className="form-hint">
+                  책에서 확인한 문장과 쪽수를 적어 주세요.
+                </p>
+              )}
             </>
           )}
           {editor.kind === "start" && (

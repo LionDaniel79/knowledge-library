@@ -4,7 +4,7 @@ import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
 import { OfflineDrafts } from "./offline-drafts";
 import { newDraft, writeDraft, offlineOwnerKey } from "@/lib/offline-drafts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Menu,
@@ -150,6 +150,12 @@ export function LibraryApp({
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [openingNote, setOpeningNote] = useState<string | null>(null);
+  const noteRequest = useRef<{
+    id: string;
+    controller: AbortController;
+  } | null>(null);
+  useEffect(() => () => noteRequest.current?.controller.abort(), []);
   const [detail, setDetail] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [failure, setFailure] = useState("");
@@ -393,9 +399,18 @@ export function LibraryApp({
       if (note) setEditor({ kind: "note", note });
       return;
     }
+    if (noteRequest.current?.id === id) return;
+    noteRequest.current?.controller.abort();
+    const controller = new AbortController();
+    noteRequest.current = { id, controller };
+    setOpeningNote(id);
     try {
-      const r = await fetch("/api/notes/" + id, { cache: "no-store" }),
+      const r = await fetch("/api/notes/" + id, {
+          cache: "no-store",
+          signal: controller.signal,
+        }),
         note = await r.json();
+      if (controller.signal.aborted) return;
       if (!r.ok) throw Error(note.error);
       setData((d) => ({
         ...d,
@@ -403,7 +418,12 @@ export function LibraryApp({
       }));
       setEditor({ kind: "note", note });
     } catch (e) {
-      setFailure((e as Error).message);
+      if (!controller.signal.aborted) setFailure((e as Error).message);
+    } finally {
+      if (noteRequest.current?.controller === controller) {
+        noteRequest.current = null;
+        setOpeningNote(null);
+      }
     }
   }
   async function refresh() {
@@ -467,9 +487,11 @@ export function LibraryApp({
     try {
       await refresh();
       setMessage(
-        json.connectionsReady === false
-          ? "서재에 저장했습니다. 연결 후보는 사유의 지도에서 다시 찾을 수 있습니다."
-          : "서재에 저장했습니다.",
+        command.type === "emptyNoteTrash"
+          ? "휴지통의 기록을 영구 삭제했습니다."
+          : json.connectionsReady === false
+            ? "서재에 저장했습니다. 연결 후보는 사유의 지도에서 다시 찾을 수 있습니다."
+            : "서재에 저장했습니다.",
       );
       setFailure("");
     } catch {
@@ -542,7 +564,19 @@ export function LibraryApp({
     </button>
   );
   const noteCard = (note: Note) => (
-    <article key={note.id} className="note-card">
+    <article
+      key={note.id}
+      className="note-card"
+      onClick={(event) => {
+        if (
+          !(event.target as Element).closest(
+            "button,a,input,select,textarea,summary",
+          ) &&
+          !window.getSelection()?.toString()
+        )
+          void openNote(note.id);
+      }}
+    >
       <div className="note-meta">
         <span>{kindName[note.kind]}</span>
         <span>{note.updatedAt.slice(0, 10).replaceAll("-", ".")}</span>
@@ -1488,6 +1522,18 @@ export function LibraryApp({
           onClose={() => setBackupOpen(false)}
           onRestored={refresh}
         />
+      )}
+      {openingNote && (
+        <Modal
+          title="기록 불러오기"
+          onClose={() => {
+            noteRequest.current?.controller.abort();
+            noteRequest.current = null;
+            setOpeningNote(null);
+          }}
+        >
+          <p role="status">기록을 불러오는 중…</p>
+        </Modal>
       )}
       {editor && (
         <LibraryForm

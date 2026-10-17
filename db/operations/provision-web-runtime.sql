@@ -25,6 +25,7 @@ TO library_web_runtime;
 GRANT SELECT, INSERT ON
   library_revisions, library_imports, library_analysis_feedback
 TO library_web_runtime;
+GRANT EXECUTE ON FUNCTION public.library_empty_note_trash(text,jsonb) TO library_web_runtime;
 DO $runtime$
 BEGIN
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO library_web_runtime', current_database());

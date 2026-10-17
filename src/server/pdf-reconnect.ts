@@ -21,7 +21,10 @@ export async function verifyRelocatedPdf(
   if (Number(before.size) !== bytes)
     throw new LibraryError(409, "원본과 다른 PDF입니다.");
   const key = `${file}:${before.size}:${before.mtimeNs}:${before.ctimeNs}`;
-  if (verified.get(key) !== sha256) {
+  // Windows can expose unchanged timestamps immediately after a same-size rewrite.
+  // Rehash there instead of accepting a stale verification from the stat cache.
+  const cacheable = process.platform !== "win32";
+  if (!cacheable || verified.get(key) !== sha256) {
     const hash = createHash("sha256");
     const stream = createReadStream(file);
     for await (const chunk of stream) hash.update(chunk);
@@ -38,7 +41,7 @@ export async function verifyRelocatedPdf(
     )
       throw new LibraryError(409, "원본과 다른 PDF입니다.");
     if (verified.size > 1000) verified.clear();
-    verified.set(key, sha256);
+    if (cacheable) verified.set(key, sha256);
   }
   return file;
 }

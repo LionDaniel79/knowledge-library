@@ -35,9 +35,15 @@ try {
   await client.query(await readFile("db/021_catalog_reviews.sql", "utf8"));
   await client.query(await readFile("db/022_book_introductions.sql", "utf8"));
   await client.query(await readFile("db/023_cover_mirrors.sql", "utf8"));
+  await client.query(await readFile("db/024_empty_note_trash.sql", "utf8"));
   if (role) {
     if (!/^[a-z_][a-z0-9_]*$/.test(role))
       throw Error("Invalid application role");
+    await client.query(
+      'GRANT EXECUTE ON FUNCTION public.library_empty_note_trash(text,jsonb) TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_cover_mirrors TO "' + role + '"',
     );

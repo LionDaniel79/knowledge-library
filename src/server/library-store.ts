@@ -553,6 +553,30 @@ export function createLibraryStore(db: Database) {
               )
             ).rows[0];
           }
+        } else if (cmd.type === "emptyNoteTrash") {
+          const p = z
+            .object({ notes: z.array(versionInput).min(1).max(10000) })
+            .strict()
+            .parse(cmd.payload);
+          if (new Set(p.notes.map((n) => n.id)).size !== p.notes.length)
+            throw new LibraryError(400, "중복된 기록이 있습니다.");
+          try {
+            const count = (
+              await tx.query(
+                "SELECT public.library_empty_note_trash($1,$2::jsonb) AS count",
+                [owner, JSON.stringify(p.notes)],
+              )
+            ).rows[0].count;
+            before = { ids: p.notes.map((n) => n.id) };
+            after = { deletedCount: count };
+          } catch (error) {
+            if ((error as { code?: string }).code === "40001")
+              throw new LibraryError(
+                409,
+                "휴지통 상태가 변경되었거나 AI 처리가 진행 중입니다. 새로고침 후 다시 확인해 주세요.",
+              );
+            throw error;
+          }
         } else if (cmd.type === "deleteNote" || cmd.type === "restoreNote") {
           const base = versionInput.parse(cmd.payload);
           id = base.id;

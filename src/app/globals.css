@@ -3318,3 +3318,105 @@ textarea {
     display: none;
   }
 }
+/* Mobile note controls must not inherit iOS date/selection intrinsic widths. */
+.modal {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  min-width: 0;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.modal > header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: white;
+  padding-block: 6px;
+}
+.modal > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.form-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.form-row > *,
+.editor-fields > *,
+.book-picker {
+  min-width: 0;
+  max-width: 100%;
+}
+.note-card {
+  cursor: pointer;
+}
+.book-picker-pages {
+  margin-top: 8px;
+}
+.book-picker-pages > summary {
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.trash-confirm {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-block: 12px;
+}
+.trash-confirm button {
+  margin-right: 12px;
+}
+@media (max-width: 700px) {
+  .note-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+  .note-controls > *,
+  .note-controls label {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .note-controls input,
+  .note-controls select,
+  .note-controls .tag-filter summary {
+    height: 44px;
+    min-height: 44px;
+  }
+  .note-controls input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 8px;
+  }
+  .note-controls input[type="date"]::-webkit-date-and-time-value {
+    min-height: 1.3em;
+    text-align: left;
+  }
+  .note-controls input[type="date"]::-webkit-datetime-edit {
+    padding: 0;
+  }
+  .modal {
+    width: calc(100vw - 16px);
+    max-width: calc(100dvw - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+  }
+  .modal input,
+  .modal select,
+  .modal textarea,
+  .editor-form input,
+  .editor-form select,
+  .editor-form textarea {
+    font-size: 16px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .editor-form input:not([type="checkbox"]):not([type="file"]),
+  .editor-form select {
+    min-height: 44px;
+  }
+}

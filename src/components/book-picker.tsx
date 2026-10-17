@@ -96,7 +96,12 @@ export function BookPicker({
         </p>
       )}
       {!disabled && (
-        <>
+        <details className="book-picker-pages">
+          <summary>
+            책 검색 결과 ·{" "}
+            {(library.catalog ? catalog.total : local.length).toLocaleString()}
+            권
+          </summary>
           <PageSizeSelect label="연결할 책" paging={paging} />
           <PageNavigation
             label="연결할 책"
@@ -104,7 +109,7 @@ export function BookPicker({
             total={library.catalog ? catalog.total : local.length}
             busy={catalog.loading || !!catalog.error}
           />
-        </>
+        </details>
       )}
     </div>
   );
