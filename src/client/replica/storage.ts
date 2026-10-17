@@ -39,7 +39,12 @@ export interface ReplicaBackend {
 export interface ReplicaGeneration extends ReplicaCheckpoint {
   startCursor: string;
   startedAt: string;
-  scan: Partial<Record<SyncEntity, { after?: string; done: boolean }>>;
+  scan: Partial<
+    Record<
+      SyncEntity,
+      { after?: string; done: boolean; rows?: number; bytes?: number }
+    >
+  >;
   rows: number;
   bytes: number;
   lastSyncedAt: string | null;

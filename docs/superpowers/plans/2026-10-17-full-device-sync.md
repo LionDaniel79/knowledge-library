@@ -148,10 +148,10 @@ type OutboxEntry = {
 
 **Interfaces:** `createSyncTransport(baseUrl)`이 Task 4를 호출한다. `bootstrapReplica({owner,storage,transport,onProgress,signal}): Promise<ReplicaCheckpoint>`, `resolveReplicaImage(assetId): Promise<Blob>`을 제공한다.
 
-- [ ] RED: 38개 자료 유형 전체·과거 이력·제외 자료·원본 가져오기 JSON·전체 이미지의 일치, 끊긴 조각부터 재개, 해시 불일치, 원본 변경409 후 재시도를 검증한다.
-- [ ] 실행: `vitest run tests/replica-bootstrap.test.ts`, `playwright test e2e/replica-full-download.spec.ts`.
-- [ ] 최대 2개 요청으로 나누어 저장하고 SHA-256 검사를 통과한 조각만 재사용한다. 모든 이미지를 완전히 받고, 표시용 Blob URL은 보이는 이미지에 한해 생성·해제한다. 전체 DB를 한 번에 JSON.parse하지 않는다.
-- [ ] 탭 종료 후 이어받기와 모든 큰 자료의 보관을 확인한다. 남은 자료가 있으면 `complete=false`여야 한다. 통과 후 커밋한다.
+- [x] RED: 38개 자료 유형 전체·과거 이력·제외 자료·원본 가져오기 JSON·전체 이미지의 일치, 끊긴 조각부터 재개, 해시 불일치, 원본 변경409 후 재시도를 검증한다.
+- [x] 실행: `vitest run tests/replica-bootstrap.test.ts`, `playwright test e2e/replica-full-download.spec.ts`.
+- [x] 최대 2개 요청으로 나누어 저장하고 SHA-256 검사를 통과한 조각만 재사용한다. 모든 이미지를 완전히 받고, 표시용 Blob URL은 보이는 이미지에 한해 생성·해제한다. 전체 DB를 한 번에 JSON.parse하지 않는다.
+- [x] 탭 종료 후 이어받기와 모든 큰 자료의 보관을 확인한다. 남은 자료가 있으면 `complete=false`여야 한다. 통과 후 커밋한다.
 
 ### Task 8: 변경분 적용·보존 기간·다시 구성하기
 
