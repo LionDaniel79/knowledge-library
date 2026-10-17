@@ -79,12 +79,18 @@ export async function executeSyncCommand(
   ).rows[0];
   if (old) return replay(old);
   const body: any = { ...p.body, requestId: p.requestId };
+  const unchangedProjectedCover =
+    body.type === "editBook" &&
+    p.precondition?.entity === "library_books" &&
+    Object.hasOwn(p.precondition.fields, "cover_url") &&
+    body.payload?.coverUrl === p.precondition.fields.cover_url;
   if (p.family === "library" && ["addBook", "editBook"].includes(body.type)) {
     const book = {
       ...bookInput.parse(body.payload),
       ...(body.type === "editBook" ? versionInput.parse(body.payload) : {}),
     };
-    await ensureBookCover(db, owner, body.type, book);
+    if (!unchangedProjectedCover)
+      await ensureBookCover(db, owner, body.type, book);
     body.payload = book;
   }
   return withSyncWrite(db, owner, async (tx) => {
@@ -105,7 +111,7 @@ export async function executeSyncCommand(
         throw new LibraryError(400, "변경 기준이 일치하지 않습니다.");
       const matches = (
         await tx.query(
-          `SELECT id FROM ${v.entity} t WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM jsonb_each($3::jsonb) e WHERE coalesce(to_jsonb(t)->e.key,'null'::jsonb) IS DISTINCT FROM e.value)`,
+          `SELECT id${v.entity === "library_books" ? ",cover_url" : ""} FROM ${v.entity} t WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM jsonb_each($3::jsonb) e WHERE coalesce(public.library_sync_redact(to_jsonb(t))->e.key,'null'::jsonb) IS DISTINCT FROM e.value)`,
           [owner, v.id, JSON.stringify(v.fields)],
         )
       ).rows[0];
@@ -114,7 +120,23 @@ export async function executeSyncCommand(
           409,
           "자료가 보완되거나 수정되었습니다. 최신 내용과 비교해 주세요.",
         );
+      if (unchangedProjectedCover) body.payload.coverUrl = matches.cover_url;
+      body.editBase = v.fields;
     }
+    if (
+      p.family === "library" &&
+      body.type === "editBook" &&
+      (
+        await tx.query(
+          "SELECT id FROM library_book_exclusions WHERE owner_id=$1 AND id=$2 AND state='excluded'",
+          [owner, body.payload.id],
+        )
+      ).rows.length
+    )
+      throw new LibraryError(
+        409,
+        "제외된 도서입니다. 제외 상태와 입력 내용을 확인해 주세요.",
+      );
     const nested: Database = { query: tx.query, transaction: (fn) => fn(tx) };
     let result: unknown;
     if (p.family === "library")

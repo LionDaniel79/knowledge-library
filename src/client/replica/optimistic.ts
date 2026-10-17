@@ -29,6 +29,8 @@ import {
   thoughtCommand,
 } from "../../lib/thought-map/commands";
 import type { OutboxEntry } from "../../lib/replica/contracts";
+import { editableFields } from "../../lib/replica/command-envelope";
+import { researchSource } from "../../lib/replica/research-source";
 export interface OptimisticEffect {
   entity: SyncEntity;
   key: string;
@@ -109,6 +111,20 @@ export async function prepareOptimistic(
     return row;
   };
   if (path === "/api/library") {
+    const editBase = (
+      entity: keyof typeof editableFields,
+      old: RawRecord | null,
+    ) =>
+      old && body.editBase
+        ? {
+            ...old,
+            ...Object.fromEntries(
+              editableFields[entity]
+                .filter((k) => Object.hasOwn(body.editBase, k))
+                .map((k) => [k, body.editBase[k]]),
+            ),
+          }
+        : old;
     const cmd = commandInput.parse(body),
       p: any = cmd.payload;
     body.entityId = id;
@@ -138,7 +154,7 @@ export async function prepareOptimistic(
         cover_url: value.coverUrl,
         version: (old?.version ?? 0) + 1,
       };
-      base = old;
+      base = editBase("library_books", old);
       put("library_books", after);
       result = { id: after.id, version: after.version };
       entityId = after.id;
@@ -158,7 +174,7 @@ export async function prepareOptimistic(
         updated_at: at,
         version: (old?.version ?? 0) + 1,
       };
-      base = old;
+      base = editBase("library_notes", old);
       put("library_notes", after);
       result = { id: after.id, version: after.version };
       entityId = after.id;
@@ -265,6 +281,7 @@ export async function prepareOptimistic(
         b = n.book_id ? await own("library_books", n.book_id) : null;
       p.expectedNoteVersion = n.version;
       p.expectedBookVersion = b?.version ?? null;
+      p.expectedSource = researchSource(n, b);
       put("library_research_items", {
         id,
         research_id: p.researchId,

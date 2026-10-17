@@ -1,4 +1,29 @@
 import type { OutboxEntry } from "./contracts";
+import type { Book, Note } from "../domain";
+export function formEditBase(value: Book | Note) {
+  return "formats" in value
+    ? {
+        title: value.title,
+        author: value.author,
+        publisher: value.publisher,
+        isbn: value.isbn,
+        formats: value.formats,
+        total_pages: value.totalPages,
+        shelf: value.shelf,
+        tags: value.tags,
+        category: value.category,
+        bookshelves: value.bookshelves,
+        cover_url: value.coverUrl,
+      }
+    : {
+        book_id: value.bookId,
+        title: value.title,
+        content: value.content,
+        kind: value.kind,
+        page: value.page,
+        tags: value.tags,
+      };
+}
 export const editableFields = {
   library_books: [
     "title",

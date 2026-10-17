@@ -1,4 +1,8 @@
 import { withSyncWrite } from "./sync/write";
+import {
+  researchSource,
+  researchSourceSchema,
+} from "../lib/replica/research-source";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
@@ -316,6 +320,7 @@ export function createKnowledgeStore(db: Database) {
           .object({
             researchId: uuid,
             noteId: uuid,
+            expectedSource: researchSourceSchema.optional(),
             expectedNoteVersion: z.number().int().positive().optional(),
             expectedBookVersion: z
               .number()
@@ -335,11 +340,24 @@ export function createKnowledgeStore(db: Database) {
           throw new LibraryError(404, "연구 묶음을 찾을 수 없습니다.");
         const note = await own("note", p.noteId);
         const book = note.book_id ? await own("book", note.book_id) : null;
+        const sourceMatches = p.expectedSource
+          ? (
+              await tx.query(
+                "SELECT public.library_sync_redact($1::jsonb)=$2::jsonb AS matches",
+                [
+                  JSON.stringify(researchSource(note, book)),
+                  JSON.stringify(p.expectedSource),
+                ],
+              )
+            ).rows[0].matches
+          : true;
         if (
-          (p.expectedNoteVersion !== undefined &&
-            p.expectedNoteVersion !== note.version) ||
-          (p.expectedBookVersion !== undefined &&
-            p.expectedBookVersion !== (book?.version ?? null))
+          !sourceMatches ||
+          (!p.expectedSource &&
+            ((p.expectedNoteVersion !== undefined &&
+              p.expectedNoteVersion !== note.version) ||
+              (p.expectedBookVersion !== undefined &&
+                p.expectedBookVersion !== (book?.version ?? null))))
         )
           throw new LibraryError(
             409,

@@ -11,6 +11,7 @@ import { CurationDetails } from "./curation-details";
 import { BookPicker } from "./book-picker";
 import { useBookCatalog } from "./use-book-catalog";
 import { AssistLauncher } from "./assist-panel";
+import { formEditBase } from "@/lib/replica/command-envelope";
 export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
   | { kind: "note"; note?: Note; bookId?: string }
@@ -39,6 +40,13 @@ export function LibraryForm({
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const book = editor.kind === "book" ? editor.book : undefined;
+  const [editBase, setEditBase] = useState(() =>
+    book
+      ? formEditBase(book)
+      : editor.kind === "note" && editor.note
+        ? formEditBase(editor.note)
+        : undefined,
+  );
   const [shelves, setShelves] = useState(book?.bookshelves ?? []);
   const [coverUrl, setCoverUrl] = useState(book?.coverUrl ?? "");
   const [uploading, setUploading] = useState(false);
@@ -182,7 +190,12 @@ export function LibraryForm({
     setBusy(true);
     setError("");
     try {
-      const command = { type, payload, requestId: pending.current.id };
+      const command = {
+        type,
+        payload,
+        requestId: pending.current.id,
+        ...(editBase ? { editBase } : {}),
+      };
       if (
         (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
           "draft" &&
@@ -647,6 +660,7 @@ export function LibraryForm({
               onClick={() => {
                 if (latest) {
                   setBaseVersion(latest.version);
+                  if ("title" in latest) setEditBase(formEditBase(latest));
                   setConflict(false);
                   setError("");
                 }

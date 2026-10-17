@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { defaultShelves } from "@/lib/catalog";
 import type { Book, Command, Library } from "@/lib/domain";
+import { formEditBase } from "@/lib/replica/command-envelope";
 export function ShelfPicker({
   library,
   selected,
@@ -114,6 +115,7 @@ export function BookShelves({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [baseVersion, setBaseVersion] = useState(book.version);
+  const [editBase, setEditBase] = useState(() => formEditBase(book));
   const [conflict, setConflict] = useState(false);
   const changed =
     JSON.stringify(selected) !== JSON.stringify(book.bookshelves ?? []);
@@ -140,6 +142,7 @@ export function BookShelves({
             try {
               await onSave({
                 type: "editBook",
+                editBase,
                 requestId: crypto.randomUUID(),
                 payload: {
                   ...book,
@@ -148,6 +151,7 @@ export function BookShelves({
                 },
               });
               setBaseVersion(baseVersion + 1);
+              setEditBase(formEditBase({ ...book, bookshelves: selected }));
               setError("");
             } catch (e) {
               setError(e instanceof Error ? e.message : "저장 실패");

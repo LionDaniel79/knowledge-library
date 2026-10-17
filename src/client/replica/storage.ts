@@ -21,6 +21,7 @@ export interface StoredEntry {
   data: unknown;
 }
 export interface ReplicaIO {
+  keysRange(store: ReplicaStore, prefix: ReplicaKey): Promise<ReplicaKey[]>;
   getMany(store: ReplicaStore, keys: ReplicaKey[]): Promise<any[]>;
   putMany(store: ReplicaStore, entries: StoredEntry[]): Promise<void>;
   get(store: ReplicaStore, key: ReplicaKey): Promise<any>;
@@ -220,6 +221,15 @@ export function createReplicaStorage(
         if (!s) throw Error("저장 세대를 찾을 수 없습니다.");
         return s;
       };
+      const pruneGenerations = async (keep: Set<string>) => {
+        for (const key of await io.keysRange("meta", [owner, "generation"])) {
+          const generation = String(key[2]);
+          if (keep.has(generation)) continue;
+          for (const store of ["rows", "parts", "indexes"] as const)
+            await io.deleteRange(store, [owner, generation]);
+          await io.delete("meta", key);
+        }
+      };
       for (const command of commands)
         switch (command.type) {
           case "expect": {
@@ -239,6 +249,15 @@ export function createReplicaStorage(
             break;
           }
           case "init":
+            await pruneGenerations(
+              new Set(
+                [
+                  command.state.generation,
+                  await io.get("meta", [owner, "active"]),
+                  await io.get("meta", [owner, "previous"]),
+                ].filter(Boolean),
+              ),
+            );
             await io.put(
               "meta",
               stateKey(command.state.generation),
@@ -265,6 +284,22 @@ export function createReplicaStorage(
               "rows",
               keys,
             );
+            for (let i = 0; i < batch.length; i++) {
+              const old = previous[i],
+                row = batch[i];
+              if (
+                old?.parts &&
+                BigInt(row.revision) >= BigInt(old.revision) &&
+                (row.deleted || row.sha256 !== old.sha256 || !row.parts)
+              )
+                await io.deleteRange("parts", [
+                  owner,
+                  command.generation,
+                  old.entity,
+                  old.key,
+                  old.sha256!,
+                ]);
+            }
             await io.putMany(
               "rows",
               batch.flatMap((row, i) =>
@@ -311,6 +346,35 @@ export function createReplicaStorage(
             )
               throw Error("이전 동기화 결과를 표시할 수 없습니다.");
             await io.put("meta", [owner, "active"], command.generation);
+            if (activeId && activeId !== command.generation)
+              await io.put("meta", [owner, "previous"], activeId);
+            const previous =
+              activeId === command.generation
+                ? await io.get("meta", [owner, "previous"])
+                : activeId;
+            await pruneGenerations(
+              new Set([command.generation, previous].filter(Boolean)),
+            );
+            // Parts are content-addressed. Failed/retried value downloads can leave
+            // unreferenced hashes; inspect keys only, never load all image bytes.
+            const parts = await io.keysRange("parts", [
+              owner,
+              command.generation,
+            ]);
+            for (let offset = 0; offset < parts.length; offset += 100) {
+              const keys = parts.slice(offset, offset + 100),
+                rows = await io.getMany(
+                  "rows",
+                  keys.map((k) => k.slice(0, 4)),
+                );
+              for (let i = 0; i < keys.length; i++)
+                if (
+                  !rows[i]?.parts ||
+                  rows[i].deleted ||
+                  rows[i].sha256 !== keys[i][4]
+                )
+                  await io.delete("parts", keys[i]);
+            }
             break;
           }
           case "part":
@@ -461,6 +525,7 @@ export function createReplicaStorage(
           await io.deleteRange(store, [owner]);
         await io.deleteRange("meta", [owner, "generation"]);
         await io.delete("meta", [owner, "active"]);
+        await io.delete("meta", [owner, "previous"]);
         await io.put("meta", [owner, "preferences"], { autoSync: false });
       });
     },

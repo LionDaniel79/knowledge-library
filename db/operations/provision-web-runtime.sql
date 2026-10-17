@@ -9,6 +9,7 @@ GRANT USAGE ON SCHEMA public TO library_web_runtime;
 GRANT SELECT ON library_sync_heads,library_sync_changes,library_sync_row_versions TO library_web_runtime;
 GRANT SELECT,INSERT,UPDATE ON library_sync_devices TO library_web_runtime;
 GRANT EXECUTE ON FUNCTION public.library_sync_lock(text) TO library_web_runtime;
+GRANT EXECUTE ON FUNCTION public.library_sync_redact(jsonb) TO library_web_runtime;
 GRANT SELECT ON library_active_notes TO library_web_runtime;
 GRANT SELECT ON library_active_books,library_active_documents,library_active_cycles TO library_web_runtime;
 GRANT SELECT, INSERT, UPDATE ON library_book_exclusions TO library_web_runtime;

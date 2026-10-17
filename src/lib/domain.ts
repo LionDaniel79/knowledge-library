@@ -139,6 +139,7 @@ export interface Revision {
 }
 export interface Command {
   requestId: string;
+  editBase?: Record<string, unknown>;
   entityId?: string;
   type: string;
   payload: unknown;
@@ -247,6 +248,7 @@ export const versionInput = z.object({
 });
 export const commandInput = z.object({
   requestId: z.string().uuid(),
+  editBase: z.record(z.string(), z.unknown()).optional(),
   entityId: z.string().uuid().optional(),
   type: z.enum([
     "addBook",

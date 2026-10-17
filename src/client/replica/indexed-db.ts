@@ -86,6 +86,14 @@ export async function openReplica(
       // Only queued database operations run here. The public transaction callback
       // is synchronous and is collected before opening this IndexedDB transaction.
       const io: ReplicaIO = {
+        keysRange: (s, prefix) =>
+          request(
+            tx
+              .objectStore(s)
+              .getAllKeys(
+                IDBKeyRange.bound(prefix, [...prefix, []], false, true),
+              ),
+          ) as Promise<ReplicaKey[]>,
         async getMany(s, keys) {
           if (!keys.length) return [];
           const store = tx.objectStore(s);

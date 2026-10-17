@@ -14,6 +14,39 @@ const row = (revision = "1", inline = "{}"): SyncRow => ({
   bytes: inline.length,
   inline,
 });
+it("bounds complete generations and reclaims obsolete large-value parts without touching pending edits or another owner", async () => {
+  const backend = createMemoryBackend(),
+    s = createMemoryReplica("gc-owner", backend),
+    other = createMemoryReplica("other", backend);
+  const foreign = await other.createGeneration({ epoch, cursor: "foreign" });
+  await other.stageRows(foreign.generation, [row()]);
+  const generations: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const g = await s.createGeneration({ epoch, cursor: "cursor-" + i });
+    generations.push(g.generation);
+    await s.stageRows(g.generation, [row(String(i))]);
+    await s.setCheckpoint(g.generation, { complete: true });
+    await s.promoteGeneration(g.generation);
+  }
+  expect((await s.listGenerations()).map((g) => g.generation).sort()).toEqual(
+    generations.slice(-2).sort(),
+  );
+  expect(await backend.scan("rows", [s.owner, generations[0]])).toHaveLength(0);
+  expect(
+    await other.readRow("library_books", '["book"]', foreign.generation),
+  ).toBeDefined();
+  const g = (await s.checkpoint())!;
+  const large: SyncRow = {
+    ...row("10"),
+    inline: undefined,
+    bytes: 3,
+    parts: [{ index: 0, bytes: 3, sha256: "b".repeat(64) }],
+  };
+  await s.putValuePart(g.generation, large, 0, new Uint8Array([1, 2, 3]));
+  await s.stageRows(g.generation, [large]);
+  await s.stageRows(g.generation, [row("11")]);
+  expect(await s.readValuePart(g.generation, large, 0)).toBeUndefined();
+});
 it("promotes complete generations atomically, rolls back failures and preserves the outbox through a rebuild", async () => {
   const s = createMemoryReplica("owner");
   const old = await s.createGeneration({ epoch, cursor: "start" });

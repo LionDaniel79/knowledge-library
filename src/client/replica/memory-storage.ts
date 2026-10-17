@@ -43,6 +43,14 @@ export function createMemoryBackend(): ReplicaBackend {
       const run = tail.then(async () => {
         const next = new Map(data);
         const io: ReplicaIO = {
+          keysRange: async (s, prefix) =>
+            [...next.entries()]
+              .filter(
+                ([k, e]) =>
+                  JSON.parse(k)[0] === s &&
+                  prefix.every((v, i) => e.id[i] === v),
+              )
+              .map(([, e]) => clone(e.id)),
           getMany: async (s, keys) =>
             keys.map((id) => clone(next.get(key(s, id))?.data)),
           putMany: async (s, entries) => {

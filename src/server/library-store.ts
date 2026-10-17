@@ -1,4 +1,5 @@
 import { withSyncWrite } from "./sync/write";
+import { editableFields } from "../lib/replica/command-envelope";
 import { previewNoteSelect, readReadingSummary } from "./record-catalog";
 import { exportCuration } from "./curation-export";
 import { randomUUID, createHash } from "node:crypto";
@@ -281,6 +282,7 @@ export function createLibraryStore(db: Database) {
           type: cmd.type,
           payload: cmd.payload,
           ...(cmd.entityId ? { entityId: cmd.entityId } : {}),
+          ...(cmd.editBase ? { editBase: cmd.editBase } : {}),
         }),
       )
       .digest("hex");
@@ -303,6 +305,28 @@ export function createLibraryStore(db: Database) {
               "같은 요청 번호에 다른 내용이 들어왔습니다.",
             );
           return old.result as MutationResult;
+        }
+        if (cmd.editBase && ["editBook", "editNote"].includes(cmd.type)) {
+          const entity =
+              cmd.type === "editBook" ? "library_books" : "library_notes",
+            p = versionInput.parse(cmd.payload),
+            fields = Object.fromEntries(
+              editableFields[entity]
+                .filter((k) => Object.hasOwn(cmd.editBase!, k))
+                .map((k) => [k, cmd.editBase![k]]),
+            );
+          if (
+            !(
+              await tx.query(
+                `SELECT id FROM ${entity} t WHERE owner_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM jsonb_each($3::jsonb) e WHERE coalesce(public.library_sync_redact(to_jsonb(t))->e.key,'null'::jsonb) IS DISTINCT FROM e.value)`,
+                [owner, p.id, JSON.stringify(fields)],
+              )
+            ).rows.length
+          )
+            throw new LibraryError(
+              409,
+              "자료가 보완되거나 수정되었습니다. 최신 내용과 비교해 주세요.",
+            );
         }
         let id: string = cmd.entityId ?? randomUUID();
         let version = 1;
