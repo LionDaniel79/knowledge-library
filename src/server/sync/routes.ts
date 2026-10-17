@@ -11,8 +11,10 @@ import {
 import { syncInput } from "./registry";
 import { readSyncMeta, readSyncChanges, scanSyncRows } from "./read";
 import { readSyncValuePart } from "./values";
+import { readSyncCoverage } from "./coverage";
 const limit = z.coerce.number().int().min(1).max(200).optional();
 const schemas = {
+  coverage: z.object({}).strict(),
   meta: z.object({ inventory: z.enum(["0", "1"]).optional() }).strict(),
   scan: z
     .object({
@@ -52,6 +54,10 @@ export async function syncGet(kind: keyof typeof schemas, request: Request) {
     }
     // Each branch has its own strict input boundary. The request never supplies an owner.
     switch (kind) {
+      case "coverage":
+        syncInput(schemas.coverage, params);
+        response = Response.json(await readSyncCoverage(database, owner));
+        break;
       case "meta": {
         const v = syncInput(schemas.meta, params);
         response = Response.json(

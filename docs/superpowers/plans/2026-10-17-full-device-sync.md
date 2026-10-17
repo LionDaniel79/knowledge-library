@@ -126,10 +126,10 @@ type OutboxEntry = {
 
 **Interfaces:** `readSyncCoverage(db,owner): Promise<{epoch,head,entities: Record<SyncEntity,{rows:number,sha256:string}>}>`. 허용된 행의 키와 내용 해시를 고정 순서로 집계한다.
 
-- [ ] RED: 이미 스캔한 키 범위의 삽입, 페이지 사이의 삭제·수정, 표지 변경, 시작 후 제외·복원, 아직 동기화 순번이 없는 기존 행까지 검증한다.
-- [ ] 실행: `vitest run tests/sync-bootstrap-races.test.ts`. 복제 브랜치에서 `verify-sync-branch.ts`의 여러 연결 시나리오도 실행한다.
-- [ ] 시작 커서→전체 테이블 키 순서 스캔→변경분 따라잡기→같은 헤드의 coverage 검사를 구현한다. 장시간 DB 거래·공유 서버 메모리·새 유료 스냅샷 서비스에 의존하지 않는다.
-- [ ] 행 수와 내용 해시가 모두 맞아야 준비 완료다. 계속되는 변경은 전체 재전송 대신 차이로 따라잡고, 불일치 자료를 다시 확인한다. 통과 후 커밋한다.
+- [x] RED: 이미 스캔한 키 범위의 삽입, 페이지 사이의 삭제·수정, 표지 변경, 시작 후 제외·복원, 아직 동기화 순번이 없는 기존 행까지 검증한다.
+- [x] 실행: `vitest run tests/sync-bootstrap-races.test.ts`. 복제 브랜치에서 `verify-sync-branch.ts`의 여러 연결 시나리오도 실행한다.
+- [x] 시작 커서→전체 테이블 키 순서 스캔→변경분 따라잡기→같은 헤드의 coverage 검사를 구현한다. 장시간 DB 거래·공유 서버 메모리·새 유료 스냅샷 서비스에 의존하지 않는다.
+- [x] 행 수와 내용 해시가 모두 맞아야 준비 완료다. 계속되는 변경은 전체 재전송 대신 차이로 따라잡고, 불일치 자료를 다시 확인한다. 통과 후 커밋한다.
 
 ### Task 6: IndexedDB의 세대·원자성·계정 분리
 
