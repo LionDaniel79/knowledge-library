@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
 import type { Command, Library, Note } from "@/lib/domain";
 export function NoteTrash({
@@ -135,7 +136,7 @@ function TrashBody({ id }: { id: string }) {
       <button
         onClick={async () => {
           try {
-            const r = await fetch(`/api/notes/${id}?trash=true`, {
+            const r = await libraryRequest(`/api/notes/${id}?trash=true`, {
                 cache: "no-store",
               }),
               j = await r.json();

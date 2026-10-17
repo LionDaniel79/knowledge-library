@@ -1,12 +1,14 @@
 "use client";
 import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
 import { useEffect, useState } from "react";
+import { useReplicaOptional } from "./replica/provider";
 
 export function usePagedResource<T>(
   path: string,
   enabled = true,
   revision?: unknown,
 ) {
+  const replica = useReplicaOptional();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{
     path: string;
@@ -51,7 +53,7 @@ export function usePagedResource<T>(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [path, enabled, revision, retry]);
+  }, [path, enabled, revision, retry, replica?.revision]);
   return {
     ...(enabled && state.path === path
       ? state

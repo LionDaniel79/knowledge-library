@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 export function BookIntroduction({ id }: { id: string }) {
   const [data, setData] = useState<any>(null),
@@ -14,7 +15,7 @@ export function BookIntroduction({ id }: { id: string }) {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(`/api/book-introduction?id=${id}`, {
+      const r = await libraryRequest(`/api/book-introduction?id=${id}`, {
           cache: "no-store",
         }),
         j = await r.json();
@@ -32,7 +33,7 @@ export function BookIntroduction({ id }: { id: string }) {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/book-introduction", {
+      const r = await libraryRequest("/api/book-introduction", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -172,7 +173,7 @@ export function BookIntroduction({ id }: { id: string }) {
           <button
             onClick={async () => {
               try {
-                const r = await fetch(`/api/revisions/${id}`, {
+                const r = await libraryRequest(`/api/revisions/${id}`, {
                     cache: "no-store",
                   }),
                   j = await r.json();

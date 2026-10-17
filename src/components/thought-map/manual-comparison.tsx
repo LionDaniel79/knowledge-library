@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 import type { Note } from "@/lib/domain";
 import {
@@ -38,7 +39,7 @@ export function ManualComparison({
     setLoading(true);
     try {
       if (note.summary) {
-        const r = await fetch("/api/notes/" + id, { cache: "no-store" }),
+        const r = await libraryRequest("/api/notes/" + id, { cache: "no-store" }),
           full = await r.json();
         if (!r.ok) throw Error(full.error);
         if (full.version !== note.version)

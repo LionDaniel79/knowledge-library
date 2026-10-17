@@ -1,9 +1,11 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Library } from "@/lib/domain";
 import { DeviceSettings } from "./thought-map/device-settings";
 import { AssistHelp } from "./assist-help";
 import { McpConnections } from "./mcp-connections";
+import { useReplicaOptional } from "./replica/provider";
 const purposes = {
   organize_note: "AI 정리 · 태그와 주제",
   tag_suggestion: "태그 제안",
@@ -47,6 +49,7 @@ export function AssistPanel({
   noteId?: string;
   onAdopt?: () => void;
 }) {
+  const replica = useReplicaOptional();
   const [state, setState] = useState<any>(null),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -58,14 +61,14 @@ export function AssistPanel({
     [preview, setPreview] = useState<any>(null);
   const requestId = useRef("");
   const load = useCallback(async () => {
-    const r = await fetch("/api/assist", { cache: "no-store" }),
+    const r = await libraryRequest("/api/assist", { cache: "no-store" }),
       j = await r.json();
     if (!r.ok) throw Error(j.error ?? "도움 설정을 불러오지 못했습니다.");
     setState(j);
   }, []);
   useEffect(() => {
     void load().catch((e) => setError(e.message));
-  }, [load]);
+  }, [load, replica?.revision]);
   const active = state?.requests.some((r: any) =>
     ["queued", "claimed", "sending"].includes(r.status),
   );
@@ -84,7 +87,7 @@ export function AssistPanel({
     setError("");
     setMessage("");
     try {
-      const r = await fetch("/api/assist", {
+      const r = await libraryRequest("/api/assist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, payload }),
@@ -118,7 +121,9 @@ export function AssistPanel({
   async function selection() {
     let n = library.notes.find((n) => n.id === first);
     if (n?.summary && purpose === "excerpt_explanation") {
-      const r = await fetch("/api/notes/" + n.id, { cache: "no-store" }),
+      const r = await libraryRequest("/api/notes/" + n.id, {
+          cache: "no-store",
+        }),
         full = await r.json();
       if (!r.ok) throw Error(full.error);
       if (full.version !== n.version)

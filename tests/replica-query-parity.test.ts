@@ -24,6 +24,15 @@ import type { SyncTransport, SyncMeta } from "../src/client/replica/transport";
 import { timestampKey } from "../src/lib/replica/projections";
 import type { ReplicaStorage } from "../src/client/replica/storage";
 import { pullReplica } from "../src/client/replica/pull";
+import { createKnowledgeStore } from "../src/server/knowledge-store";
+import { createThoughtMapStore } from "../src/server/thought-map-store";
+import { readCurationDetails } from "../src/server/curation-store";
+import { readBookIntroduction } from "../src/server/book-introduction";
+import {
+  readCatalogReviews,
+  importCatalogReviewBatch,
+} from "../src/server/catalog-review-store";
+import { readMaterialPage } from "../src/server/material-catalog";
 let f: Awaited<ReturnType<typeof testDatabase>>,
   repo: ReturnType<typeof createReplicaRepository>,
   books: string[] = [],
@@ -194,6 +203,63 @@ beforeAll(async () => {
 afterAll(async () => {
   repo?.close();
   await f?.pg.close();
+});
+it("matches server contracts for review detail, sources, thought events, research and mixed material pages", async () => {
+  const b = (
+    await f.db.query(
+      "SELECT * FROM library_books WHERE owner_id=$1 AND id=$2",
+      [owner, books[0]],
+    )
+  ).rows[0];
+  await importCatalogReviewBatch(f.db, owner, [
+    {
+      bookId: b.id,
+      sourceVersion: b.version,
+      record: {
+        provider: "예스24",
+        url: "https://www.yes24.com/product/goods/1",
+        isbn: "9791194330424",
+        title: b.title,
+        facts: {
+          title: b.title,
+          author: b.author,
+          publisher: b.publisher,
+          isbn: "9791194330424",
+          coverUrl: "",
+        },
+        toc: ["보존한 목차"],
+      },
+    },
+  ]);
+  await pullReplica({ owner, storage, transport });
+  const clean = (v: unknown) =>
+    JSON.parse(JSON.stringify(v, (k, v) => (k === "owner_id" ? undefined : v)));
+  for (const [path, server] of [
+    ["/api/knowledge", await createKnowledgeStore(f.db).snapshot(owner)],
+    ["/api/thought-map", await createThoughtMapStore(f.db).snapshot(owner)],
+    [
+      "/api/curation?kind=book&id=" + b.id,
+      await readCurationDetails(f.db, owner, "book", b.id),
+    ],
+    [
+      "/api/book-introduction?id=" + b.id,
+      await readBookIntroduction(f.db, owner, b.id),
+    ],
+    [
+      "/api/catalog-review?groupBy=book",
+      await readCatalogReviews(f.db, owner, { groupBy: "book" }),
+    ],
+    [
+      "/api/library-materials?limit=10",
+      await readMaterialPage(f.db, owner, { limit: 10 }),
+    ],
+  ] as const)
+    expect(clean(await repo.read(path)), path).toEqual(clean(server));
+  const reviews = await readCatalogReviews(f.db, owner, {});
+  const id = reviews.items[0].id;
+  expect(clean(await repo.read("/api/catalog-review?id=" + id))).toEqual(
+    clean(await readCatalogReviews(f.db, owner, { id })),
+  );
 });
 it("matches SQL book pages, categories, formats, shelves, whitespace search and deterministic sorting", async () => {
   for (const query of [

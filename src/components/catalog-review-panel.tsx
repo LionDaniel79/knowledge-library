@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useEffect, useState } from "react";
 import {
   useListPagination,
@@ -44,7 +45,7 @@ export function CatalogReviewPanel({
     setError("");
     const c = new AbortController();
     setPage(null);
-    fetch(
+    libraryRequest(
       `/api/catalog-review?${new URLSearchParams({ status, q, offset: String(offset), limit: String(paging.size), groupBy: "book" })}`,
       { signal: c.signal, cache: "no-store" },
     )
@@ -63,7 +64,7 @@ export function CatalogReviewPanel({
     setError("");
     setDetail(null);
     try {
-      const r = await fetch(`/api/catalog-review?id=${id}`, {
+      const r = await libraryRequest(`/api/catalog-review?id=${id}`, {
           cache: "no-store",
         }),
         j = await r.json();
@@ -81,7 +82,7 @@ export function CatalogReviewPanel({
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/catalog-review", {
+      const r = await libraryRequest("/api/catalog-review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

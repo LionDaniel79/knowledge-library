@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { ResearchBoard } from "./research-board";
 import { exportResearchMarkdown, type ResearchPlacement } from "@/lib/research";
 import { ThoughtMapPanel } from "./thought-map/panel";
@@ -118,7 +119,7 @@ export function KnowledgePanel({
   const requests = useRef(new Map<string, string>()),
     initialized = useRef(false);
   async function load() {
-    const r = await fetch("/api/knowledge", { cache: "no-store" }),
+    const r = await libraryRequest("/api/knowledge", { cache: "no-store" }),
       data = await r.json();
     if (!r.ok) throw Error(data.error ?? "연결을 불러오지 못했습니다.");
     setState(data);
@@ -130,7 +131,7 @@ export function KnowledgePanel({
       requestId = crypto.randomUUID();
       requests.current.set(key, requestId);
     }
-    const r = await fetch("/api/knowledge", {
+    const r = await libraryRequest("/api/knowledge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId, type, payload }),
@@ -462,7 +463,7 @@ export function KnowledgePanel({
                     type="button"
                     onClick={() =>
                       void run(async () => {
-                        const r = await fetch(`/api/revisions/${link.id}`, {
+                        const r = await libraryRequest(`/api/revisions/${link.id}`, {
                           cache: "no-store",
                         });
                         if (!r.ok) throw Error("수정 이력을 읽지 못했습니다.");

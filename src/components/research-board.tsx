@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 import {
   researchRoles,
@@ -164,7 +165,7 @@ export function ResearchBoard({
                   !history[historyKey]
                 ) {
                   setError("");
-                  void fetch(`/api/revisions/${i.id}`, { cache: "no-store" })
+                  void libraryRequest(`/api/revisions/${i.id}`, { cache: "no-store" })
                     .then(async (r) => {
                       if (!r.ok) throw Error("수정 이력을 읽지 못했습니다.");
                       const rows = await r.json();

@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Library } from "@/lib/domain";
 import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
@@ -21,14 +22,14 @@ export function ThoughtMapPanel({
     [busy, setBusy] = useState(false);
   const requests = useRef(new Map<string, string>());
   async function load() {
-    const r = await fetch("/api/thought-map", { cache: "no-store" }),
+    const r = await libraryRequest("/api/thought-map", { cache: "no-store" }),
       data = await r.json();
     if (!r.ok) throw Error(data.error ?? "사유의 지도를 불러오지 못했습니다.");
     setState(data);
   }
   useEffect(() => {
     let live = true;
-    void fetch("/api/thought-map", { cache: "no-store" })
+    void libraryRequest("/api/thought-map", { cache: "no-store" })
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) throw Error(data.error ?? "자료를 불러오지 못했습니다.");
@@ -50,7 +51,7 @@ export function ThoughtMapPanel({
       requestId = requests.current.get(key) ?? crypto.randomUUID();
     requests.current.set(key, requestId);
     try {
-      const r = await fetch("/api/thought-map", {
+      const r = await libraryRequest("/api/thought-map", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ requestId, type, payload }),

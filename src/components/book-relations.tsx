@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
 import type { Book, Library } from "@/lib/domain";
 import { BookPicker } from "./book-picker";
@@ -31,7 +32,7 @@ export function BookRelations({
   const requests = useRef(new Map<string, string>());
   async function load() {
     setError("");
-    const r = await fetch("/api/book-relations?bookId=" + book.id, {
+    const r = await libraryRequest("/api/book-relations?bookId=" + book.id, {
         cache: "no-store",
       }),
       j = await r.json();
@@ -46,7 +47,7 @@ export function BookRelations({
       requestId = requests.current.get(key) ?? crypto.randomUUID();
     requests.current.set(key, requestId);
     try {
-      const r = await fetch("/api/book-relations", {
+      const r = await libraryRequest("/api/book-relations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, requestId }),
@@ -125,7 +126,7 @@ export function BookRelations({
                   return;
                 }
                 setBusy(true);
-                void fetch("/api/books/" + id, { cache: "no-store" })
+                void libraryRequest("/api/books/" + id, { cache: "no-store" })
                   .then(async (r) => {
                     const j = await r.json();
                     if (!r.ok) throw Error(j.error ?? "도서 조회 실패");

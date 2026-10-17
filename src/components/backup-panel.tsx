@@ -1,4 +1,9 @@
 "use client";
+import {
+  libraryRequest,
+  downloadDeviceArchive,
+} from "@/client/replica/request";
+import { useReplicaOptional } from "./replica/provider";
 import { useState } from "react";
 import { Modal } from "./modal";
 import { BACKUP_FILE_MAX } from "../lib/backup-limits";
@@ -29,6 +34,7 @@ export function BackupPanel({
   onClose: () => void;
   onRestored: () => Promise<void>;
 }) {
+  const replica = useReplicaOptional();
   const [file, setFile] = useState<File | null>(null),
     [backup, setBackup] = useState<unknown>(null),
     [preview, setPreview] = useState<Preview | null>(null),
@@ -36,7 +42,7 @@ export function BackupPanel({
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
   async function send(action: "preview" | "restore", value: unknown) {
-    const response = await fetch("/api/backup", {
+    const response = await libraryRequest("/api/backup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, backup: value }),
@@ -111,6 +117,31 @@ export function BackupPanel({
         <a className="button primary" href="/api/backup">
           복원용 백업 내려받기
         </a>
+        {replica?.ready && (
+          <button
+            className="button secondary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await downloadDeviceArchive();
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            기기 전체 자료 내려받기
+          </button>
+        )}
+        {replica?.ready && (
+          <p className="muted">
+            전체 자료 파일에는 표지·과거 기록·송신 대기가 포함됩니다. 복원은
+            위의 복원용 백업을 사용하세요.
+          </p>
+        )}
         <p className="muted">
           PDF 원본·색인·가져온 표지 파일은 별도로 보관해 주세요.
           로그인·인증키·자동 실행 작업은 포함하지 않습니다.

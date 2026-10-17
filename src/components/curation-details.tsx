@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 import { displayProviderText } from "../lib/provider-text";
 import { PdfOutlineView } from "./pdf-outline";
@@ -42,7 +43,7 @@ export function CurationDetails({
     [busy, setBusy] = useState(false);
   async function load() {
     setError("");
-    const r = await fetch(
+    const r = await libraryRequest(
         `/api/curation?kind=${kind}&id=${encodeURIComponent(id)}`,
         { cache: "no-store" },
       ),
@@ -64,7 +65,7 @@ export function CurationDetails({
                 ? draft
                 : JSON.parse(draft)
           : item.value;
-      const r = await fetch("/api/curation", {
+      const r = await libraryRequest("/api/curation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

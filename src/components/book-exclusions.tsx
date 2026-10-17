@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
 import type { BookExclusionPage } from "@/server/book-exclusions";
 import { Modal } from "./modal";
@@ -41,7 +42,7 @@ export function BookExclusions({
     setError("");
     setMessage("");
     try {
-      const response = await fetch("/api/book-exclusions", {
+      const response = await libraryRequest("/api/book-exclusions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -15,7 +15,11 @@ import {
   timestampKey,
   type RawRecord,
 } from "../../lib/replica/projections";
-import type { SyncEntity } from "../../lib/replica/entities";
+import {
+  entityDefinition,
+  syncEntities,
+  type SyncEntity,
+} from "../../lib/replica/entities";
 import type { ReplicaStorage } from "./storage";
 import { readReplicaValue } from "./values";
 import {
@@ -29,6 +33,7 @@ import {
   type SearchEntry,
 } from "./queries";
 import { createQueryWorker } from "./query-worker";
+import { createResourceReader } from "./resources";
 export class UnsupportedLocalRoute extends Error {}
 const indexEntities: SyncEntity[] = [
   "library_books",
@@ -82,7 +87,11 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     }
   }
   async function raw(entity: SyncEntity, id: string, generation?: string) {
-    const row = await storage.readRow(entity, JSON.stringify([id]), generation);
+    const row = await storage.readRow(
+      entity,
+      JSON.stringify(entityDefinition(entity).keys.length ? [id] : []),
+      generation,
+    );
     if (!row || row.deleted) return undefined;
     return JSON.parse(
       new TextDecoder("utf-8", { fatal: true }).decode(
@@ -436,6 +445,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       storedImportedCoverUrl: compact.storedImportedCoverUrl,
     });
   }
+  const resources = createResourceReader(storage, { raw, records, index });
   const repository = {
     books: (input: unknown = {}) => query<BookPage>("books", input),
     notes: (input: unknown = {}) => query<any>("notes", input),
@@ -555,6 +565,41 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         p = url.searchParams,
         path = url.pathname;
       if (path === "/api/library") return repository.overview();
+      if (path === "/api/library-materials") {
+        const q = Object.fromEntries(p),
+          offset = Number(p.get("offset") ?? 0),
+          limit = Number(p.get("limit") ?? 30);
+        const notes = await repository.notes(q),
+          books = await repository.books({
+            ...q,
+            sort: "title",
+            offset: Math.max(0, offset - notes.total),
+            limit: Math.max(1, limit - notes.items.length),
+          });
+        return {
+          total: notes.total + books.total,
+          items: [
+            ...notes.items.map((n: any) => ({
+              id: n.id,
+              kind: "note",
+              title: n.title,
+              text: n.content,
+              category: n.bookCategory ?? "",
+              version: n.version,
+            })),
+            ...books.items
+              .slice(0, limit - notes.items.length)
+              .map((b) => ({
+                id: b.id,
+                kind: "book",
+                title: b.title,
+                text: [b.author, b.publisher].filter(Boolean).join(" · "),
+                category: b.category ?? "",
+                version: b.version,
+              })),
+          ],
+        };
+      }
       if (path === "/api/library-search/topics") {
         const data = await index();
         return {
@@ -639,6 +684,8 @@ export function createReplicaRepository(storage: ReplicaStorage) {
           offset: p.has("offset") ? Number(p.get("offset")) : undefined,
           cursor: p.get("cursor") ?? undefined,
         });
+      const resource = await resources.read(path, p);
+      if (resource.handled) return resource.value;
       throw new UnsupportedLocalRoute(path);
     },
     async index() {
@@ -653,6 +700,32 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       const values = [];
       for await (const row of records(entity, cp.generation)) values.push(row);
       return values;
+    },
+    async exportData() {
+      const cp = await storage.checkpoint();
+      if (!cp?.complete)
+        throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
+      const tables: Partial<Record<SyncEntity, RawRecord[]>> = {};
+      for (const entity of Object.keys(syncEntities) as SyncEntity[]) {
+        const values = [];
+        for await (const r of records(entity, cp.generation)) values.push(r);
+        tables[entity] = values;
+      }
+      const latest = await storage.checkpoint();
+      if (latest?.generation !== cp.generation || latest.cursor !== cp.cursor)
+        throw new ReplicaQueryError(
+          409,
+          "동기화 중입니다. 완료 후 다시 내려받으세요.",
+        );
+      return {
+        format: "knowledge-library-device-export-v1",
+        createdAt: new Date().toISOString(),
+        owner: storage.owner,
+        checkpoint: cp,
+        tables,
+        outbox: await storage.listOutbox(),
+        conflicts: await storage.listConflicts(),
+      };
     },
     invalidate() {
       cached = undefined;

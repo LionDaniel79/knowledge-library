@@ -1,6 +1,7 @@
 import { UnsupportedLocalRoute } from "./repository";
 import { ReplicaQueryError } from "./queries";
 import type { LibraryRuntime } from "./runtime";
+import { onlineOnlyGet } from "./online-routes";
 let current: LibraryRuntime | null = null;
 export const isLocalReplicaReady = () => !!current?.getSnapshot().ready;
 export function registerLibraryRuntime(runtime: LibraryRuntime) {
@@ -43,6 +44,14 @@ export async function libraryRequest(
         },
       });
     } catch (error) {
+      if (
+        error instanceof UnsupportedLocalRoute &&
+        !onlineOnlyGet(url.pathname)
+      )
+        return Response.json(
+          { error: "이 자료의 기기 조회가 연결되지 않았습니다." },
+          { status: 501, headers: { "Cache-Control": "private, no-store" } },
+        );
       if (!(error instanceof UnsupportedLocalRoute)) {
         if (error instanceof DOMException && error.name === "AbortError")
           throw error;
@@ -77,3 +86,19 @@ export async function libraryRequest(
 }
 export const readLibraryResource = (path: string) =>
   libraryRequest(path, { cache: "no-store" });
+export async function downloadDeviceArchive() {
+  if (!current?.getSnapshot().ready)
+    throw Error("기기 저장을 먼저 완료해 주세요.");
+  const value = await current.repository.exportData();
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(value)], { type: "application/json" }),
+  );
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `지식서재-기기전체자료-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+}

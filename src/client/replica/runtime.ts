@@ -44,6 +44,7 @@ export function createLibraryRuntime(
   let verified = false,
     closed = false,
     active: Promise<SyncStatus> | null = null;
+  let capabilitiesAt = 0;
   let dataToken = checkpoint
     ? checkpoint.generation + "\0" + checkpoint.cursor
     : "";
@@ -97,6 +98,45 @@ export function createLibraryRuntime(
             authRequired: false,
           });
           dataToken = token;
+          if (cp?.complete && Date.now() - capabilitiesAt > 300000) {
+            capabilitiesAt = Date.now();
+            void fetch("/api/sync/capabilities", {
+              cache: "no-store",
+              credentials: "same-origin",
+              redirect: "error",
+              signal: abort.signal,
+            })
+              .then(async (response) => {
+                if (!response.ok) return;
+                const v = z
+                  .object({
+                    ownerId: z.string(),
+                    execution: z.enum(["server", "pc"]),
+                    comparisonEnabled: z.boolean(),
+                    workers: z
+                      .array(
+                        z.object({
+                          key_ready: z.boolean(),
+                          price_version: z.string(),
+                          last_seen: z.string(),
+                          name: z.string(),
+                        }),
+                      )
+                      .max(100),
+                  })
+                  .strict()
+                  .parse(await response.json());
+                if (v.ownerId !== owner || closed) return;
+                await storage.transaction((tx) =>
+                  tx.putIndex(cp.generation, "online-capabilities", {
+                    ...v,
+                    checkedAt: new Date().toISOString(),
+                  }),
+                );
+                emit({ revision: snapshot.revision + 1 });
+              })
+              .catch(() => {});
+          }
           return status;
         } catch (error) {
           const authRequired =

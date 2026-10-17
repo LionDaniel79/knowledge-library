@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
+import { Sha256Stream } from "../replica/codec";
 import type { Note } from "../domain";
 import type { AnalysisRecord, ThoughtEvent } from "./types";
 export function contentHash(text: string) {
-  return createHash("sha256").update(text).digest("hex");
+  const hash = new Sha256Stream();
+  hash.update(new TextEncoder().encode(text));
+  return hash.hex();
 }
 function localDay(date: Date) {
   return Number.isFinite(date.getTime())

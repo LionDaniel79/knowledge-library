@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 export function DeviceSettings() {
   const [devices, setDevices] = useState<
@@ -14,7 +15,7 @@ export function DeviceSettings() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   async function refresh() {
-    const r = await fetch("/api/thought-devices", { cache: "no-store" });
+    const r = await libraryRequest("/api/thought-devices", { cache: "no-store" });
     if (!r.ok) throw Error("PC 목록을 불러오지 못했습니다.");
     setDevices(await r.json());
   }
@@ -22,7 +23,7 @@ export function DeviceSettings() {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/thought-devices", {
+      const r = await libraryRequest("/api/thought-devices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
