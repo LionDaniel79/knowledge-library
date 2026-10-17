@@ -7,9 +7,9 @@ const text = z.string(),
   number = z.number();
 const source = z
   .object({
-    app: text,
-    libraryId: text,
-    recordId: text,
+    app: text.nullish().transform((v) => v ?? ""),
+    libraryId: text.nullish().transform((v) => v ?? ""),
+    recordId: text.nullish().transform((v) => v ?? ""),
     cover: z
       .object({ sha256: text, mime: text, bytes: number })
       .nullish()

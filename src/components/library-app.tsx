@@ -159,7 +159,8 @@ export function LibraryApp({
     // Let the first frame paint before serializing the small last-opened view.
     const timer = window.setTimeout(() => {
       try {
-        writeStartup(localStorage, ownerId, data);
+        if (localStorage.getItem(offlineOwnerKey) === ownerId)
+          writeStartup(localStorage, ownerId, data);
       } catch {}
     }, 0);
     return () => window.clearTimeout(timer);

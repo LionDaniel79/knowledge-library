@@ -135,6 +135,8 @@ export function ReplicaEntry({
           accountChanged = true;
           try {
             clearStartup(localStorage, next.owner);
+            if (localStorage.getItem(offlineOwnerKey) === next.owner)
+              localStorage.removeItem(offlineOwnerKey);
           } catch {}
           runtime = undefined;
           next.close();
@@ -212,6 +214,8 @@ export function ReplicaEntry({
           )
             try {
               clearStartup(localStorage, remembered);
+              if (localStorage.getItem(offlineOwnerKey) === remembered)
+                localStorage.removeItem(offlineOwnerKey);
             } catch {}
           setScreen(null);
           setAuth(true);
@@ -307,6 +311,8 @@ export function ReplicaEntry({
           ) {
             try {
               if (screenOwner) clearStartup(localStorage, screenOwner);
+              if (localStorage.getItem(offlineOwnerKey) === screenOwner)
+                localStorage.removeItem(offlineOwnerKey);
             } catch {}
             setScreen(null);
           }
@@ -317,6 +323,44 @@ export function ReplicaEntry({
         }
       }
     })();
+    // A first launch after upgrading has no small saved view yet. Do not leave
+    // it behind an indefinitely delayed database/index. This verified overview
+    // only paints the UI; it never replaces the complete replica or its outbox.
+    const firstScreenTimer = window.setTimeout(() => {
+      if (!alive() || hasScreen || loadingOnlineOverview) return;
+      void (async () => {
+        try {
+          const verified = await session;
+          if (!verified.owner || !alive() || hasScreen) return;
+          const response = await fetch("/api/library", {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (!response.ok) return;
+          const data = await response.json(),
+            current = runtime;
+          if (current && current.owner !== verified.owner) return;
+          const status = current?.getSnapshot().status;
+          const visible =
+            current &&
+            status &&
+            (status.pending || status.conflicts || status.failed)
+              ? await current.withPendingReading(data)
+              : data;
+          if (!alive() || hasScreen || (current && runtime !== current)) return;
+          screenOwner = verified.owner;
+          hasScreen = true;
+          setScreen({
+            runtime: current ?? null,
+            owner: verified.owner,
+            data: visible,
+            authorizeNetwork: accessFor(verified.owner),
+          });
+        } catch {
+          /* Keep the saved device copy and its normal opening path. */
+        }
+      })();
+    }, 1800);
     const resume = () => {
       setClientToday(todayInSeoul());
       if (runtime) void runtime.sync({ reason: "resume" }).catch(() => {});
@@ -348,6 +392,7 @@ export function ReplicaEntry({
     }, 60000);
     return () => {
       cancelled = true;
+      window.clearTimeout(firstScreenTimer);
       controller.abort();
       unsubscribe?.();
       runtime?.close();

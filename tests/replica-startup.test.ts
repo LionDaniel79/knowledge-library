@@ -56,6 +56,8 @@ it("keeps a bounded owner-isolated startup view without provider or authenticati
   expect(readStartup(s, "A")?.books[0].title).toBe("저장된 서재");
   expect(readStartup(s, "B")).toBeNull();
   library.books[0].sourceData!.cover = null as any;
+  library.books[0].sourceData!.libraryId = null as any;
+  library.books[0].sourceData!.recordId = null as any;
   writeStartup(s, "A", library);
   expect(readStartup(s, "A")?.books[0].title).toBe("저장된 서재");
   expect([...s.values.values()].join("")).not.toContain("SECRET");

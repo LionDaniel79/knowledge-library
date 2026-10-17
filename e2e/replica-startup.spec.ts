@@ -7,7 +7,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import{createRoot}from'react-dom/client';import{ReplicaEntry}from'./src/components/replica/entry';import{writeStartup}from'./src/client/replica/startup-cache';import{offlineOwnerKey}from'./src/lib/offline-drafts';window.mount=()=>{const data=window.fixture;localStorage.setItem(offlineOwnerKey,'startup-owner');writeStartup(localStorage,'startup-owner',data);createRoot(document.getElementById('root')).render(<ReplicaEntry available={true}/>);};`,
+        contents: `import{createRoot}from'react-dom/client';import{ReplicaEntry}from'./src/components/replica/entry';import{writeStartup}from'./src/client/replica/startup-cache';import{offlineOwnerKey}from'./src/lib/offline-drafts';window.mount=()=>{const data=window.fixture;localStorage.setItem(offlineOwnerKey,'startup-owner');if(!window.skipStartup)writeStartup(localStorage,'startup-owner',data);createRoot(document.getElementById('root')).render(<ReplicaEntry available={true}/>);};`,
         loader: "tsx",
         resolveDir: process.cwd(),
       },
@@ -39,7 +39,7 @@ test.beforeAll(async () => {
     })
   ).outputFiles[0].text;
 });
-async function start(page: Page) {
+async function start(page: Page, cached = true, waitForHome = true) {
   const book = {
     id: "7ddbf46b-e4be-4143-b5da-93157b385300",
     title: "지금 읽는 나의 책",
@@ -95,14 +95,27 @@ async function start(page: Page) {
   );
   await page.route("https://startup.test/api/sync/session", (r) => {
     session = r;
+    if (!cached) return r.fulfill({ json: { ownerId: "startup-owner" } });
   });
   await page.goto("https://startup.test/");
   await page.evaluate((data) => {
     (window as any).fixture = data;
   }, fixture);
+  await page.evaluate((value) => {
+    (window as any).skipStartup = !value;
+  }, cached);
   await page.addScriptTag({ content: bundle });
   await page.evaluate(() => (window as any).mount());
-  await expect(page.locator(".workspace")).toBeVisible({ timeout: 1500 });
+  if (!waitForHome) {
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-open-waiting",
+      "1",
+    );
+    return { session: () => session!, book, fixture };
+  }
+  await expect(page.locator(".workspace")).toBeVisible({
+    timeout: cached ? 1500 : 5000,
+  });
   await expect(
     page.getByText("지금 읽는 나의 책", { exact: true }).first(),
   ).toBeVisible();
@@ -112,6 +125,43 @@ async function start(page: Page) {
   await expect(page.locator("body")).toHaveAttribute("data-open-waiting", "1");
   return { session: () => session!, book, fixture };
 }
+test("opens a verified first-launch overview when there is no startup cache and the database is still stalled", async ({
+  page,
+}) => {
+  await start(page, false);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("knowledge-library-startup:v1:startup-owner"),
+    ),
+  ).not.toBeNull();
+  await expect(
+    page.getByRole("button", { name: "책 추가", exact: true }),
+  ).toBeVisible();
+});
+test("does not restore an old first-launch fallback after the account changes", async ({
+  page,
+}) => {
+  const f = await start(page, false, false);
+  let response: Route | undefined;
+  await page.route("https://startup.test/api/library", (r) => {
+    response = r;
+  });
+  await expect.poll(() => !!response).toBe(true);
+  await page.evaluate(() => {
+    localStorage.setItem("knowledge-library-offline-owner:v1", "another-owner");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "knowledge-library-offline-owner:v1",
+        newValue: "another-owner",
+      }),
+    );
+  });
+  await expect(
+    page.getByRole("button", { name: "Google 계정으로 시작하기", exact: true }),
+  ).toBeVisible();
+  await response!.fulfill({ json: f.fixture }).catch(() => {});
+  await expect(page.locator(".workspace")).toHaveCount(0);
+});
 test("shows the saved library while both login and device opening are stalled, preserving a form through attachment", async ({
   page,
 }) => {
