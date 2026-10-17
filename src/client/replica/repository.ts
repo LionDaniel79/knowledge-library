@@ -72,7 +72,9 @@ const indexStamp = (state: {
 export function createReplicaRepository(storage: ReplicaStorage) {
   const worker = createQueryWorker(storage.owner);
   let cached: { token: string; data: LocalIndex } | undefined,
-    loading: Promise<LocalIndex> | undefined;
+    loading: Promise<LocalIndex> | undefined,
+    catalogCached: { token: string; data: LocalIndex } | undefined,
+    catalogLoading: Promise<LocalIndex> | undefined;
   let overlayCache:
     { token: string; rows: Map<string, RawRecord | null> } | undefined;
   async function overlay(generation: string) {
@@ -146,7 +148,10 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         binaryCompare(timestampKey(a.created_at), timestampKey(b.created_at)) ||
         binaryCompare(a.id ?? a.name, b.id ?? b.name),
     );
-  async function build(generation: string): Promise<LocalIndex> {
+  async function build(
+    generation: string,
+    catalogOnly = false,
+  ): Promise<LocalIndex> {
     const tables = {} as Partial<Record<SyncEntity, RawRecord[]>>;
     for (const entity of [
       "library_books",
@@ -282,6 +287,9 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       if (b.catalogCoverUrl) b.catalogCoverUrl = mirrors.get(b.catalogCoverUrl);
       Object.assign(b, serialized(b));
     }
+    // Ordinary library screens need exact books/covers/notes, but not copies of
+    // every publisher description, contents list and research search passage.
+    if (catalogOnly) return serialized(data);
     const visibleBooks = new Map(
         activeBooks(data).map((b) => [b.book.id, b.book]),
       ),
@@ -425,22 +433,23 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     }
     return serialized(data);
   }
-  async function load(): Promise<LocalIndex> {
+  async function load(catalogOnly = false): Promise<LocalIndex> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const cp = await storage.checkpoint();
       if (!cp?.complete)
         throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
       const stamp = indexStamp(cp),
-        token = cp.generation + "\0" + stamp;
-      if (cached?.token === token) return cached.data;
+        token = cp.generation + "\0" + stamp,
+        previous = catalogOnly ? catalogCached : cached;
+      if (previous?.token === token) return previous.data;
       const persisted = await storage.readIndex(
-        "query-index-v1",
+        catalogOnly ? "catalog-index-v1" : "query-index-v1",
         cp.generation,
       );
       let data: LocalIndex;
       if (persisted?.stamp === stamp) data = persisted.data;
       else {
-        data = await build(cp.generation);
+        data = await build(cp.generation, catalogOnly);
         const latest = await storage.checkpoint();
         if (
           latest?.generation !== cp.generation ||
@@ -448,13 +457,18 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         )
           continue;
         await storage.transaction((tx) =>
-          tx.putIndex(cp.generation, "query-index-v1", {
-            stamp,
-            data,
-          }),
+          tx.putIndex(
+            cp.generation,
+            catalogOnly ? "catalog-index-v1" : "query-index-v1",
+            {
+              stamp,
+              data,
+            },
+          ),
         );
       }
-      cached = { token, data };
+      if (catalogOnly) catalogCached = { token, data };
+      else cached = { token, data };
       return data;
     }
     throw new ReplicaQueryError(
@@ -466,13 +480,24 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     (loading ??= load().finally(() => {
       loading = undefined;
     }));
+  const catalogIndex = () =>
+    (catalogLoading ??= load(true).finally(() => {
+      catalogLoading = undefined;
+    }));
   async function query<T>(kind: QueryKind, input: unknown): Promise<T> {
+    if (kind !== "search")
+      return runLocalQuery(
+        await catalogIndex(),
+        storage.owner,
+        kind,
+        input,
+      ) as Promise<T>;
     await worker.initialize(await index());
     return worker.query(kind, input);
   }
   async function detailBook(id: string): Promise<Book> {
     z.string().uuid().parse(id);
-    const data = await index();
+    const data = await catalogIndex();
     const compact = data.books.find((b) => b.book.id === id)?.book;
     if (!compact || data.excluded.includes(id))
       throw new ReplicaQueryError(404, "책을 찾을 수 없습니다.");
@@ -495,7 +520,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     book: detailBook,
     async note(id: string, trash = false): Promise<Note> {
       z.string().uuid().parse(id);
-      const data = await index();
+      const data = await catalogIndex();
       if (
         trash ? !Object.hasOwn(data.trash, id) : Object.hasOwn(data.trash, id)
       )
@@ -505,7 +530,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       return projectNote(r);
     },
     async overview(): Promise<Library> {
-      const data = await index(),
+      const data = await catalogIndex(),
         firstPage = (await runLocalQuery(
           data,
           storage.owner,
@@ -778,11 +803,13 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     },
     invalidate() {
       cached = undefined;
+      catalogCached = undefined;
       overlayCache = undefined;
     },
     close() {
       worker.close();
       cached = undefined;
+      catalogCached = undefined;
     },
   };
   return repository;

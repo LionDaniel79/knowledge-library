@@ -121,6 +121,14 @@ it("opens the local overview without starting a search worker", async () => {
     true,
   );
   expect(worker).not.toHaveBeenCalled();
+  const cp = await f.s.checkpoint();
+  const compact = await f.s.readIndex("catalog-index-v1", cp!.generation);
+  expect(compact.data.entries).toEqual([]);
+  expect(await f.s.readIndex("query-index-v1", cp!.generation)).toBeUndefined();
+  await f.repo.search({ text: "내가", layer: "all" });
+  expect(
+    (await f.s.readIndex("query-index-v1", cp!.generation)).data.entries.length,
+  ).toBeGreaterThan(0);
   f.repo.close();
 });
 it("falls back to local queries when a search worker fails before initialization", async () => {

@@ -152,7 +152,7 @@ test("uses the real search worker and local records for book, note and date quer
     await repo.books({});
     return { book, note };
   });
-  expect(workers).toBe(1);
+  expect(workers).toBe(0);
   await context.setOffline(true);
   const result = await page.evaluate(async () => {
     const repo = (window as any).repository;
@@ -171,5 +171,6 @@ test("uses the real search worker and local records for book, note and date quer
   expect(result.notes.total).toBe(1);
   expect(result.notes.items[0].id).toBe(ids.note);
   expect(result.search.items[0].source.id).toBe(ids.note);
+  expect(workers).toBe(1);
   expect(requests).toBe(0);
 });
