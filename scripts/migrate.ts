@@ -28,6 +28,8 @@ try {
     await readFile("db/016_research_organization.sql", "utf8"),
   );
   const role = process.env.LIBRARY_APP_ROLE;
+  if (role && !/^[a-z_][a-z0-9_]*$/.test(role))
+    throw Error("Invalid application role");
   await client.query(await readFile("db/017_note_trash.sql", "utf8"));
   await client.query(await readFile("db/018_cover_assets.sql", "utf8"));
   await client.query(await readFile("db/019_server_assist.sql", "utf8"));
@@ -48,12 +50,10 @@ try {
       'GRANT SELECT,INSERT,UPDATE ON library_sync_devices TO "' + role + '"',
     );
     await client.query(
-      'GRANT EXECUTE ON FUNCTION public.library_sync_lock(text) TO "' +
+      'GRANT EXECUTE ON FUNCTION public.library_sync_lock(text),public.library_sync_redact(jsonb) TO "' +
         role +
         '"',
     );
-    if (!/^[a-z_][a-z0-9_]*$/.test(role))
-      throw Error("Invalid application role");
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_book_exclusions TO "' + role + '"',
     );

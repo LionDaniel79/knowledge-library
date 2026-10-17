@@ -61,27 +61,18 @@ export async function openReplica(
     },
     async scan(store, prefix, after, limit = Number.MAX_SAFE_INTEGER) {
       check();
-      return new Promise<StoredEntry[]>((resolve, reject) => {
-        const tx = db.transaction(store, "readonly"),
-          range = IDBKeyRange.bound(
-            after ?? prefix,
-            [...prefix, []],
-            Boolean(after),
-            true,
-          ),
-          r = tx.objectStore(store).openCursor(range),
-          entries: StoredEntry[] = [];
-        r.onerror = () => reject(r.error);
-        r.onsuccess = () => {
-          const c = r.result;
-          if (!c || entries.length >= limit) {
-            resolve(entries);
-            return;
-          }
-          entries.push(c.value);
-          c.continue();
-        };
-      });
+      const range = IDBKeyRange.bound(
+        after ?? prefix,
+        [...prefix, []],
+        Boolean(after),
+        true,
+      );
+      return request<StoredEntry[]>(
+        db
+          .transaction(store, "readonly")
+          .objectStore(store)
+          .getAll(range, Math.min(limit, 4294967295)),
+      );
     },
     async transaction(fn) {
       check();
@@ -95,6 +86,43 @@ export async function openReplica(
       // Only queued database operations run here. The public transaction callback
       // is synchronous and is collected before opening this IndexedDB transaction.
       const io: ReplicaIO = {
+        async getMany(s, keys) {
+          if (!keys.length) return [];
+          const store = tx.objectStore(s);
+          if (
+            s === "rows" &&
+            keys.every(
+              (k) =>
+                k.length === 4 &&
+                k.slice(0, 3).every((v, i) => v === keys[0][i]),
+            )
+          ) {
+            const ordered = [...keys].sort((a, b) =>
+              a[3] < b[3] ? -1 : a[3] > b[3] ? 1 : 0,
+            );
+            const found: StoredEntry[] = await request(
+              store.getAll(
+                IDBKeyRange.bound(ordered[0], ordered.at(-1)!),
+                keys.length + 1,
+              ),
+            );
+            if (found.length <= keys.length) {
+              const indexed = new Map(
+                found.map((e) => [JSON.stringify(e.id), e.data]),
+              );
+              return keys.map((k) => indexed.get(JSON.stringify(k)));
+            }
+          }
+          const reads = keys.map((k) => store.get(k));
+          await request(reads.at(-1)!);
+          return reads.map((r) => r.result?.data);
+        },
+        async putMany(s, entries) {
+          if (!entries.length) return;
+          const store = tx.objectStore(s),
+            writes = entries.map((e) => store.put(e));
+          await request(writes.at(-1)!);
+        },
         countRange: (s, prefix) =>
           request(
             tx

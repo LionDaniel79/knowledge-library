@@ -167,7 +167,7 @@ it("works with read-only table privileges without access to private sync helper 
   const owner = randomUUID();
   await book(owner);
   await f.pg.exec(
-    "CREATE ROLE sync_test_reader; GRANT USAGE ON SCHEMA public TO sync_test_reader; GRANT SELECT ON ALL TABLES IN SCHEMA public TO sync_test_reader; SET ROLE sync_test_reader",
+    "CREATE ROLE sync_test_reader; GRANT USAGE ON SCHEMA public TO sync_test_reader; GRANT SELECT ON ALL TABLES IN SCHEMA public TO sync_test_reader; GRANT EXECUTE ON FUNCTION public.library_sync_redact(jsonb) TO sync_test_reader; SET ROLE sync_test_reader",
   );
   try {
     expect((await readSyncMeta(f.db, owner)).totalRows).toBe(1);

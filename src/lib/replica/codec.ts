@@ -16,6 +16,13 @@ export function decodeSyncValue(bytes: Uint8Array): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 export async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  // Avoid one cross-process WebCrypto round trip per tiny row on WebKit.
+  // The same incremental implementation verifies complete multipart values.
+  if (bytes.length <= 192 * 1024) {
+    const digest = new Sha256Stream();
+    digest.update(bytes);
+    return digest.hex();
+  }
   const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer);
   return Array.from(new Uint8Array(digest), (n) =>
     n.toString(16).padStart(2, "0"),

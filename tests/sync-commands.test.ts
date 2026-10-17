@@ -9,6 +9,73 @@ import { queueReplicaCommand } from "../src/client/replica/outbox";
 import { pushReplica } from "../src/client/replica/push";
 import { pullReplica } from "../src/client/replica/pull";
 import { createReplicaCoordinator } from "../src/client/replica/coordinator";
+import { withSyncWrite } from "../src/server/sync/write";
+it("does not overwrite metadata collected without an application-version increment while a device edit is pending", async () => {
+  const f = await testDatabase(),
+    owner = "collector-race",
+    s = createMemoryReplica(owner),
+    transport = sqlSyncTransport(f.db, owner),
+    repo = createReplicaRepository(s);
+  try {
+    const requestId = crypto.randomUUID();
+    const b: any = await executeSyncCommand(f.db, owner, {
+      requestId,
+      family: "library",
+      body: {
+        requestId,
+        type: "addBook",
+        payload: {
+          title: "처음 제목",
+          publisher: "처음 출판사",
+          formats: ["paper"],
+        },
+      },
+    });
+    await bootstrapReplica({ owner, storage: s, transport });
+    await queueReplicaCommand({
+      storage: s,
+      repository: repo,
+      path: "/api/library",
+      body: {
+        requestId: crypto.randomUUID(),
+        type: "editBook",
+        payload: {
+          id: b.id,
+          expectedVersion: 1,
+          title: "내가 고친 제목",
+          publisher: "처음 출판사",
+          formats: ["paper"],
+        },
+      },
+    });
+    await withSyncWrite(f.db, owner, (tx) =>
+      tx.query(
+        "UPDATE library_books SET publisher='확인된 새 출판사' WHERE owner_id=$1 AND id=$2",
+        [owner, b.id],
+      ),
+    );
+    const result = await createReplicaCoordinator({
+      owner,
+      storage: s,
+      transport,
+    }).syncReplica({ reason: "reconnect" });
+    expect(result.conflicts).toBe(1);
+    expect(
+      (
+        await f.db.query(
+          "SELECT publisher,version FROM library_books WHERE owner_id=$1 AND id=$2",
+          [owner, b.id],
+        )
+      ).rows[0],
+    ).toMatchObject({ publisher: "확인된 새 출판사", version: 1 });
+    expect(((await s.listOutbox())[0].command as any).body.payload.title).toBe(
+      "내가 고친 제목",
+    );
+  } finally {
+    repo.close();
+    await f.pg.close();
+  }
+});
 it("uses validated client ids and commits each requested change once even after a response is lost", async () => {
   const f = await testDatabase();
   const id = crypto.randomUUID(),

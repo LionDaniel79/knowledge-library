@@ -68,7 +68,9 @@ export function LibraryOperationsPanel({
     setBusy(true);
     setError("");
     try {
-      const r = await libraryRequest("/api/library-operations", { cache: "no-store" }),
+      const r = await libraryRequest("/api/library-operations", {
+          cache: "no-store",
+        }),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "처리 현황을 읽지 못했습니다.");
       setState(j);

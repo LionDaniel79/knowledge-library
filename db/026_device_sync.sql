@@ -35,9 +35,32 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $sync_key$
  SELECT '['||coalesce(string_agg(to_jsonb(p_row->>k.value)::text,',' ORDER BY k.ord),'')||']'
  FROM jsonb_array_elements_text(p_keys) WITH ORDINALITY k(value,ord)
 $sync_key$;
+-- Only device projections are sanitized. Original source JSON remains on the server.
+CREATE OR REPLACE FUNCTION library_sync_redact(p_value jsonb) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public AS $sync_redact$
+DECLARE result jsonb;value_text text;
+BEGIN
+ IF jsonb_typeof(p_value) IN ('object','array') AND p_value::text !~* '("(api_?key|authkey|access_?token|refresh_?token|client_?secret|password|authorization|cookie|token)"[[:space:]]*:|[?&](authKey|ttbkey|apikey|api_key|access_token|refresh_token|token|key|x-amz-signature|x-amz-credential|x-amz-security-token)=|[a-z][a-z0-9+.-]*://[^/@"[:space:]]+:[^/@"[:space:]]+@)' THEN
+  RETURN p_value;
+ END IF;
+ CASE jsonb_typeof(p_value)
+ WHEN 'object' THEN
+  SELECT coalesce(jsonb_object_agg(k.key,CASE WHEN k.key ~* '^(api_?key|authkey|access_?token|refresh_?token|client_?secret|password|authorization|cookie)$' OR (k.key ~* '^token$' AND jsonb_typeof(k.value)='string') THEN 'null'::jsonb ELSE public.library_sync_redact(k.value) END),'{}'::jsonb) INTO result FROM jsonb_each(p_value) k;
+ WHEN 'array' THEN
+  SELECT coalesce(jsonb_agg(public.library_sync_redact(k.value) ORDER BY k.ord),'[]'::jsonb) INTO result FROM jsonb_array_elements(p_value) WITH ORDINALITY k(value,ord);
+ WHEN 'string' THEN
+  value_text:=p_value#>>'{}';
+  value_text:=regexp_replace(value_text,'([?&](authKey|ttbkey|apikey|api_key|access_token|refresh_token|token|key|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&#[:space:]"<>]*','\1','gi');
+  value_text:=regexp_replace(value_text,'([a-z][a-z0-9+.-]*://)[^/@[:space:]]+:[^/@[:space:]]+@','\1','gi');
+  result:=to_jsonb(value_text);
+ ELSE result:=p_value;
+ END CASE;
+ RETURN result;
+END
+$sync_redact$;
 CREATE OR REPLACE FUNCTION library_sync_public_row(p_row jsonb,p_columns jsonb) RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $sync_public$
- SELECT coalesce(jsonb_object_agg(k.key,k.value),'{}'::jsonb)
+ SELECT public.library_sync_redact(coalesce(jsonb_object_agg(k.key,k.value),'{}'::jsonb))
  FROM jsonb_each(p_row) k WHERE k.key IN(SELECT jsonb_array_elements_text(p_columns))
 $sync_public$;
 CREATE OR REPLACE FUNCTION library_sync_emit(p_owner text,p_entity text,p_key text,p_value jsonb) RETURNS void
@@ -59,7 +82,7 @@ BEGIN
 END
 $sync_emit$;
 CREATE OR REPLACE FUNCTION library_sync_track() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $sync_track$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public SET TimeZone='UTC' AS $sync_track$
 DECLARE old_raw jsonb;new_raw jsonb;old_value jsonb;new_value jsonb;old_key text;new_key text;p_owner text;
 BEGIN
  IF TG_OP<>'INSERT' THEN
@@ -81,7 +104,7 @@ BEGIN
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END
 $sync_track$;
-REVOKE ALL ON FUNCTION library_sync_lock(text),library_sync_key(jsonb,jsonb),library_sync_public_row(jsonb,jsonb),library_sync_emit(text,text,text,jsonb),library_sync_track() FROM PUBLIC;
+REVOKE ALL ON FUNCTION library_sync_lock(text),library_sync_redact(jsonb),library_sync_key(jsonb,jsonb),library_sync_public_row(jsonb,jsonb),library_sync_emit(text,text,text,jsonb),library_sync_track() FROM PUBLIC;
 -- Static triggers for the reviewed application schema follow below.
 DO $sync_install$
 BEGIN

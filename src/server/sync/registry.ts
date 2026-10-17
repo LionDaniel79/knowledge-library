@@ -28,7 +28,11 @@ export function syncSql(entity: SyncEntity) {
     "jsonb_build_object(" +
     def.columns.map((k) => `'${k}',t.${identifier(k)}`).join(",") +
     ")";
-  return { table: "public." + identifier(entity), key, value };
+  return {
+    table: "public." + identifier(entity),
+    key,
+    value: "public.library_sync_redact(" + value + ")",
+  };
 }
 export function validateSyncKey(entity: SyncEntity, key: string) {
   syncInput(syncKeyInput, key);

@@ -15,7 +15,9 @@ export function DeviceSettings() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   async function refresh() {
-    const r = await libraryRequest("/api/thought-devices", { cache: "no-store" });
+    const r = await libraryRequest("/api/thought-devices", {
+      cache: "no-store",
+    });
     if (!r.ok) throw Error("PC 목록을 불러오지 못했습니다.");
     setDevices(await r.json());
   }

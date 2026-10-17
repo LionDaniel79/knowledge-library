@@ -16,6 +16,7 @@ import { createNoteTagStore } from "../note-tags";
 import { createBookRelationStore } from "../book-relations";
 import { bookInput, versionInput } from "../../lib/domain";
 import { ensureBookCover } from "../cover-mirrors";
+import { editableFields } from "../../lib/replica/command-envelope";
 export const syncCommandSchema = z
   .object({
     ownerId: z.string().min(1).max(128).optional(),
@@ -29,6 +30,19 @@ export const syncCommandSchema = z
     ]),
     path: z.string().max(100).optional(),
     body: z.record(z.string(), z.unknown()),
+    precondition: z
+      .object({
+        entity: z.enum(["library_books", "library_notes"]),
+        id: z.string().uuid(),
+        fields: z.record(z.string(), z.unknown()),
+      })
+      .strict()
+      .refine((v) =>
+        Object.keys(v.fields).every((k) =>
+          (editableFields[v.entity] as readonly string[]).includes(k),
+        ),
+      )
+      .optional(),
   })
   .strict();
 const digest = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -81,6 +95,26 @@ export async function executeSyncCommand(
       )
     ).rows[0];
     if (old) return replay(old);
+    if (p.precondition) {
+      const v = p.precondition;
+      if (
+        p.family !== "library" ||
+        body.payload?.id !== v.id ||
+        body.type !== (v.entity === "library_books" ? "editBook" : "editNote")
+      )
+        throw new LibraryError(400, "변경 기준이 일치하지 않습니다.");
+      const matches = (
+        await tx.query(
+          `SELECT id FROM ${v.entity} t WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM jsonb_each($3::jsonb) e WHERE coalesce(to_jsonb(t)->e.key,'null'::jsonb) IS DISTINCT FROM e.value)`,
+          [owner, v.id, JSON.stringify(v.fields)],
+        )
+      ).rows[0];
+      if (!matches)
+        throw new LibraryError(
+          409,
+          "자료가 보완되거나 수정되었습니다. 최신 내용과 비교해 주세요.",
+        );
+    }
     const nested: Database = { query: tx.query, transaction: (fn) => fn(tx) };
     let result: unknown;
     if (p.family === "library")

@@ -121,10 +121,8 @@ export const readLibraryResource = (path: string) =>
 export async function downloadDeviceArchive() {
   if (!current?.getSnapshot().ready)
     throw Error("기기 저장을 먼저 완료해 주세요.");
-  const value = await current.repository.exportData();
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(value)], { type: "application/json" }),
-  );
+  const { createReplicaArchive } = await import("./archive");
+  const url = URL.createObjectURL(await createReplicaArchive(current.storage));
   try {
     const a = document.createElement("a");
     a.href = url;

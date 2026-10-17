@@ -12,6 +12,7 @@ import type {
   SyncMeta,
 } from "../../src/client/replica/transport";
 import type { QueuedChange } from "../../src/client/replica/optimistic";
+import { syncCommandEnvelope } from "../../src/lib/replica/command-envelope";
 export function sqlSyncTransport(db: Database, owner: string): SyncTransport {
   return {
     meta: async (inventory) =>
@@ -27,13 +28,7 @@ export function sqlSyncTransport(db: Database, owner: string): SyncTransport {
       }),
     coverage: () => readSyncCoverage(db, owner),
     push: (entry) => {
-      const c = entry.command as QueuedChange;
-      return executeSyncCommand(db, owner, {
-        requestId: entry.requestId,
-        family: entry.family,
-        path: c.path,
-        body: c.body,
-      });
+      return executeSyncCommand(db, owner, syncCommandEnvelope(entry));
     },
   };
 }

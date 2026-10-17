@@ -463,9 +463,12 @@ export function KnowledgePanel({
                     type="button"
                     onClick={() =>
                       void run(async () => {
-                        const r = await libraryRequest(`/api/revisions/${link.id}`, {
-                          cache: "no-store",
-                        });
+                        const r = await libraryRequest(
+                          `/api/revisions/${link.id}`,
+                          {
+                            cache: "no-store",
+                          },
+                        );
                         if (!r.ok) throw Error("수정 이력을 읽지 못했습니다.");
                         setHistory(await r.json());
                       })

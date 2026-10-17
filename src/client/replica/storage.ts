@@ -21,6 +21,8 @@ export interface StoredEntry {
   data: unknown;
 }
 export interface ReplicaIO {
+  getMany(store: ReplicaStore, keys: ReplicaKey[]): Promise<any[]>;
+  putMany(store: ReplicaStore, entries: StoredEntry[]): Promise<void>;
   get(store: ReplicaStore, key: ReplicaKey): Promise<any>;
   put(store: ReplicaStore, key: ReplicaKey, data: unknown): Promise<void>;
   delete(store: ReplicaStore, key: ReplicaKey): Promise<void>;
@@ -243,15 +245,37 @@ export function createReplicaStorage(
               command.state,
             );
             break;
-          case "rows":
+          case "rows": {
             await state(command.generation);
+            const latest = new Map<string, SyncRow>();
             for (const row of command.rows) {
-              const key = [owner, command.generation, row.entity, row.key],
-                old: SyncRow | undefined = await io.get("rows", key);
+              const k = row.entity + "\0" + row.key,
+                old = latest.get(k);
               if (!old || BigInt(row.revision) >= BigInt(old.revision))
-                await io.put("rows", key, row);
+                latest.set(k, row);
             }
+            const batch = [...latest.values()],
+              keys = batch.map((row) => [
+                owner,
+                command.generation,
+                row.entity,
+                row.key,
+              ]);
+            const previous: (SyncRow | undefined)[] = await io.getMany(
+              "rows",
+              keys,
+            );
+            await io.putMany(
+              "rows",
+              batch.flatMap((row, i) =>
+                !previous[i] ||
+                BigInt(row.revision) >= BigInt(previous[i]!.revision)
+                  ? [{ id: keys[i], data: row }]
+                  : [],
+              ),
+            );
             break;
+          }
           case "checkpoint": {
             const s = await state(command.generation);
             if (

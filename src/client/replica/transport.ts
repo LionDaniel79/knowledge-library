@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { syncCommandEnvelope } from "../../lib/replica/command-envelope";
 import {
   syncEntity,
   syncPage,
@@ -146,17 +147,10 @@ export function createSyncTransport(
   }
   return {
     async push(entry, signal) {
-      const change = entry.command as { path: string; body: unknown };
       const response = await fetcher(root + "/api/sync/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ownerId: entry.owner,
-          requestId: entry.requestId,
-          family: entry.family,
-          path: change.path,
-          body: change.body,
-        }),
+        body: JSON.stringify(syncCommandEnvelope(entry)),
         credentials: "same-origin",
         redirect: "error",
         cache: "no-store",
@@ -189,10 +183,16 @@ export function createSyncTransport(
       ),
     scan: async (entity, after, signal) =>
       syncPage.parse(
-        await get("scan", { entity, ...(after ? { after } : {}) }, signal),
+        await get(
+          "scan",
+          { entity, limit: "200", ...(after ? { after } : {}) },
+          signal,
+        ),
       ),
     changes: async (epoch, cursor, signal) =>
-      syncPage.parse(await get("changes", { epoch, cursor }, signal)),
+      syncPage.parse(
+        await get("changes", { epoch, cursor, limit: "200" }, signal),
+      ),
     value: async (row, index, signal) =>
       get(
         "value",
