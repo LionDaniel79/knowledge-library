@@ -62,7 +62,7 @@ export function NoteTrash({
       {notes.length > 0 && (
         <button
           type="button"
-          className="danger"
+          className="secondary danger"
           disabled={busy}
           onClick={() =>
             setEmptyPending({
@@ -91,7 +91,7 @@ export function NoteTrash({
           <p>이전에 가져온 원본 자료와 기존 백업은 유지됩니다.</p>
           <button
             type="button"
-            className="danger"
+            className="secondary danger"
             disabled={busy}
             onClick={() => void emptyTrash()}
           >
@@ -99,6 +99,7 @@ export function NoteTrash({
           </button>
           <button
             type="button"
+            className="secondary"
             disabled={busy}
             onClick={() => setEmptyPending(null)}
           >

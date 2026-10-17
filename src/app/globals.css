@@ -3366,6 +3366,10 @@ textarea {
 .trash-confirm button {
   margin-right: 12px;
 }
+.note-trash .danger {
+  color: #a12323;
+  border-color: #d9b6b6;
+}
 @media (max-width: 700px) {
   .note-controls {
     display: grid;
@@ -3404,6 +3408,9 @@ textarea {
     max-width: calc(100dvw - 16px);
     max-height: calc(100dvh - 16px);
     padding: 16px;
+  }
+  .modal .form-footer {
+    flex-wrap: wrap;
   }
   .modal input,
   .modal select,
