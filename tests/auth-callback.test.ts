@@ -110,14 +110,18 @@ it("lets the consent page present its own Google sign-in while preserving the OA
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });
 
-it("sends an anonymous visitor to a separate accessible sign-in page", async () => {
+it("opens the public device shell without an auth round trip; data and session APIs authenticate separately", async () => {
+  const fetch = vi.fn(async () => {
+    throw Error("The shell must not wait for remote authentication");
+  });
+  vi.stubGlobal("fetch", fetch);
   const response = await proxy(
     new NextRequest("https://library.example.test/"),
   );
-  expect(response.status).toBe(307);
-  expect(response.headers.get("location")).toBe(
-    "https://library.example.test/auth/sign-in",
-  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+  expect(response.headers.get("location")).toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
 });
 it("lets the PDF entry render its owner-checked sign-in without dropping the destination", async () => {
   const response = await proxy(

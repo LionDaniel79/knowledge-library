@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import {
@@ -35,7 +36,7 @@ export function ReadingCalendar({
     const c = new AbortController();
     setCalendar(null);
     setError("");
-    fetch(`/api/reading?month=${month}`, {
+    libraryRequest(`/api/reading?month=${month}`, {
       signal: c.signal,
       cache: "no-store",
     })

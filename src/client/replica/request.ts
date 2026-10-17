@@ -1,0 +1,79 @@
+import { UnsupportedLocalRoute } from "./repository";
+import { ReplicaQueryError } from "./queries";
+import type { LibraryRuntime } from "./runtime";
+let current: LibraryRuntime | null = null;
+export const isLocalReplicaReady = () => !!current?.getSnapshot().ready;
+export function registerLibraryRuntime(runtime: LibraryRuntime) {
+  current = runtime;
+  return () => {
+    if (current === runtime) current = null;
+  };
+}
+export async function libraryRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const runtime = current,
+    method = (
+      init?.method ?? (input instanceof Request ? input.method : "GET")
+    ).toUpperCase(),
+    url = new URL(
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url,
+      typeof location === "undefined"
+        ? "https://local.invalid"
+        : location.origin,
+    );
+  const local =
+    runtime?.getSnapshot().ready &&
+    (typeof location === "undefined" || url.origin === location.origin) &&
+    url.pathname.startsWith("/api/");
+  if (local && method === "GET") {
+    init?.signal?.throwIfAborted();
+    try {
+      const value = await runtime.repository.read(url.pathname + url.search);
+      init?.signal?.throwIfAborted();
+      return Response.json(value, {
+        headers: {
+          "Cache-Control": "private, no-store",
+          "X-Library-Source": "device",
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof UnsupportedLocalRoute)) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          throw error;
+        return Response.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "기기 자료를 불러오지 못했습니다.",
+          },
+          {
+            status: error instanceof ReplicaQueryError ? error.status : 400,
+            headers: { "Cache-Control": "private, no-store" },
+          },
+        );
+      }
+    }
+  }
+  const response = await fetch(input, init);
+  if (
+    runtime &&
+    method !== "GET" &&
+    response.ok &&
+    url.pathname.startsWith("/api/") &&
+    !url.pathname.startsWith("/api/auth/")
+  ) {
+    if (runtime.getSnapshot().ready)
+      await runtime.sync({ reason: "server-save" }).catch(() => {});
+    else void runtime.sync({ reason: "server-save" }).catch(() => {});
+  }
+  return response;
+}
+export const readLibraryResource = (path: string) =>
+  libraryRequest(path, { cache: "no-store" });

@@ -5,12 +5,12 @@ import { configured, getAuth } from "./server/auth";
 // API handlers still enforce the verified library owner's identity themselves.
 export async function proxy(request: NextRequest) {
   if (!configured()) return NextResponse.next();
-  // Consent and PDF entries render their owner-checked sign-in with the destination intact.
+  // The entry contains no private data; its session/data APIs verify the owner.
+  // Consent keeps its existing owner-checked sign-in destination.
   // OAuth verifier returns still run the SDK exchange on these paths.
   if (
     (request.nextUrl.pathname === "/connect/mcp" ||
-      (request.nextUrl.pathname === "/" &&
-        request.nextUrl.searchParams.get("view") === "pdf")) &&
+      request.nextUrl.pathname === "/") &&
     !request.nextUrl.searchParams.has("neon_auth_session_verifier")
   )
     return NextResponse.next();

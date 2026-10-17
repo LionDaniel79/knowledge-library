@@ -181,11 +181,11 @@ type OutboxEntry = {
 
 **Interfaces:** `ReplicaProvider`, `useReplica()`, `readLibraryResource(path)`. Task 9의 자료가 준비되면 기존 URL 계약을 로컬 조회로 처리한다. 최초 준비 중에는 기존 온라인 경로를 명시적으로 사용한다.
 
-- [ ] RED: `/api/library`와 목록 API가 응답하지 않아도 준비된 기기에서 홈·전체 도서 검색·상세·표지·전체 메모·이력이 열리는지 검증한다.
-- [ ] 실행: `playwright test e2e/replica-library.spec.ts e2e/list-pagination.spec.ts e2e/note-mobile.spec.ts`.
-- [ ] 첫 HTML의 DB overview 대기를 없애고 가벼운 클라이언트 셸로 진입한다. 최초 인증은 세션 API로, 기존 사본의 오프라인 읽기는 기기 저장소로 처리한다. 온라인 조작 권한은 계속 서버가 검증한다. 기존 로그인과 돌아올 주소를 유지한다.
-- [ ] 저장 뒤 overview 재다운로드를 로컬 다시 읽기로 바꾸고, 목록이 빈 화면으로 바뀌지 않는지 검사한 뒤 커밋한다.
-- [ ] 사용자의 추가 요청대로 ‘나의 서재’ 상단 ‘책 추가’ 왼쪽에 ‘동기화’를 배치한다. Task 8의 실제 `syncReplica`에 연결하고 중복 실행 방지·진행/결과를 표시한다. 버튼이 전체 DB 재다운로드를 실행하거나 동작 없이 성공을 표시하지 않는지 E2E로 확인한다.
+- [x] RED: `/api/library`와 목록 API가 응답하지 않아도 준비된 기기에서 홈·전체 도서 검색·상세·표지·전체 메모·이력이 열리는지 검증한다.
+- [x] 실행: `playwright test e2e/replica-library.spec.ts e2e/list-pagination.spec.ts e2e/note-mobile.spec.ts`.
+- [x] 첫 HTML의 DB overview 대기를 없애고 가벼운 클라이언트 셸로 진입한다. 최초 인증은 세션 API로, 기존 사본의 오프라인 읽기는 기기 저장소로 처리한다. 온라인 조작 권한은 계속 서버가 검증한다. 기존 로그인과 돌아올 주소를 유지한다.
+- [x] 저장 뒤 overview 재다운로드를 로컬 다시 읽기로 바꾸고, 목록이 빈 화면으로 바뀌지 않는지 검사한 뒤 커밋한다.
+- [x] 사용자의 추가 요청대로 ‘나의 서재’ 상단 ‘책 추가’ 왼쪽에 ‘동기화’를 배치한다. Task 8의 실제 `syncReplica`에 연결하고 중복 실행 방지·진행/결과를 표시한다. 버튼이 전체 DB 재다운로드를 실행하거나 동작 없이 성공을 표시하지 않는지 E2E로 확인한다.
 
 ### Task 11: 과거 이력·검토·지도·연구·AI 결과도 로컬 조회
 

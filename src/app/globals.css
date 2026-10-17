@@ -3466,3 +3466,11 @@ textarea {
     min-height: 44px;
   }
 }
+
+.page-heading { flex-wrap: wrap; gap: 12px; }
+.heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; max-width: 100%; }
+.sync-summary { font-size: .78rem; color: var(--muted, #66736c); white-space: nowrap; }
+.replica-opening { max-width: 680px; margin: 15vh auto; padding: 24px; }
+.sync-button[aria-busy='true'] svg { animation: replica-spin 1.4s linear infinite; }
+@keyframes replica-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-button[aria-busy='true'] svg { animation: none; } }

@@ -25,6 +25,17 @@ import {
 const hash = (b: Uint8Array | string) =>
   createHash("sha256").update(b).digest("hex");
 import { fixtureTransport } from "./helpers/replica-fixture";
+it("never writes another signed-in owners response into a remembered owners device store", async () => {
+  const f = fixtureTransport("actual-owner", false),
+    s = createMemoryReplica("remembered-owner");
+  await expect(
+    bootstrapReplica({ owner: s.owner, storage: s, transport: f.transport }),
+  ).rejects.toThrow();
+  for (const g of await s.listGenerations())
+    expect(
+      (await s.readPage("library_books", { generation: g.generation })).rows,
+    ).toHaveLength(0);
+});
 
 it("hashes complete large values incrementally across arbitrary UTF-8 and padding boundaries", () => {
   for (const length of [

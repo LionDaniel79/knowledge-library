@@ -90,15 +90,17 @@ export async function readReplicaValue(
 export async function resolveReplicaImage(
   storage: ReplicaStorage,
   assetId: string,
+  generation?: string,
 ): Promise<Blob> {
   const row = await storage.readRow(
     "library_cover_assets",
     JSON.stringify([assetId]),
+    generation,
   );
   if (!row || row.deleted) throw Error("저장된 표지가 없습니다.");
   const image = JSON.parse(
     new TextDecoder("utf-8", { fatal: true }).decode(
-      await readReplicaValue(storage, row),
+      await readReplicaValue(storage, row, generation),
     ),
   );
   if (image.mime !== "image/webp" || typeof image.data_base64 !== "string")

@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
 import { useEffect, useState } from "react";
 
 export function usePagedResource<T>(
@@ -16,25 +17,36 @@ export function usePagedResource<T>(
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    setState({ path, data: null, loading: true, error: "" });
-    const timer = setTimeout(() => {
-      void fetch(path, { cache: "no-store", signal: controller.signal })
-        .then(async (r) => {
-          const data = await r.json();
-          if (!r.ok) throw Error(data.error ?? "목록을 불러오지 못했습니다.");
-          if (!controller.signal.aborted)
-            setState({ path, data, loading: false, error: "" });
+    setState((previous) => ({
+      path,
+      data: isLocalReplicaReady() ? previous.data : null,
+      loading: true,
+      error: "",
+    }));
+    const timer = setTimeout(
+      () => {
+        void libraryRequest(path, {
+          cache: "no-store",
+          signal: controller.signal,
         })
-        .catch((error) => {
-          if (!controller.signal.aborted)
-            setState({
-              path,
-              data: null,
-              loading: false,
-              error: error.message,
-            });
-        });
-    }, 180);
+          .then(async (r) => {
+            const data = await r.json();
+            if (!r.ok) throw Error(data.error ?? "목록을 불러오지 못했습니다.");
+            if (!controller.signal.aborted)
+              setState({ path, data, loading: false, error: "" });
+          })
+          .catch((error) => {
+            if (!controller.signal.aborted)
+              setState({
+                path,
+                data: null,
+                loading: false,
+                error: error.message,
+              });
+          });
+      },
+      isLocalReplicaReady() ? 0 : 180,
+    );
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -43,7 +55,11 @@ export function usePagedResource<T>(
   return {
     ...(enabled && state.path === path
       ? state
-      : { data: null, loading: enabled, error: "" }),
+      : {
+          data: enabled && isLocalReplicaReady() ? state.data : null,
+          loading: enabled,
+          error: "",
+        }),
     reload: () => setRetry((n) => n + 1),
   };
 }

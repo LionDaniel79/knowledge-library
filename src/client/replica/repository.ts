@@ -555,6 +555,49 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         p = url.searchParams,
         path = url.pathname;
       if (path === "/api/library") return repository.overview();
+      if (path === "/api/library-search/topics") {
+        const data = await index();
+        return {
+          topics: data.topics
+            .filter((t) => t.confirmed)
+            .sort(
+              (a, b) =>
+                binaryCompare(a.name, b.name) || binaryCompare(a.id, b.id),
+            )
+            .map((t) => ({
+              id: t.id,
+              name: t.name,
+              parentId: t.parent_id,
+              aliases: t.aliases,
+            })),
+        };
+      }
+      if (path === "/api/note-tags") {
+        const data = await index(),
+          groups = new Map<string, Note[]>();
+        for (const note of data.notes)
+          for (const tag of note.tags ?? [])
+            groups.set(tag, [...(groups.get(tag) ?? []), note]);
+        const result = [];
+        for (const [tag, notes] of [...groups].sort(([a], [b]) =>
+          a.localeCompare(b, "ko"),
+        )) {
+          const text = JSON.stringify(
+            notes
+              .map((n) => [n.id, n.version])
+              .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+          );
+          const { sha256Bytes } = await import("../../lib/replica/codec");
+          result.push({
+            tag,
+            count: notes.length,
+            activeCount: notes.filter((n) => !Object.hasOwn(data.trash, n.id))
+              .length,
+            fingerprint: await sha256Bytes(new TextEncoder().encode(text)),
+          });
+        }
+        return result;
+      }
       if (path === "/api/books") {
         if (p.has("ids")) {
           const data = await index(),

@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 import {
   useListPagination,
@@ -30,7 +31,7 @@ export function LibrarySearchPanel({
     if (topics || loadingTopics) return;
     setLoadingTopics(true);
     try {
-      const r = await fetch("/api/library-search/topics", {
+      const r = await libraryRequest("/api/library-search/topics", {
           cache: "no-store",
         }),
         j = await r.json();

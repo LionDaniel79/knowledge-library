@@ -113,6 +113,9 @@ export async function bootstrapReplica(input: {
         const page = await transport.scan(entity, after, signal);
         if (page.epoch !== meta.epoch)
           throw new SyncHttpError(409, "자료 세대가 변경되었습니다.");
+        const position = parseSyncCursor(page.cursor, owner, meta.epoch);
+        if (position.entity !== entity)
+          throw Error("다른 자료의 응답을 받았습니다.");
         await prepareReplicaPage(
           storage,
           generation,
@@ -178,6 +181,8 @@ export async function bootstrapReplica(input: {
         const page = await transport.changes(meta.epoch, state.cursor, signal);
         if (page.epoch !== meta.epoch)
           throw new SyncHttpError(409, "자료 세대가 변경되었습니다.");
+        const position = parseSyncCursor(page.cursor, owner, meta.epoch);
+        if (position.entity) throw Error("변경분 응답을 확인해 주세요.");
         await prepareReplicaPage(
           storage,
           generation,

@@ -140,7 +140,7 @@ test("trash requires a second confirmation and sends only the shown trashed vers
   await page.route("https://trash.test/", (r) =>
     r.fulfill({
       contentType: "text/html",
-      body: '<html lang="ko"><div id="root"></div></html>',
+      body: '<html lang="ko"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div></html>',
     }),
   );
   await page.goto("https://trash.test/");

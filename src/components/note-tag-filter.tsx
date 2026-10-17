@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
 type Tag = {
   tag: string;
@@ -30,7 +31,7 @@ export function NoteTagFilter({
     if (preview) return;
     setError("");
     try {
-      const r = await fetch("/api/note-tags", { cache: "no-store" }),
+      const r = await libraryRequest("/api/note-tags", { cache: "no-store" }),
         body = await r.json();
       if (!r.ok) throw Error(body.error);
       setItems(body);
@@ -43,7 +44,7 @@ export function NoteTagFilter({
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/note-tags", {
+      const r = await libraryRequest("/api/note-tags", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

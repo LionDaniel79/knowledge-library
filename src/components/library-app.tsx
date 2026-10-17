@@ -1,5 +1,8 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { CatalogAttribution } from "./catalog-attribution";
+import { SyncButton, SyncSummary } from "./replica/sync-button";
+import { useReplicaOptional } from "./replica/provider";
 import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
 import { BookExclusions } from "./book-exclusions";
@@ -108,6 +111,7 @@ export function LibraryApp({
   initialView?: "home" | "pdf";
   initialOperationsOpen?: boolean;
 }) {
+  const replica = useReplicaOptional();
   const [draftRevision, setDraftRevision] = useState(0);
   async function keepDraft(c: Command) {
     writeDraft(localStorage, newDraft(ownerId, c));
@@ -145,6 +149,7 @@ export function LibraryApp({
   const [exclusionsOpen, setExclusionsOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [data, setData] = useState(initial);
+  useEffect(() => setData(initial), [initial]);
   const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -238,7 +243,7 @@ export function LibraryApp({
         data.books.find((b) => b.id === detail),
       revision: data,
     });
-    void fetch("/api/books/" + detail, {
+    void libraryRequest("/api/books/" + detail, {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -407,7 +412,7 @@ export function LibraryApp({
     noteRequest.current = { id, controller };
     setOpeningNote(id);
     try {
-      const r = await fetch("/api/notes/" + id, {
+      const r = await libraryRequest("/api/notes/" + id, {
           cache: "no-store",
           signal: controller.signal,
         }),
@@ -429,11 +434,11 @@ export function LibraryApp({
     }
   }
   async function refresh() {
-    const res = await fetch("/api/library", { cache: "no-store" });
+    const res = await libraryRequest("/api/library", { cache: "no-store" });
     const json = await res.json();
     if (!res.ok) throw Error(json.error || "서재를 불러오지 못했습니다.");
     if (remote && editor?.kind === "note" && editor.note) {
-      const r = await fetch("/api/notes/" + editor.note.id, {
+      const r = await libraryRequest("/api/notes/" + editor.note.id, {
         cache: "no-store",
       });
       if (r.ok) {
@@ -442,7 +447,7 @@ export function LibraryApp({
       }
     }
     if (remote && editor && "cycle" in editor) {
-      const r = await fetch("/api/reading?id=" + editor.cycle.id, {
+      const r = await libraryRequest("/api/reading?id=" + editor.cycle.id, {
         cache: "no-store",
       });
       if (r.ok) {
@@ -468,7 +473,7 @@ export function LibraryApp({
     );
   }
   async function save(command: Command) {
-    const res = await fetch("/api/library", {
+    const res = await libraryRequest("/api/library", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(command),
@@ -510,7 +515,7 @@ export function LibraryApp({
       return;
     }
     try {
-      const res = await fetch("/api/revisions/" + id);
+      const res = await libraryRequest("/api/revisions/" + id);
       const json = await res.json();
       if (!res.ok) throw Error(json.error);
       setRevisions(json);
@@ -666,7 +671,11 @@ export function LibraryApp({
             </div>
             <div className="connection-status">
               <CloudCheck size={17} />
-              {preview ? "예시 데이터로 둘러보기" : "온라인 서재 연결됨"}
+              {preview
+                ? "예시 데이터로 둘러보기"
+                : replica?.ready
+                  ? "기기 서재"
+                  : "온라인 서재 연결됨"}
             </div>
             {preview ? (
               <a className="sidebar-login" href="/">
@@ -774,17 +783,23 @@ export function LibraryApp({
               </time>
               <h1>{navigation.find((n) => n.id === view)?.label}</h1>
             </div>
-            <button
-              className="primary"
-              onClick={() =>
-                setEditor(
-                  view === "notes" ? { kind: "note" } : { kind: "book" },
-                )
-              }
-            >
-              <Plus size={17} />
-              {view === "notes" ? "새 기록" : "책 추가"}
-            </button>
+            <div className="heading-actions">
+              {view === "home" && !preview && (
+                <SyncButton onError={(e) => setFailure(e.message)} />
+              )}
+              <button
+                className="primary"
+                onClick={() =>
+                  setEditor(
+                    view === "notes" ? { kind: "note" } : { kind: "book" },
+                  )
+                }
+              >
+                <Plus size={17} />
+                {view === "notes" ? "새 기록" : "책 추가"}
+              </button>
+              {view === "home" && !preview && <SyncSummary />}
+            </div>
           </div>
           {(message || failure) && (
             <div
