@@ -1,4 +1,7 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
+import { useReplicaOptional } from "./replica/provider";
+import { migrateLegacyDrafts } from "@/client/replica/conflicts";
 import { useEffect, useState } from "react";
 import {
   readDrafts,
@@ -19,6 +22,7 @@ export function OfflineDrafts({
   revision: number;
   onSaved: () => Promise<void>;
 }) {
+  const replica = useReplicaOptional();
   const [drafts, setDrafts] = useState<Draft[]>([]),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -42,16 +46,19 @@ export function OfflineDrafts({
     setBusy(true);
     setMessage("");
     try {
-      const r = await fetch("/api/library", {
+      const r = await libraryRequest("/api/library", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(d.command),
         }),
         j = await r.json();
       if (r.status === 409 && d.command.type === "editNote") {
-        const current = await fetch("/api/notes/" + d.command.payload.id, {
-          cache: "no-store",
-        });
+        const current = await libraryRequest(
+          "/api/notes/" + d.command.payload.id,
+          {
+            cache: "no-store",
+          },
+        );
         if (!current.ok)
           throw Error("로그인 후 최신 기록을 다시 확인해 주세요.");
         const latest = await current.json();
@@ -64,9 +71,24 @@ export function OfflineDrafts({
         throw Error(
           j.error ?? "서재에 저장하지 못했습니다. 기기 초안은 유지됩니다.",
         );
-      dropDraft(localStorage, ownerId, d.id);
+      if (j.queued && replica?.ready) {
+        await migrateLegacyDrafts(
+          replica.runtime.storage,
+          localStorage,
+          ownerId,
+        );
+        await replica.runtime.notifyLocalChange();
+        if (readDrafts(localStorage, ownerId).some((x) => x.id === d.id))
+          throw Error(
+            "입력은 기기에 저장했습니다. 이전 초안의 원본 보관을 다시 확인해 주세요.",
+          );
+      } else dropDraft(localStorage, ownerId, d.id);
       load();
-      setMessage("서재에 저장했습니다.");
+      setMessage(
+        j.queued
+          ? "기기에 저장했습니다. 연결되면 동기화합니다."
+          : "서재에 저장했습니다.",
+      );
       await onSaved();
     } catch (e) {
       setMessage((e as Error).message);
@@ -90,6 +112,7 @@ export function OfflineDrafts({
       setMessage((e as Error).message);
     }
   }
+  if (replica?.ready && !drafts.length) return null;
   return (
     <details className="panel offline-drafts">
       <summary>이 기기의 임시 기록 · {drafts.length}개</summary>

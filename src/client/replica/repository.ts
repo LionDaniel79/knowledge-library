@@ -768,7 +768,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
         checkpoint: cp,
         tables,
         outbox: await storage.listOutbox(),
-        conflicts: await storage.listConflicts(),
+        conflicts: await storage.listConflicts(true),
       };
     },
     invalidate() {

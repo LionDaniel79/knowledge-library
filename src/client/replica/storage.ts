@@ -59,9 +59,17 @@ export interface ReplicaConflict {
   base: unknown;
   server: unknown;
   createdAt: string;
+  resolvedAt?: string;
+  resolution?: any;
 }
 type Patch = Partial<Omit<ReplicaGeneration, "owner" | "generation">>;
 type Command =
+  | {
+      type: "expect";
+      generation: string;
+      cursor: string;
+      localRevision: number;
+    }
   | { type: "init"; state: ReplicaGeneration }
   | { type: "rows"; generation: string; rows: SyncRow[] }
   | { type: "checkpoint"; generation: string; patch: Patch }
@@ -87,6 +95,10 @@ type Command =
       generation?: string;
     };
 export interface ReplicaWrite {
+  expectCheckpoint(
+    generation: string,
+    expected: { cursor: string; localRevision?: number },
+  ): void;
   stageRows(generation: string, rows: SyncRow[]): void;
   setCheckpoint(generation: string, patch: Patch): void;
   promoteGeneration(generation: string): void;
@@ -137,7 +149,7 @@ export interface ReplicaStorage {
   ): Promise<Uint8Array | undefined>;
   putOutbox(entry: OutboxEntry): Promise<void>;
   listOutbox(): Promise<OutboxEntry[]>;
-  listConflicts(): Promise<ReplicaConflict[]>;
+  listConflicts(includeResolved?: boolean): Promise<ReplicaConflict[]>;
   readIndex(key: string, generation?: string): Promise<any>;
   close(): void;
 }
@@ -170,6 +182,22 @@ export function createReplicaStorage(
       };
       for (const command of commands)
         switch (command.type) {
+          case "expect": {
+            const s = await state(command.generation),
+              active = await io.get("meta", [owner, "active"]);
+            if (
+              active !== command.generation ||
+              s.cursor !== command.cursor ||
+              (s.localRevision ?? 0) !== command.localRevision
+            )
+              throw Object.assign(
+                Error(
+                  "기기 자료가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+                ),
+                { status: 409 },
+              );
+            break;
+          }
           case "init":
             await io.put(
               "meta",
@@ -234,6 +262,14 @@ export function createReplicaStorage(
     check();
     const commands: Command[] = [];
     const writer: ReplicaWrite = {
+      expectCheckpoint(generation, expected) {
+        commands.push({
+          type: "expect",
+          generation,
+          cursor: expected.cursor,
+          localRevision: expected.localRevision ?? 0,
+        });
+      },
       stageRows(generation, rows) {
         commands.push({
           type: "rows",
@@ -387,11 +423,11 @@ export function createReplicaStorage(
           (a, b) => a.order - b.order || a.requestId.localeCompare(b.requestId),
         );
     },
-    async listConflicts() {
+    async listConflicts(includeResolved = false) {
       check();
-      return (await backend.scan("conflicts", [owner])).map(
-        (e) => e.data as ReplicaConflict,
-      );
+      return (await backend.scan("conflicts", [owner]))
+        .map((e) => e.data as ReplicaConflict)
+        .filter((c) => includeResolved || !c.resolvedAt);
     },
     async readIndex(key, generation) {
       check();

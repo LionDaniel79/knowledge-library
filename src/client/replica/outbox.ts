@@ -82,6 +82,7 @@ export async function queueReplicaCommand(input: {
   for (const e of new Set(prepared.effects.map((e) => e.entity)))
     localEntityRevisions[e] = (localEntityRevisions[e] ?? 0) + 1;
   await storage.transaction((tx) => {
+    tx.expectCheckpoint(cp.generation, cp);
     tx.putOutbox(entry);
     tx.setCheckpoint(cp.generation, {
       localRevision: (cp.localRevision ?? 0) + 1,

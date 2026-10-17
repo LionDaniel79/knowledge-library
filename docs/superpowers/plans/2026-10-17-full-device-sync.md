@@ -215,10 +215,10 @@ type OutboxEntry = {
 
 **Interfaces:** `resolveReplicaConflict({entry,base,latest,choice,text}): OutboxEntry`, `migrateLegacyDrafts(storage,legacy,owner): Promise<MigrationReport>`. 해결본은 새 요청 ID와 최신 expectedVersion을 사용한다. `MigrationReport`에 이전·이미 이전됨·실패·원본 보존 개수를 정의한다.
 
-- [ ] RED: PC/iPhone에서 같은 글 수정, 다른 기기의 삭제·제외, 해결 중 새 수정, 이전 중 용량 부족, localStorage와 IDB에 같은 입력이 있는 경우를 검증한다.
-- [ ] 실행: `vitest run tests/replica-conflicts.test.ts`, `playwright test e2e/replica-conflicts.spec.ts`.
-- [ ] 기준·기기 입력·최신 내용을 비교하고 사용자 선택으로 통합한다. 원문을 잃지 않으며 기존 임시 기록은 새 저장 검증 후에만 이전 완료로 처리한다.
-- [ ] 최신 버전 확인·닫기·재시도·원문 내보내기를 확인하고 통과 후 커밋한다.
+- [x] RED: PC/iPhone에서 같은 글 수정, 다른 기기의 삭제·제외, 해결 중 새 수정, 이전 중 용량 부족, localStorage와 IDB에 같은 입력이 있는 경우를 검증한다.
+- [x] 실행: `vitest run tests/replica-conflicts.test.ts`, `playwright test e2e/replica-conflicts.spec.ts`.
+- [x] 기준·기기 입력·최신 내용을 비교하고 사용자 선택으로 통합한다. 원문을 잃지 않으며 기존 임시 기록은 새 저장 검증 후에만 이전 완료로 처리한다.
+- [x] 최신 버전 확인·닫기·재시도·원문 내보내기를 확인하고 통과 후 커밋한다.
 
 ### Task 14: 앱 코드의 오프라인 시작과 업데이트
 

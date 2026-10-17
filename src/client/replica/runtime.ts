@@ -5,6 +5,7 @@ import { createReplicaRepository } from "./repository";
 import { createReplicaCoordinator } from "./coordinator";
 import { createSyncTransport, SyncHttpError } from "./transport";
 import { queueReplicaCommand } from "./outbox";
+import { migrateLegacyDrafts } from "./conflicts";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
   const response = await fetch("/api/sync/session", {
     cache: "no-store",
@@ -94,10 +95,29 @@ export function createLibraryRuntime(
       .then(async () => {
         try {
           verifyOwner(await verifiedSyncOwner(abort.signal));
-          const status = await coordinator.syncReplica({
+          let status = await coordinator.syncReplica({
             ...options,
             signal: abort.signal,
           });
+          try {
+            if (
+              typeof localStorage !== "undefined" &&
+              (await storage.checkpoint())?.complete
+            ) {
+              const migrated = await migrateLegacyDrafts(
+                storage,
+                localStorage,
+                owner,
+              );
+              if (migrated.migrated)
+                status = await coordinator.syncReplica({
+                  reason: "legacy-migration",
+                  signal: abort.signal,
+                });
+            }
+          } catch {
+            /* Original legacy drafts remain available if their store cannot be read. */
+          }
           const cp = await storage.checkpoint(),
             token = cp
               ? cp.generation + "\0" + cp.cursor + ":" + (cp.localRevision ?? 0)
@@ -180,6 +200,21 @@ export function createLibraryRuntime(
     storage,
     repository,
     coordinator,
+    async notifyLocalChange() {
+      repository.invalidate();
+      const entries = await storage.listOutbox();
+      emit({
+        revision: snapshot.revision + 1,
+        status: {
+          ...snapshot.status,
+          pending: entries.filter((e) =>
+            ["pending", "sending"].includes(e.state),
+          ).length,
+          conflicts: entries.filter((e) => e.state === "conflict").length,
+          failed: entries.filter((e) => e.state === "failed").length,
+        },
+      });
+    },
     sync,
     async queue(path: string, body: unknown) {
       const result = await queueReplicaCommand({

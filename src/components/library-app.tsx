@@ -3,6 +3,7 @@ import { libraryRequest } from "@/client/replica/request";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { useReplicaOptional } from "./replica/provider";
+import { ConflictReviewPanel } from "./replica/conflict-review";
 import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
 import { BookExclusions } from "./book-exclusions";
@@ -1492,6 +1493,7 @@ export function LibraryApp({
               onSaved={refresh}
             />
           )}
+          {!preview && <ConflictReviewPanel />}
           {view === "notes" && !preview && (
             <NoteTrash library={data} onSave={save} />
           )}

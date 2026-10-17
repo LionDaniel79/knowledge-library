@@ -72,9 +72,12 @@ it("keeps every entity, full image and original JSON with at most two downloads 
   expect(f.max).toBe(2);
   for (const row of f.rows) {
     expect(await s.readRow(row.entity, row.key)).toEqual(row);
-    expect(await readReplicaValue(s, row)).toEqual(
-      f.data.get(row.entity + "\0" + row.key),
-    );
+    expect(
+      Buffer.compare(
+        await readReplicaValue(s, row),
+        f.data.get(row.entity + "\0" + row.key)!,
+      ),
+    ).toBe(0);
   }
   const cover = f.rows.find((r) => r.entity === "library_cover_assets")!;
   const blob = await resolveReplicaImage(s, JSON.parse(cover.key)[0]);

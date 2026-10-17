@@ -312,7 +312,19 @@ export function createKnowledgeStore(db: Database) {
         await revise(p.itemId, c.type, before ?? null, after);
         result = { id: p.itemId, version: after.version };
       } else {
-        const p = z.object({ researchId: uuid, noteId: uuid }).parse(c.payload);
+        const p = z
+          .object({
+            researchId: uuid,
+            noteId: uuid,
+            expectedNoteVersion: z.number().int().positive().optional(),
+            expectedBookVersion: z
+              .number()
+              .int()
+              .positive()
+              .nullable()
+              .optional(),
+          })
+          .parse(c.payload);
         const research = (
           await tx.query(
             "SELECT id FROM library_research WHERE owner_id=$1 AND id=$2",
@@ -323,6 +335,16 @@ export function createKnowledgeStore(db: Database) {
           throw new LibraryError(404, "연구 묶음을 찾을 수 없습니다.");
         const note = await own("note", p.noteId);
         const book = note.book_id ? await own("book", note.book_id) : null;
+        if (
+          (p.expectedNoteVersion !== undefined &&
+            p.expectedNoteVersion !== note.version) ||
+          (p.expectedBookVersion !== undefined &&
+            p.expectedBookVersion !== (book?.version ?? null))
+        )
+          throw new LibraryError(
+            409,
+            "연구 자료로 선택한 원문이나 서지 정보가 변경되었습니다. 이전 선택은 기기에 보관됩니다.",
+          );
         // Freeze the exact note version and bibliography so later edits cannot silently change a research source.
         const snapshot = {
           note: {

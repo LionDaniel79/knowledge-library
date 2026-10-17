@@ -232,3 +232,67 @@ it("synchronizes offline research, topics, assignments and successive introducti
     await f.pg.close();
   }
 });
+it("does not silently replace the note snapshot selected offline with a later edit from another device", async () => {
+  const f = await testDatabase(),
+    owner = "snapshot-conflict",
+    s = createMemoryReplica(owner),
+    transport = sqlSyncTransport(f.db, owner),
+    repo = createReplicaRepository(s),
+    coordinator = createReplicaCoordinator({ owner, storage: s, transport });
+  try {
+    await bootstrapReplica({ owner, storage: s, transport });
+    const queue = (path: string, body: any) =>
+      queueReplicaCommand({
+        storage: s,
+        repository: repo,
+        path,
+        body: { ...body, requestId: crypto.randomUUID() },
+      });
+    const n = await queue("/api/library", {
+        type: "addNote",
+        payload: {
+          title: "원래 생각",
+          content: "내가 선택한 글",
+          kind: "thought",
+        },
+      }),
+      r = await queue("/api/knowledge", {
+        type: "createResearch",
+        payload: { title: "연구", kind: "thesis", question: "질문" },
+      });
+    await coordinator.syncReplica({ reason: "initial" });
+    await queue("/api/knowledge", {
+      type: "addResearchNote",
+      payload: { researchId: r.id, noteId: n.id },
+    });
+    const requestId = crypto.randomUUID();
+    await executeSyncCommand(f.db, owner, {
+      requestId,
+      family: "library",
+      body: {
+        requestId,
+        type: "editNote",
+        payload: {
+          id: n.id,
+          expectedVersion: 1,
+          title: "다른 기기",
+          content: "나중에 달라진 글",
+          kind: "thought",
+        },
+      },
+    });
+    const result = await coordinator.syncReplica({ reason: "reconnect" });
+    expect(result.conflicts).toBe(1);
+    expect(
+      (
+        await f.db.query(
+          "SELECT count(*)::int n FROM library_research_items WHERE owner_id=$1",
+          [owner],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  } finally {
+    repo.close();
+    await f.pg.close();
+  }
+});

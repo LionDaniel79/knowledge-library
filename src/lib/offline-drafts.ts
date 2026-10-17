@@ -27,7 +27,7 @@ export type Draft = {
     };
   };
 };
-type DeviceStorage = Pick<
+export type DeviceStorage = Pick<
   Storage,
   "length" | "key" | "getItem" | "setItem" | "removeItem"
 >;
@@ -45,8 +45,9 @@ function parse(value: unknown): Draft {
     },
   };
 }
-const key = (owner: string, id: string) =>
+export const draftStorageKey = (owner: string, id: string) =>
   prefix + encodeURIComponent(owner) + ":" + id;
+const key = draftStorageKey;
 export function newDraft(ownerId: string, command: Command): Draft {
   return parse({
     version: 1,

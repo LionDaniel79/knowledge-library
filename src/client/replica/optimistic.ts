@@ -263,6 +263,8 @@ export async function prepareOptimistic(
       await own("library_research", p.researchId);
       const n = await note(p.noteId),
         b = n.book_id ? await own("library_books", n.book_id) : null;
+      p.expectedNoteVersion = n.version;
+      p.expectedBookVersion = b?.version ?? null;
       put("library_research_items", {
         id,
         research_id: p.researchId,
@@ -454,6 +456,10 @@ export async function prepareOptimistic(
             quote,
           };
         };
+      body.payload.reviewedRecords ??= {
+        before: { ...evidence(before), eventVersion: before.eventVersion },
+        after: { ...evidence(after), eventVersion: after.eventVersion },
+      };
       put("library_evolution_candidates", {
         id,
         before_id: before.id,

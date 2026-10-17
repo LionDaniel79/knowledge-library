@@ -3467,10 +3467,85 @@ textarea {
   }
 }
 
-.page-heading { flex-wrap: wrap; gap: 12px; }
-.heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; max-width: 100%; }
-.sync-summary { font-size: .78rem; color: var(--muted, #66736c); white-space: nowrap; }
-.replica-opening { max-width: 680px; margin: 15vh auto; padding: 24px; }
-.sync-button[aria-busy='true'] svg { animation: replica-spin 1.4s linear infinite; }
-@keyframes replica-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .sync-button[aria-busy='true'] svg { animation: none; } }
+.page-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+.sync-summary {
+  font-size: 0.78rem;
+  color: var(--muted, #66736c);
+  white-space: nowrap;
+}
+.replica-opening {
+  max-width: 680px;
+  margin: 15vh auto;
+  padding: 24px;
+}
+.sync-button[aria-busy="true"] svg {
+  animation: replica-spin 1.4s linear infinite;
+}
+@keyframes replica-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-button[aria-busy="true"] svg {
+    animation: none;
+  }
+}
+.sync-issue,
+.conflict-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.sync-issue {
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+.conflict-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.conflict-columns section {
+  min-width: 0;
+}
+.conflict-columns pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 30vh;
+  overflow: auto;
+  font: inherit;
+}
+.conflict-review label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.8rem 0;
+}
+.conflict-review input,
+.conflict-review textarea {
+  min-width: 0;
+  width: 100%;
+}
+@media (max-width: 700px) {
+  .conflict-columns {
+    grid-template-columns: 1fr;
+  }
+  .conflict-columns pre {
+    max-height: 20vh;
+  }
+  .conflict-actions button {
+    flex: 1 1 44%;
+  }
+}
