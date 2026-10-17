@@ -120,20 +120,24 @@ export function OfflineDrafts({
         ‘기기에 임시 저장’을 누른 글만 이 브라우저에 보관합니다. 서재로 보내기
         전까지 다른 기기에서는 보이지 않습니다. 공용 기기에서는 사용하지 마세요.
       </p>
-      <button
-        type="button"
-        onClick={() => {
-          try {
-            if (enabled) localStorage.removeItem(offlineOwnerKey);
-            else localStorage.setItem(offlineOwnerKey, ownerId);
-            load();
-          } catch {
-            setMessage("기기 설정을 저장하지 못했습니다.");
-          }
-        }}
-      >
-        {enabled ? "오프라인 새 기록 사용 끄기" : "오프라인 새 기록 사용 켜기"}
-      </button>
+      {!replica?.ready && (
+        <button
+          type="button"
+          onClick={() => {
+            try {
+              if (enabled) localStorage.removeItem(offlineOwnerKey);
+              else localStorage.setItem(offlineOwnerKey, ownerId);
+              load();
+            } catch {
+              setMessage("기기 설정을 저장하지 못했습니다.");
+            }
+          }}
+        >
+          {enabled
+            ? "오프라인 새 기록 사용 끄기"
+            : "오프라인 새 기록 사용 켜기"}
+        </button>
+      )}
       {enabled && <a href="/offline.html">오프라인 기록 화면</a>}
       {message && <p role="status">{message}</p>}
       {drafts.map((d) => (

@@ -45,30 +45,38 @@ it("the standalone offline page writes a valid draft without sending it to a ser
 });
 it("the service worker caches only public offline assets and never intercepts authenticated APIs or PDF files", async () => {
   const events: Record<string, Function> = {},
-    cached: string[][] = [];
+    cached: string[] = [];
   let responded = false;
   runInNewContext(await readFile("public/sw.js", "utf8"), {
     URL,
+    Request,
+    Response,
     self: {
-      location: { origin: "https://library.test" },
+      location: new URL("https://library.test/sw.js"),
       addEventListener: (n: string, fn: Function) => {
         events[n] = fn;
       },
     },
     caches: {
-      open: async () => ({ addAll: async (p: string[]) => cached.push(p) }),
+      open: async () => ({
+        put: async (path: string) => {
+          cached.push(path);
+        },
+        match: async () => ({ offline: true }),
+      }),
       match: async () => ({ offline: true }),
     },
-    fetch: async () => {
-      throw Error("offline");
-    },
+    fetch: async (request: Request) =>
+      new URL(request.url).pathname === "/replica-shell.json"
+        ? new Response("not built", { status: 404 })
+        : new Response("public code"),
   });
   await new Promise<void>((resolve, reject) =>
     events.install({
       waitUntil: (p: Promise<any>) => p.then(() => resolve(), reject),
     }),
   );
-  expect(cached.flat()).toEqual([
+  expect(cached).toEqual([
     "/offline.html",
     "/offline.js",
     "/offline.css",

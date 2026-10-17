@@ -2,7 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 const isolated = !!process.env.CI;
 const authPort = process.env.PLAYWRIGHT_AUTH_PORT ?? "3001";
 const appServer = {
-  command: "npm run dev -- --hostname 127.0.0.1 --webpack",
+  command:
+    process.env.PLAYWRIGHT_PRODUCTION === "1"
+      ? "npm run start -- --hostname 127.0.0.1"
+      : "npm run dev -- --hostname 127.0.0.1 --webpack",
   url: "http://127.0.0.1:3000",
   reuseExistingServer: !isolated,
   ...(isolated && {

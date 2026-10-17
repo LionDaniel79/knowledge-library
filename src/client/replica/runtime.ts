@@ -29,6 +29,7 @@ export interface RuntimeSnapshot {
   revision: number;
   status: SyncStatus;
   authRequired: boolean;
+  accessDenied: boolean;
 }
 export function createLibraryRuntime(
   owner: string,
@@ -60,6 +61,7 @@ export function createLibraryRuntime(
       lastSyncedAt: checkpoint?.lastSyncedAt ?? null,
     },
     authRequired: false,
+    accessDenied: false,
   });
   function emit(patch: Partial<RuntimeSnapshot>) {
     if (closed) return;
@@ -170,11 +172,15 @@ export function createLibraryRuntime(
           }
           return status;
         } catch (error) {
+          const accessDenied =
+            error instanceof SyncHttpError && error.status === 403;
           const authRequired =
             error instanceof SyncHttpError && error.status === 401;
           if (authRequired) verified = false;
           emit({
             authRequired,
+            accessDenied,
+            ...(accessDenied ? { ready: false } : {}),
             status: {
               ...snapshot.status,
               phase:

@@ -18,6 +18,7 @@ import { bookInput, versionInput } from "../../lib/domain";
 import { ensureBookCover } from "../cover-mirrors";
 export const syncCommandSchema = z
   .object({
+    ownerId: z.string().min(1).max(128).optional(),
     requestId: z.string().uuid(),
     family: z.enum([
       "library",
@@ -44,6 +45,11 @@ export async function executeSyncCommand(
   const p = syncCommandSchema.parse(input),
     fingerprint = digest(JSON.stringify(p)),
     id = receiptId(p.requestId);
+  if (p.ownerId !== undefined && p.ownerId !== owner)
+    throw new LibraryError(
+      403,
+      "로그인 계정이 변경되어 이전 서재의 입력을 전송하지 않았습니다.",
+    );
   if (p.body.requestId !== undefined && p.body.requestId !== p.requestId)
     throw new LibraryError(400, "요청 번호가 일치하지 않습니다.");
   const replay = (row: any) => {

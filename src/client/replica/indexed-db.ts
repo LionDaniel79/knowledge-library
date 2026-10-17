@@ -31,7 +31,13 @@ export async function openReplica(
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () =>
-      reject(r.error ?? Error("기기 저장소를 열지 못했습니다."));
+      reject(
+        r.error?.name === "VersionError"
+          ? Error(
+              "기기 자료는 유지됩니다. 최신 버전으로 서재를 다시 열어 주세요.",
+            )
+          : (r.error ?? Error("기기 저장소를 열지 못했습니다.")),
+      );
     r.onblocked = () =>
       reject(Error("다른 서재 창을 닫고 다시 시도해 주세요."));
   });

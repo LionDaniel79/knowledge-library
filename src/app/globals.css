@@ -3549,3 +3549,14 @@ textarea {
     flex: 1 1 44%;
   }
 }
+.replica-update-warning {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 5000;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  background: #fff4ce;
+  color: #3e3210;
+  border-bottom: 1px solid #d5b764;
+  font-size: 1rem;
+}

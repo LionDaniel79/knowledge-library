@@ -37,3 +37,23 @@ it("rejects an oversized body even when no Content-Length is provided", async ()
   );
   await expect(t.meta()).rejects.toMatchObject({ status: 413 });
 });
+it("binds every outgoing edit to the device library owner", async () => {
+  let sent: any;
+  const transport = createSyncTransport("", async (_input, init) => {
+    sent = JSON.parse(init!.body as string);
+    return Response.json({ id: "saved" });
+  });
+  await transport.push!({
+    owner: "original-owner",
+    requestId: crypto.randomUUID(),
+    entityId: crypto.randomUUID(),
+    baseVersion: null,
+    baseRevision: null,
+    family: "library",
+    command: { path: "/api/library", body: { type: "addNote", payload: {} } },
+    order: 1,
+    dependsOn: [],
+    state: "pending",
+  });
+  expect(sent.ownerId).toBe("original-owner");
+});

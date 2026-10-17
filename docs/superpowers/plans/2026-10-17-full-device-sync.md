@@ -226,10 +226,10 @@ type OutboxEntry = {
 
 **Interfaces:** 버전이 있는 공개 셸/JS/CSS/아이콘만 캐시한다. Task 10의 진입 화면을 오프라인에서 여는 공개 셸을 마련하고 개인 자료는 Task 6의 DB에서 읽는다.
 
-- [ ] RED: Background Sync 미지원, 준비 후 완전 오프라인 시작, SW 갱신 중 미전송 기록, 구/신 버전 탭 공존, 로그아웃 후 다른 계정에서 이전 자료 열람 금지를 검증한다.
-- [ ] 실행: `playwright test e2e/replica-pwa.spec.ts e2e/google-login.spec.ts`.
-- [ ] 인증 HTML·일반 API 응답·PDF를 공용 Cache에 저장하지 않는다. 호환되지 않는 DB 변경은 구 상태를 보존하며 안내하고 강제 새로고침으로 입력을 지우지 않는다.
-- [ ] 시작·복귀·연결 복구·저장·수동 동기화를 검사하고 통과 후 커밋한다. 닫힌 iPhone의 상시 실행에 의존하지 않는다.
+- [x] RED: Background Sync 미지원, 준비 후 완전 오프라인 시작, SW 갱신 중 미전송 기록, 구/신 버전 탭 공존, 로그아웃 후 다른 계정에서 이전 자료 열람 금지를 검증한다.
+- [x] 실행: `playwright test e2e/replica-pwa.spec.ts e2e/google-login.spec.ts`.
+- [x] 인증 HTML·일반 API 응답·PDF를 공용 Cache에 저장하지 않는다. 호환되지 않는 DB 변경은 구 상태를 보존하며 안내하고 강제 새로고침으로 입력을 지우지 않는다.
+- [x] 시작·복귀·연결 복구·저장·수동 동기화를 검사하고 통과 후 커밋한다. 닫힌 iPhone의 상시 실행에 의존하지 않는다.
 
 ### Task 15: 전체 저장 상태·용량·여러 탭
 

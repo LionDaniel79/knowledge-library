@@ -12,6 +12,7 @@ import {
 import { SyncHttpError } from "@/client/replica/transport";
 import { offlineOwnerKey } from "@/lib/offline-drafts";
 import { todayInSeoul, type Library } from "@/lib/domain";
+import { libraryEntry } from "@/lib/library-entry";
 export function ReplicaEntry({
   available,
   today,
@@ -31,8 +32,18 @@ export function ReplicaEntry({
     } | null>(null),
     [auth, setAuth] = useState(false),
     [error, setError] = useState("");
+  const [storageMessage, setStorageMessage] = useState("");
+  const [clientToday, setClientToday] = useState(today ?? todayInSeoul());
+  const [clientEntry, setClientEntry] = useState({
+    view: initialView,
+    operations: initialOperationsOpen,
+    path: returnPath,
+  });
   useEffect(() => {
-    if (!available) return;
+    setClientToday(todayInSeoul());
+    setClientEntry(
+      libraryEntry(Object.fromEntries(new URLSearchParams(location.search))),
+    );
     let cancelled = false,
       runtime: LibraryRuntime | undefined,
       unsubscribe: (() => void) | undefined,
@@ -42,7 +53,14 @@ export function ReplicaEntry({
       .then((owner) => ({ owner, error: null as unknown }))
       .catch((error) => ({ owner: null, error }));
     async function attach(owner: string) {
-      const storage = await openReplica(owner);
+      const storage = await openReplica(owner, {
+        onInvalidated: () => {
+          if (!cancelled)
+            setStorageMessage(
+              "기기 자료는 유지됩니다. 입력을 보관한 뒤 최신 버전으로 서재를 다시 열어 주세요.",
+            );
+        },
+      });
       if (cancelled) {
         storage.close();
         return;
@@ -55,6 +73,15 @@ export function ReplicaEntry({
       lastRevision = next.getSnapshot().revision;
       unsubscribe = next.subscribe(() => {
         const snapshot = next.getSnapshot();
+        if (snapshot.accessDenied) {
+          runtime = undefined;
+          next.close();
+          unsubscribe?.();
+          setScreen(null);
+          setAuth(true);
+          setError("Google 계정으로 다시 로그인해 주세요.");
+          return;
+        }
         if (snapshot.ready && snapshot.revision !== lastRevision) {
           lastRevision = snapshot.revision;
           void next.repository
@@ -140,12 +167,27 @@ export function ReplicaEntry({
       }
     })();
     const resume = () => {
+      setClientToday(todayInSeoul());
       if (runtime) void runtime.sync({ reason: "resume" }).catch(() => {});
+    };
+    const accountStorage = (event: StorageEvent) => {
+      if (
+        event.key === offlineOwnerKey &&
+        runtime &&
+        event.newValue !== runtime.owner
+      ) {
+        runtime.close();
+        runtime = undefined;
+        unsubscribe?.();
+        setScreen(null);
+        setAuth(true);
+      }
     };
     const visibility = () => {
       if (document.visibilityState === "visible") resume();
     };
     window.addEventListener("online", resume);
+    window.addEventListener("storage", accountStorage);
     window.addEventListener("focus", resume);
     document.addEventListener("visibilitychange", visibility);
     const interval = window.setInterval(() => {
@@ -158,6 +200,7 @@ export function ReplicaEntry({
       runtime?.close();
       window.clearInterval(interval);
       window.removeEventListener("online", resume);
+      window.removeEventListener("storage", accountStorage);
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", visibility);
     };
@@ -165,13 +208,18 @@ export function ReplicaEntry({
   if (screen)
     return (
       <ReplicaProvider runtime={screen.runtime}>
+        {storageMessage && (
+          <p className="replica-update-warning" role="alert">
+            {storageMessage}
+          </p>
+        )}
         <LibraryApp
           key={screen.runtime.owner}
           initial={screen.data}
-          today={today ?? todayInSeoul()}
+          today={clientToday}
           ownerId={screen.runtime.owner}
-          initialView={initialView}
-          initialOperationsOpen={initialOperationsOpen}
+          initialView={clientEntry.view}
+          initialOperationsOpen={clientEntry.operations}
         />
       </ReplicaProvider>
     );
@@ -179,7 +227,7 @@ export function ReplicaEntry({
     return (
       <AuthPanel
         available={available}
-        returnPath={returnPath}
+        returnPath={clientEntry.path}
         message={error || undefined}
       />
     );

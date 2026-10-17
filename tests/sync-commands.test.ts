@@ -58,6 +58,33 @@ it("uses validated client ids and commits each requested change once even after 
     await f.pg.close();
   }
 });
+it("refuses a command bound to a different device owner if the login changes during a synchronization", async () => {
+  const f = await testDatabase(),
+    requestId = crypto.randomUUID();
+  try {
+    await expect(
+      executeSyncCommand(f.db, "new-account", {
+        ownerId: "original-device-owner",
+        requestId,
+        family: "library",
+        body: {
+          requestId,
+          type: "addNote",
+          payload: {
+            title: "이전 계정의 글",
+            content: "다른 계정에 전송되면 안 됨",
+            kind: "thought",
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      (await f.db.query("SELECT count(*)::int n FROM library_notes")).rows[0].n,
+    ).toBe(0);
+  } finally {
+    await f.pg.close();
+  }
+});
 it("sends an offline new book, its note and successive edits to the real SQL store in dependency order, with response-loss replay", async () => {
   const f = await testDatabase(),
     owner = "roundtrip-owner",

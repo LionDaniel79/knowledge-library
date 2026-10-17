@@ -151,6 +151,7 @@ export function createSyncTransport(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ownerId: entry.owner,
           requestId: entry.requestId,
           family: entry.family,
           path: change.path,

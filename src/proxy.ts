@@ -4,6 +4,14 @@ import { configured, getAuth } from "./server/auth";
 // The SDK exchanges Google's callback verifier and sets signed session cookies.
 // API handlers still enforce the verified library owner's identity themselves.
 export async function proxy(request: NextRequest) {
+  if (
+    request.nextUrl.pathname === "/" &&
+    !request.nextUrl.searchParams.has("neon_auth_session_verifier")
+  ) {
+    const response = NextResponse.next();
+    response.headers.set("X-Library-Public-Shell", "1");
+    return response;
+  }
   if (!configured()) return NextResponse.next();
   // The entry contains no private data; its session/data APIs verify the owner.
   // Consent keeps its existing owner-checked sign-in destination.

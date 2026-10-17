@@ -19,3 +19,4 @@ ireaditnow-library.json
 # Device pairing secrets
 *.private.json
 .vercel/
+public/replica-shell.json
