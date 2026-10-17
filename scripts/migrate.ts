@@ -37,7 +37,21 @@ try {
   await client.query(await readFile("db/023_cover_mirrors.sql", "utf8"));
   await client.query(await readFile("db/024_empty_note_trash.sql", "utf8"));
   await client.query(await readFile("db/025_book_exclusions.sql", "utf8"));
+  await client.query(await readFile("db/026_device_sync.sql", "utf8"));
   if (role) {
+    await client.query(
+      'GRANT SELECT ON library_sync_heads,library_sync_changes,library_sync_row_versions TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_sync_devices TO "' + role + '"',
+    );
+    await client.query(
+      'GRANT EXECUTE ON FUNCTION public.library_sync_lock(text) TO "' +
+        role +
+        '"',
+    );
     if (!/^[a-z_][a-z0-9_]*$/.test(role))
       throw Error("Invalid application role");
     await client.query(

@@ -29,6 +29,7 @@ beforeAll(async () => {
     "016_research_organization",
     "017_note_trash",
     "025_book_exclusions",
+    "026_device_sync",
   ])
     await pg.exec(await readFile(`db/${file}.sql`, "utf8"));
   db = {

@@ -93,10 +93,10 @@ type OutboxEntry = {
 
 **Interfaces:** `withSyncWrite<T>(db,owner,fn): Promise<T>`; DB 테이블 `library_sync_heads`, `library_sync_changes`, `library_sync_row_versions`, `library_sync_devices`. Task 1의 자료 이름·기본키를 사용한다.
 
-- [ ] RED: 삽입·수정·삭제·복합키·같은 행의 중복 갱신·거래 롤백을 검사한다. 병렬 거래에서 먼저 번호를 얻고 늦게 커밋한 변경을 클라이언트가 건너뛰지 않는 시나리오를 추가한다.
-- [ ] 실행: `vitest run tests/sync-tracking.test.ts tests/sync-concurrency.test.ts`; 추적이 없어 실패해야 한다.
-- [ ] 계정 잠금→업무 쓰기→트리거 추적 순서로 구현한다. 순번은 bigint이고 사용자별로 직렬화한다. 동일 거래 내 반복 행은 마지막 상태로 압축할 수 있지만 커서 범위의 삭제를 누락하지 않는다. 강한 권한이 필요한 함수는 고정 search_path와 제한된 실행 권한을 사용한다.
-- [ ] PGlite에서는 원자성을, 만료되는 Neon 복제 브랜치에서는 별도 연결의 실제 커밋 순서·교착 복구를 검증한다. 런타임에 광범위한 DELETE·인증 테이블 접근을 새로 주지 않는다. 통과 후 커밋한다.
+- [x] RED: 삽입·수정·삭제·복합키·같은 행의 중복 갱신·거래 롤백을 검사한다. 병렬 거래에서 먼저 번호를 얻고 늦게 커밋한 변경을 클라이언트가 건너뛰지 않는 시나리오를 추가한다.
+- [x] 실행: `vitest run tests/sync-tracking.test.ts tests/sync-concurrency.test.ts`; 추적이 없어 실패해야 한다.
+- [x] 계정 잠금→업무 쓰기→트리거 추적 순서로 구현한다. 순번은 bigint이고 사용자별로 직렬화한다. 동일 거래 내 반복 행은 마지막 상태로 압축할 수 있지만 커서 범위의 삭제를 누락하지 않는다. 강한 권한이 필요한 함수는 고정 search_path와 제한된 실행 권한을 사용한다.
+- [x] PGlite에서는 원자성을, 만료되는 Neon 복제 브랜치에서는 별도 연결의 실제 커밋 순서·교착 복구를 검증한다. 런타임에 광범위한 DELETE·인증 테이블 접근을 새로 주지 않는다. 통과 후 커밋한다.
 
 ### Task 3: 웹·수집기·가져오기·복원 쓰기 경로 연결
 

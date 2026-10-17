@@ -29,6 +29,7 @@ beforeAll(async () => {
   await pg.exec(await readFile("db/016_research_organization.sql", "utf8"));
   await pg.exec(await readFile("db/017_note_trash.sql", "utf8"));
   await pg.exec(await readFile("db/025_book_exclusions.sql", "utf8"));
+  await pg.exec(await readFile("db/026_device_sync.sql", "utf8"));
   const adapter: Database = {
     query: async (sql, params = []) => pg.query(sql, params),
     transaction: async (fn) =>

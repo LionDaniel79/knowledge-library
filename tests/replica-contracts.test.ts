@@ -39,7 +39,7 @@ it("includes every owner application table and its complete safe column set", as
     "library_analysis_workers",
   ]);
   const tables = [...new Set(rows.map((r) => String(r.table_name)))].filter(
-    (t) => !serverOnly.has(t),
+    (t) => !serverOnly.has(t) && !t.startsWith("library_sync_"),
   );
   expect(Object.keys(syncEntities).sort()).toEqual(tables.sort());
   expect(tables).toHaveLength(38);
