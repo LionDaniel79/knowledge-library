@@ -159,10 +159,10 @@ type OutboxEntry = {
 
 **Interfaces:** `pullReplica({owner,storage,transport,signal}): Promise<ReplicaCheckpoint>`, `syncReplica({reason}): Promise<SyncStatus>`, `pruneSyncChanges(db,owner,{before}): Promise<void>`. `SyncStatus`에는 단계·진행 개수/바이트·미전송/실패/충돌 개수·마지막 동기화 시각·오류를 정의한다.
 
-- [ ] RED: 추가·삭제·복원·제외의 반복, 순서가 뒤집히거나 중복된 응답, 저장 성공 뒤에만 커서 전진, 삭제 자료 재등장 방지, 180일 지난 기기 재구성을 검증한다.
-- [ ] 실행: `vitest run tests/replica-pull.test.ts tests/sync-retention.test.ts`.
-- [ ] 받은 행과 커서를 하나의 저장 거래로 적용한다. 최신 행을 오래된 응답으로 되돌리지 않는다. 보존 범위 밖의 기기는 기존 자료·송신 대기를 유지하며 준비 세대를 다시 만든다.
-- [ ] 알림 정리가 업무 이력·제외 상태를 지우지 않는지와 초기 스캔 경쟁 조건을 검사하고 통과 후 커밋한다.
+- [x] RED: 추가·삭제·복원·제외의 반복, 순서가 뒤집히거나 중복된 응답, 저장 성공 뒤에만 커서 전진, 삭제 자료 재등장 방지, 180일 지난 기기 재구성을 검증한다.
+- [x] 실행: `vitest run tests/replica-pull.test.ts tests/sync-retention.test.ts`.
+- [x] 받은 행과 커서를 하나의 저장 거래로 적용한다. 최신 행을 오래된 응답으로 되돌리지 않는다. 보존 범위 밖의 기기는 기존 자료·송신 대기를 유지하며 준비 세대를 다시 만든다.
+- [x] 알림 정리가 업무 이력·제외 상태를 지우지 않는지와 초기 스캔 경쟁 조건을 검사하고 통과 후 커밋한다.
 
 ### Task 9: 로컬 검색과 화면 자료 리포지토리
 
