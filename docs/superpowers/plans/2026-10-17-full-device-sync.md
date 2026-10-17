@@ -115,10 +115,10 @@ type OutboxEntry = {
 
 **Interfaces:** `readSyncMeta(db,owner)`, `scanSyncRows(db,owner,{entity,after,limit})`, `readSyncChanges(db,owner,{epoch,cursor,limit}): Promise<SyncPage>`, `readSyncValuePart(db,owner,{entity,key,revision,index}): Promise<Uint8Array>`. 메타 정보는 세대·헤드·전체 자료 수·크기 추정·보존 범위를 포함한다.
 
-- [ ] RED: 미인증401, 다른 계정 커서 거절, 잘못된 자료/키/순번, 응답 512KiB 제한, 4MiB JSON 한 행과 이미지 전체 조립, 읽는 중 변경409, 읽기 부작용 없음을 검증한다.
-- [ ] 실행: `vitest run tests/sync-read.test.ts tests/sync-routes.test.ts`에서 미구현 기능의 실패를 확인한다.
-- [ ] 허용된 SQL 식별자로 행을 투영한다. 짧은 읽기 일관성 거래에서 헤드와 최신 행 순번을 함께 읽는다. 큰 값은 DB에서 바이트를 잘라 전송하며 매 요청마다 4MiB를 받아 192KiB만 잘라 쓰지 않는다. 정규화·해시는 UTF-8·UTC·고정 키 형식을 사용한다.
-- [ ] 응답은 `private, no-store`로 한다. 파서 상한·다른 계정의 이미지 접근·DB 권한을 검증하고 통과 후 커밋한다.
+- [x] RED: 미인증401, 다른 계정 커서 거절, 잘못된 자료/키/순번, 응답 512KiB 제한, 4MiB JSON 한 행과 이미지 전체 조립, 읽는 중 변경409, 읽기 부작용 없음을 검증한다.
+- [x] 실행: `vitest run tests/sync-read.test.ts tests/sync-routes.test.ts`에서 미구현 기능의 실패를 확인한다.
+- [x] 허용된 SQL 식별자로 행을 투영한다. 짧은 읽기 일관성 거래에서 헤드와 최신 행 순번을 함께 읽는다. 큰 값은 DB에서 바이트를 잘라 전송하며 매 요청마다 4MiB를 받아 192KiB만 잘라 쓰지 않는다. 정규화·해시는 UTF-8·UTC·고정 키 형식을 사용한다.
+- [x] 응답은 `private, no-store`로 한다. 파서 상한·다른 계정의 이미지 접근·DB 권한을 검증하고 통과 후 커밋한다.
 
 ### Task 5: 최초 스캔과 변경분의 일관성
 
