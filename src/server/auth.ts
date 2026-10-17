@@ -21,6 +21,15 @@ export function getAuth() {
 export async function requireOwner() {
   if (!configured())
     throw new LibraryError(503, "온라인 서재 연결 설정이 필요합니다.");
-  const { data: session } = await getAuth().getSession();
+  const { data: session, error } = await getAuth().getSession();
+  if (error && error.status !== 401 && error.status !== 403) {
+    console.warn("Library authentication temporarily unavailable", {
+      status: error.status,
+    });
+    throw new LibraryError(
+      error.status === 429 ? 429 : 503,
+      "로그인 서버 연결이 일시적으로 지연되고 있습니다. 잠시 후 동기화를 재개해 주세요.",
+    );
+  }
   return authorize(session?.user ?? null, process.env.LIBRARY_OWNER_EMAIL!);
 }

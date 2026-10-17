@@ -49,7 +49,8 @@ export function ReplicaEntry({
       runtime: LibraryRuntime | undefined,
       screenOwner: string | undefined,
       unsubscribe: (() => void) | undefined,
-      lastRevision = -1;
+      lastRevision = -1,
+      loadingOnlineOverview = false;
     const controller = new AbortController();
     const session = verifiedSyncOwner(controller.signal)
       .then((owner) => ({ owner, error: null as unknown }))
@@ -152,6 +153,7 @@ export function ReplicaEntry({
         } catch {}
         void current.sync({ reason: "startup" }).catch(() => {});
         if (!current.getSnapshot().ready) {
+          loadingOnlineOverview = true;
           const response = await fetch("/api/library", {
             cache: "no-store",
             signal: controller.signal,
@@ -159,6 +161,7 @@ export function ReplicaEntry({
           const data = await response.json();
           if (!response.ok)
             throw Error(data.error ?? "서재를 불러오지 못했습니다.");
+          loadingOnlineOverview = false;
           if (
             !cancelled &&
             runtime === current &&
@@ -171,6 +174,9 @@ export function ReplicaEntry({
       } catch (e) {
         // An unavailable device store must not prevent a verified online session.
         const verified = await session;
+        // A transient online overview error says nothing about an already opened
+        // store. Keep its partial copy and background coordinator attached.
+        const partialRuntime = loadingOnlineOverview ? (runtime ?? null) : null;
         if (verified.owner && !cancelled) {
           try {
             const response = await fetch("/api/library", {
@@ -180,13 +186,21 @@ export function ReplicaEntry({
             if (!response.ok) throw Error("서재를 불러오지 못했습니다.");
             const data = await response.json();
             if (!cancelled) {
-              runtime?.close();
-              runtime = undefined;
+              if (!partialRuntime) {
+                runtime?.close();
+                runtime = undefined;
+              }
               screenOwner = verified.owner;
               setStorageMessage(
-                "기기 저장소를 사용할 수 없어 온라인으로 표시합니다. 기기 자료는 유지됩니다.",
+                partialRuntime
+                  ? ""
+                  : "기기 저장소를 사용할 수 없어 온라인으로 표시합니다. 기기 자료는 유지됩니다.",
               );
-              setScreen({ runtime: null, owner: verified.owner, data });
+              setScreen({
+                runtime: partialRuntime,
+                owner: verified.owner,
+                data,
+              });
               setAuth(false);
               return;
             }
