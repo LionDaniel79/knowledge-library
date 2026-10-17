@@ -1,4 +1,6 @@
-import { requireOwner } from "@/server/auth";
+import { requireOwner, configured } from "@/server/auth";
+import { LibraryError } from "@/server/library-store";
+import { AuthPanel } from "@/components/auth-panel";
 import { database } from "@/server/db";
 import { PdfReader } from "@/components/pdf-reader";
 import { z } from "zod";
@@ -14,13 +16,20 @@ export default async function Reader({
   searchParams: Promise<{ page?: string; signature?: string }>;
 }) {
   let destination: string;
+  let returnPath = "/";
   try {
-    const owner = await requireOwner(),
-      id = z
+    const id = z
         .string()
         .uuid()
         .parse((await params).id),
       query = await searchParams;
+    const page = Math.max(
+        1,
+        Math.min(100000, Math.trunc(Number(query.page)) || 1),
+      ),
+      signature = z.string().max(500).optional().parse(query.signature);
+    returnPath = `/reader/${id}?page=${page}${signature ? `&signature=${encodeURIComponent(signature)}` : ""}`;
+    const owner = await requireOwner();
     const doc = (
       await database.query(
         "SELECT b.title FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2",
@@ -28,12 +37,7 @@ export default async function Reader({
       )
     ).rows[0];
     if (!doc) return <p>PDF를 찾을 수 없습니다.</p>;
-    const page = Math.max(
-        1,
-        Math.min(100000, Math.trunc(Number(query.page)) || 1),
-      ),
-      signature = z.string().max(500).optional().parse(query.signature),
-      localAvailable = !!(
+    const localAvailable = !!(
         process.env.LIBRARY_PDF_ROOT &&
         process.env.LIBRARY_PYTHON &&
         existsSync(process.env.LIBRARY_PYTHON)
@@ -59,10 +63,13 @@ export default async function Reader({
           localAvailable={localAvailable}
         />
       );
-  } catch {
+  } catch (error) {
+    if (error instanceof LibraryError && error.status === 401)
+      return <AuthPanel available={configured()} returnPath={returnPath} />;
     return (
       <main className="reader">
-        <a href="/">서재에 로그인하여 원문 열기</a>
+        <p>PDF 원문을 열지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+        <a href={returnPath}>다시 시도</a>
       </main>
     );
   }

@@ -18,7 +18,12 @@ export function ReadingCarousel({
   onComplete: (c: ReadingCycle) => void;
   onBook: (id: string) => void;
 }) {
-  const reading = library.cycles.filter((c) => c.status === "reading");
+  const reading = library.cycles
+    .filter((c) => c.status === "reading")
+    .sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+    );
   const current = Math.min(index, Math.max(0, reading.length - 1));
   const pointer = useRef<{ x: number; y: number; id: number } | null>(null);
   const move = (d: number) =>

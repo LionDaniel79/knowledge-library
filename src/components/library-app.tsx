@@ -457,13 +457,20 @@ export function LibraryApp({
         const page = await r.json(),
           latest = page.items[0];
         if (latest)
-          json.cycles = [
-            ...json.cycles.filter((c: ReadingCycle) => c.id !== latest.id),
-            latest,
-          ];
+          json.cycles = json.cycles.some(
+            (c: ReadingCycle) => c.id === latest.id,
+          )
+            ? json.cycles.map((c: ReadingCycle) =>
+                c.id === latest.id ? latest : c,
+              )
+            : [...json.cycles, latest];
       }
     }
-    setData(json);
+    setData(
+      replica && !replica.ready
+        ? await replica.runtime.withPendingReading(json)
+        : json,
+    );
     setReadingIndex((index) =>
       Math.min(
         index,
@@ -476,6 +483,32 @@ export function LibraryApp({
     );
   }
   async function save(command: Command) {
+    if (command.type === "updateProgress") {
+      const p = command.payload as {
+        id: string;
+        currentPage: number;
+        expectedVersion: number;
+      };
+      const cycle = data.cycles.find((c) => c.id === p.id),
+        book = data.books.find((b) => b.id === cycle?.bookId);
+      if (replica && cycle && book) {
+        const result = await replica.runtime.queue("/api/library", command, {
+          cycle,
+          book,
+        });
+        setData((d) => ({
+          ...d,
+          cycles: d.cycles.map((c) =>
+            c.id === p.id
+              ? { ...c, currentPage: p.currentPage, version: result.version }
+              : c,
+          ),
+        }));
+        setMessage("기기에 저장했습니다. 동기화는 뒤에서 진행합니다.");
+        setFailure("");
+        return;
+      }
+    }
     const res = await libraryRequest("/api/library", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -495,6 +528,20 @@ export function LibraryApp({
       });
     }
     try {
+      if (command.type === "updateProgress") {
+        const p = command.payload as { id: string; currentPage: number };
+        setData((d) => ({
+          ...d,
+          cycles: d.cycles.map((c) =>
+            c.id === p.id
+              ? { ...c, currentPage: p.currentPage, version: json.version }
+              : c,
+          ),
+        }));
+        setMessage("읽은 쪽을 저장했습니다.");
+        setFailure("");
+        return;
+      }
       await refresh();
       setMessage(
         json.queued

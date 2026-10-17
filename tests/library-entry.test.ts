@@ -34,3 +34,15 @@ it("retains PDF and validated consent destinations while refusing arbitrary logi
   ])
     expect(authReturnPath(path)).toBe("/");
 });
+it("returns to the exact PDF and citation after private-PC login, allowing no other redirect parameters", () => {
+  const path =
+    "/reader/11111111-1111-4111-8111-111111111111?page=42&signature=abc%3A123";
+  expect(authReturnPath(path)).toBe(path);
+  for (const bad of [
+    path + "&next=https://evil.example",
+    path + "#bad",
+    path.replace("page=42", "page=100001"),
+    path.replace("page=42", "page=0"),
+  ])
+    expect(authReturnPath(bad)).toBe("/");
+});

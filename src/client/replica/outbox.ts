@@ -7,11 +7,14 @@ import {
 } from "./optimistic";
 import { contentHash } from "../../lib/thought-map/records";
 import { ReplicaQueryError } from "./queries";
+import type { Book, ReadingCycle } from "../../lib/domain";
+export type ReadingSnapshot = { cycle: ReadingCycle; book: Book };
 export async function queueReplicaCommand(input: {
   storage: ReplicaStorage;
   repository: ReplicaRepository;
   path: string;
   body: any;
+  readingSnapshot?: ReadingSnapshot;
 }) {
   const { storage, repository, path } = input,
     requestId = input.body.requestId ?? crypto.randomUUID(),
@@ -20,7 +23,15 @@ export async function queueReplicaCommand(input: {
   if (!family)
     throw new ReplicaQueryError(400, "온라인으로 처리할 기능입니다.");
   const cp = await storage.checkpoint();
-  if (!cp?.complete)
+  const seed = input.readingSnapshot;
+  const partialProgress =
+    !cp?.complete &&
+    !!seed &&
+    path === "/api/library" &&
+    original.type === "updateProgress" &&
+    seed?.cycle.id === original.payload?.id &&
+    seed.cycle.bookId === seed.book.id;
+  if (!cp?.complete && !partialProgress)
     throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
   const entries = await storage.listOutbox(),
     inputHash = contentHash(JSON.stringify({ path, body: original })),
@@ -31,7 +42,42 @@ export async function queueReplicaCommand(input: {
     return (old.command as QueuedChange).result;
   }
   const at = new Date().toISOString(),
-    prepared = await prepareOptimistic(repository, path, original, at),
+    prepared = await prepareOptimistic(
+      partialProgress
+        ? {
+            ...repository,
+            raw: async (entity, id) => {
+              for (const entry of [...entries].reverse()) {
+                const effect = (entry.command as QueuedChange).effects?.find(
+                  (e) => e.entity === entity && e.after?.id === id,
+                );
+                if (effect) return effect.after ?? undefined;
+              }
+              const existing = await repository.raw(entity, id);
+              if (existing) return existing;
+              if (entity === "library_cycles" && id === seed!.cycle.id) {
+                const c = seed!.cycle;
+                return {
+                  id: c.id,
+                  book_id: c.bookId,
+                  status: c.status,
+                  current_page: c.currentPage,
+                  version: c.version,
+                  started_on: c.startedOn,
+                  completed_on: c.completedOn,
+                  created_at: c.createdAt,
+                };
+              }
+              if (entity === "library_books" && id === seed!.book.id)
+                return { id, total_pages: seed!.book.totalPages };
+              return undefined;
+            },
+          }
+        : repository,
+      path,
+      original,
+      at,
+    ),
     command: QueuedChange = {
       path,
       body: prepared.body,
@@ -65,7 +111,7 @@ export async function queueReplicaCommand(input: {
           e.entity !== "library_revisions" && e.after?.id === prepared.entityId,
       );
       return primary
-        ? ((await storage.readRow(primary.entity, primary.key, cp.generation))
+        ? ((await storage.readRow(primary.entity, primary.key, cp?.generation))
             ?.revision ?? null)
         : null;
     })(),
@@ -78,16 +124,12 @@ export async function queueReplicaCommand(input: {
     dependsOn: dependsOn.slice(-200),
     state: "pending" as const,
   };
-  const localEntityRevisions = { ...cp.localEntityRevisions };
-  for (const e of new Set(prepared.effects.map((e) => e.entity)))
-    localEntityRevisions[e] = (localEntityRevisions[e] ?? 0) + 1;
   await storage.transaction((tx) => {
-    tx.expectCheckpoint(cp.generation, cp);
-    tx.putOutbox(entry);
-    tx.setCheckpoint(cp.generation, {
-      localRevision: (cp.localRevision ?? 0) + 1,
-      localEntityRevisions,
-    });
+    if (cp?.complete) tx.expectCheckpoint(cp.generation, cp);
+    tx.putOutbox(
+      entry,
+      prepared.effects.map((e) => e.entity),
+    );
   });
   repository.invalidate();
   return prepared.result;

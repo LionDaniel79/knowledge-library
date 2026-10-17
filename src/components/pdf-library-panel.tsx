@@ -159,7 +159,7 @@ export function PdfLibraryPanel({
   return (
     <section className="pdf-library">
       {!documentId && <PdfConnection />}
-      <PcAccess id={documentId} />
+      {!documentId && <PcAccess />}
       {!documentId && (
         <>
           <div className="section-heading">

@@ -107,13 +107,197 @@ async function mount(
       format: "iife",
       platform: "browser",
       jsx: "automatic",
-      define: { "process.env.NODE_ENV": '"production"' },
+      define: {
+        "process.env.NODE_ENV": '"production"',
+        "import.meta.url": JSON.stringify(origin + "/main.js"),
+      },
     })
   ).outputFiles[0].text;
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
   return bundle;
 }
+test("book detail has one PDF entry instead of a duplicate PC link", async ({
+  page,
+}) => {
+  const doc = "11111111-1111-4111-8111-111111111111";
+  const book = {
+    ...previewLibrary.books[0],
+    sourceData: { app: "Local PDF", recordId: doc },
+  };
+  const fixture = {
+    ...previewLibrary,
+    books: [book],
+    cycles: [
+      { ...previewLibrary.cycles[0], bookId: book.id, status: "reading" },
+    ],
+    notes: [],
+  };
+  await page.route("https://library.test/api/**", (r) =>
+    r.fulfill({
+      json:
+        new URL(r.request().url()).pathname === "/api/pc-access"
+          ? {
+              local: false,
+              pcOrigin: "https://knowledge-library-pc.tail83cf39.ts.net",
+            }
+          : { items: [], references: [], history: [], version: 1 },
+    }),
+  );
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';createRoot(document.getElementById('root')).render(<LibraryApp initial={${JSON.stringify(fixture)}} today="2026-10-17" ownerId="pdf-test"/>);`,
+  );
+  await page.locator(".reading-copy .title-button").click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("link", { name: "PDF 원문 열기", exact: true }),
+  ).toHaveAttribute("href", `/reader/${doc}`);
+  await expect(dialog.locator('a[href*="/reader/"]')).toHaveCount(1);
+});
+test("reading progress closes promptly during initial download and stays at the same position through later refreshes", async ({
+  page,
+}) => {
+  const books = previewLibrary.books.slice(0, 3).map((b, i) => ({
+    ...b,
+    id: `11111111-1111-4111-8111-11111111111${i}`,
+    title: `읽는 책 ${i + 1}`,
+    totalPages: 500,
+  }));
+  const fixture = {
+    ...previewLibrary,
+    books,
+    cycles: books.map((b, i) => ({
+      id: `22222222-2222-4222-8222-22222222222${i}`,
+      bookId: b.id,
+      status: "reading",
+      currentPage: 20 + i,
+      version: 1,
+      startedOn: null,
+      completedOn: null,
+      createdAt: `2026-10-1${i + 1}T00:00:00Z`,
+    })),
+    notes: [],
+  };
+  let writes = 0;
+  const worker = (
+    await build({
+      entryPoints: ["src/client/replica/search-worker.ts"],
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "browser",
+    })
+  ).outputFiles[0].text;
+  await page.route("https://library.test/search-worker.ts", (r) =>
+    r.fulfill({ contentType: "application/javascript", body: worker }),
+  );
+  await page.route("https://library.test/api/**", (r) => {
+    if (r.request().method() === "POST") writes++;
+    return r.abort();
+  });
+  const code = `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';import {ReplicaProvider} from './src/components/replica/provider';import {createLibraryRuntime} from './src/client/replica/runtime';import {openReplica} from './src/client/replica/indexed-db';(async()=>{const s=await openReplica('quick-progress');const runtime=createLibraryRuntime('quick-progress',s,await s.checkpoint());window.runtime=runtime;createRoot(document.getElementById('root')).render(<ReplicaProvider runtime={runtime}><LibraryApp initial={await runtime.withPendingReading(${JSON.stringify(fixture)})} ownerId="quick-progress" today="2026-10-17"/></ReplicaProvider>);})();`;
+  await mount(page, code);
+  await page.getByRole("button", { name: "다음 책", exact: true }).click();
+  for (const value of [35, 40]) {
+    await page
+      .getByRole("button", { name: "읽은 쪽 기록", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.locator('[name="currentPage"]').fill(String(value));
+    await dialog.getByRole("button", { name: "저장하기", exact: true }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 1500 });
+    await expect(page.locator(".reading-copy h3")).toHaveText("읽는 책 2");
+    await expect(page.getByTestId("carousel-position")).toHaveText("2 / 3");
+    await expect(
+      page.getByRole("progressbar", { name: "독서 진행률" }),
+    ).toHaveAttribute("value", String(value));
+  }
+  expect(writes).toBe(0);
+  expect(
+    await page.evaluate(
+      async () => (await (window as any).runtime.storage.listOutbox()).length,
+    ),
+  ).toBe(2);
+  await page.reload();
+  await page.addStyleTag({ path: "src/app/globals.css" });
+  await page.addScriptTag({
+    content: (
+      await build({
+        stdin: { contents: code, loader: "tsx", resolveDir: process.cwd() },
+        bundle: true,
+        write: false,
+        format: "iife",
+        platform: "browser",
+        jsx: "automatic",
+        define: {
+          "process.env.NODE_ENV": '"production"',
+          "import.meta.url": '"https://library.test/main.js"',
+        },
+      })
+    ).outputFiles[0].text,
+  });
+  await page.getByRole("button", { name: "다음 책", exact: true }).click();
+  await expect(
+    page.getByRole("progressbar", { name: "독서 진행률" }),
+  ).toHaveAttribute("value", "40");
+});
+test("online progress does not wait for a slow overview and later reordered responses keep the selected book", async ({
+  page,
+}) => {
+  const books = previewLibrary.books
+    .slice(0, 3)
+    .map((b, i) => ({ ...b, title: `순서 ${i + 1}`, totalPages: 500 }));
+  const fixture = {
+    ...previewLibrary,
+    books,
+    cycles: books.map((b, i) => ({
+      id: `33333333-3333-4333-8333-33333333333${i}`,
+      bookId: b.id,
+      status: "reading",
+      currentPage: 20 + i,
+      version: 1,
+      startedOn: null,
+      completedOn: null,
+      createdAt: `2026-10-1${i + 1}T00:00:00Z`,
+    })),
+    notes: [],
+  };
+  await page.route("https://library.test/api/library", async (r) => {
+    if (r.request().method() === "POST") {
+      const p = r.request().postDataJSON().payload;
+      Object.assign(
+        fixture.cycles.find((c) => c.id === p.id)!,
+        { currentPage: p.currentPage, version: 2 },
+      );
+      return r.fulfill({ json: { id: p.id, version: 2 } });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    return r.fulfill({
+      json: {
+        ...fixture,
+        cycles: [fixture.cycles[0], fixture.cycles[2], fixture.cycles[1]],
+      },
+    });
+  });
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';createRoot(document.getElementById('root')).render(<LibraryApp initial={${JSON.stringify(fixture)}} ownerId="online-progress" today="2026-10-17"/>);`,
+  );
+  await page.getByRole("button", { name: "다음 책", exact: true }).click();
+  await page.getByRole("button", { name: "읽은 쪽 기록", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator('[name="currentPage"]').fill("35");
+  await dialog.getByRole("button", { name: "저장하기", exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 1500 });
+  await expect(page.locator(".reading-copy h3")).toHaveText("순서 2");
+  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "새로고침", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".reading-copy h3")).toHaveText("순서 2");
+  await expect(page.getByTestId("carousel-position")).toHaveText("2 / 3");
+});
 test("cover/list preference survives reload and list opens the same book on a narrow screen", async ({
   page,
 }) => {

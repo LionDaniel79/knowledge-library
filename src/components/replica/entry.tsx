@@ -162,13 +162,18 @@ export function ReplicaEntry({
           if (!response.ok)
             throw Error(data.error ?? "서재를 불러오지 못했습니다.");
           loadingOnlineOverview = false;
+          const visible = await current.withPendingReading(data);
           if (
             !cancelled &&
             runtime === current &&
             !current.getSnapshot().ready
           ) {
             screenOwner = current.owner;
-            setScreen({ runtime: current, owner: current.owner, data });
+            setScreen({
+              runtime: current,
+              owner: current.owner,
+              data: visible,
+            });
           }
         }
       } catch (e) {
@@ -185,7 +190,10 @@ export function ReplicaEntry({
             });
             if (!response.ok) throw Error("서재를 불러오지 못했습니다.");
             const data = await response.json();
-            if (!cancelled) {
+            const visible = partialRuntime
+              ? await partialRuntime.withPendingReading(data)
+              : data;
+            if (!cancelled && (!partialRuntime || runtime === partialRuntime)) {
               if (!partialRuntime) {
                 runtime?.close();
                 runtime = undefined;
@@ -199,7 +207,7 @@ export function ReplicaEntry({
               setScreen({
                 runtime: partialRuntime,
                 owner: verified.owner,
-                data,
+                data: visible,
               });
               setAuth(false);
               return;

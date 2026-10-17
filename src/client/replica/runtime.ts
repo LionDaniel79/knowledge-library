@@ -4,7 +4,10 @@ import type { ReplicaStorage, ReplicaGeneration } from "./storage";
 import { createReplicaRepository } from "./repository";
 import { createReplicaCoordinator } from "./coordinator";
 import { createSyncTransport, SyncHttpError } from "./transport";
-import { queueReplicaCommand } from "./outbox";
+import { queueReplicaCommand, type ReadingSnapshot } from "./outbox";
+import type { Library } from "../../lib/domain";
+import { projectCycle } from "../../lib/replica/projections";
+import type { QueuedChange } from "./optimistic";
 import { migrateLegacyDrafts } from "./conflicts";
 import { withReplicaLeader } from "./leadership";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
@@ -286,12 +289,31 @@ export function createLibraryRuntime(
       await refreshLocal();
       announce();
     },
-    async queue(path: string, body: unknown) {
+    async withPendingReading(library: Library): Promise<Library> {
+      const cycles = new Map(library.cycles.map((c) => [c.id, c]));
+      for (const entry of (await storage.listOutbox()).sort(
+        (a, b) => a.order - b.order,
+      ))
+        for (const effect of (entry.command as QueuedChange).effects ?? [])
+          if (
+            effect.entity === "library_cycles" &&
+            effect.after &&
+            cycles.has(effect.after.id)
+          )
+            cycles.set(effect.after.id, projectCycle(effect.after));
+      return { ...library, cycles: [...cycles.values()] };
+    },
+    async queue(
+      path: string,
+      body: unknown,
+      readingSnapshot?: ReadingSnapshot,
+    ) {
       const result = await queueReplicaCommand({
         storage,
         repository,
         path,
         body,
+        readingSnapshot,
       });
       const pending = await storage.listOutbox();
       emit({

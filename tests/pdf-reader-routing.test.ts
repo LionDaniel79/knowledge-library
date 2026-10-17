@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
+import { LibraryError } from "../src/server/library-store";
 const state = vi.hoisted(() => ({
   authenticated: true,
   found: true,
@@ -8,8 +9,9 @@ const state = vi.hoisted(() => ({
   }),
 }));
 vi.mock("@/server/auth", () => ({
+  configured: () => true,
   requireOwner: async () => {
-    if (!state.authenticated) throw Error("Sign in required");
+    if (!state.authenticated) throw new LibraryError(401, "Sign in required");
     return "owner";
   },
 }));
@@ -22,6 +24,7 @@ vi.mock("@/server/db", () => ({
   },
 }));
 vi.mock("@/components/pdf-reader", () => ({ PdfReader: () => null }));
+vi.mock("@/components/auth-panel", () => ({ AuthPanel: () => null }));
 vi.mock("next/navigation", () => ({ redirect: state.redirect }));
 import Reader from "../src/app/reader/[id]/page";
 const id = "11111111-1111-4111-8111-111111111111",
@@ -42,6 +45,14 @@ beforeEach(() => {
   vi.stubEnv("APP_ORIGIN", "https://library.test");
 });
 afterEach(() => vi.unstubAllEnvs());
+it("retains the original PDF page when the private browser needs its own login", async () => {
+  state.authenticated = false;
+  const page = await read({ page: "42", signature: "abc:123" });
+  expect(page.props.returnPath).toBe(
+    `/reader/${id}?page=42&signature=abc%3A123`,
+  );
+  expect(state.query).not.toHaveBeenCalled();
+});
 it("opens the owned PDF on the confirmed private PC in one navigation, preserving citation page/signature", async () => {
   await expect(read({ page: "42", signature: "abc:123" })).rejects.toThrow(
     `REDIRECT:${pc}/reader/${id}?page=42&signature=abc%3A123`,

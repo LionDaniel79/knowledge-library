@@ -1,6 +1,96 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { emptyLibrary } from "../src/lib/domain";
+for (const fallback of [false, true])
+  test(`does not restore a previous account after delayed reading overlay (${fallback ? "retry" : "first overview"})`, async ({
+    page,
+  }) => {
+    const runtimePath =
+      process.cwd().replaceAll("\\", "/") + "/src/client/replica/runtime.ts";
+    const js = (
+      await build({
+        stdin: {
+          contents: `import{createRoot}from'react-dom/client';import{ReplicaEntry}from'./src/components/replica/entry';createRoot(document.getElementById('root')).render(<ReplicaEntry available={true}/>);`,
+          loader: "tsx",
+          resolveDir: process.cwd(),
+        },
+        bundle: true,
+        write: false,
+        platform: "browser",
+        format: "iife",
+        jsx: "automatic",
+        define: {
+          "process.env.NODE_ENV": '"production"',
+          "import.meta.url": '"https://fallback.test/app.js"',
+        },
+        plugins: [
+          {
+            name: "delay-real-reading-overlay",
+            setup(b) {
+              b.onResolve({ filter: /\/replica\/runtime$/ }, () => ({
+                path: "delayed-runtime",
+                namespace: "test-delay",
+              }));
+              b.onLoad({ filter: /.*/, namespace: "test-delay" }, () => ({
+                loader: "ts",
+                resolveDir: process.cwd(),
+                contents: `import{createLibraryRuntime as original,verifiedSyncOwner}from ${JSON.stringify(runtimePath)};export{verifiedSyncOwner};export function createLibraryRuntime(...args){const r=original(...args);return{...r,async withPendingReading(data){const result=await r.withPendingReading(data);document.body.dataset.overlayWaiting='1';await new Promise(resolve=>{window.releaseReading=resolve});return result}}}`,
+              }));
+            },
+          },
+        ],
+      })
+    ).outputFiles[0].text;
+    await page.route("https://fallback.test/", (r) =>
+      r.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
+    );
+    await page.route("https://fallback.test/api/**", (r) =>
+      r.fulfill({ status: 503, json: { error: "temporarily unavailable" } }),
+    );
+    await page.route("https://fallback.test/api/sync/session", (r) =>
+      r.fulfill({ json: { ownerId: "account-A" } }),
+    );
+    let reads = 0;
+    await page.route("https://fallback.test/api/library", (r) =>
+      ++reads === 1 && fallback
+        ? r.fulfill({ status: 503, json: { error: "retry" } })
+        : r.fulfill({ json: emptyLibrary() }),
+    );
+    await page.goto("https://fallback.test/");
+    await page.addScriptTag({ content: js });
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-overlay-waiting",
+      "1",
+    );
+    await page.evaluate(() => {
+      localStorage.setItem("knowledge-library-offline-owner:v1", "account-B");
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "knowledge-library-offline-owner:v1",
+          newValue: "account-B",
+        }),
+      );
+    });
+    await expect(
+      page.getByRole("button", {
+        name: "Google 계정으로 시작하기",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.evaluate(async () => {
+      (window as any).releaseReading();
+      await new Promise((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(r)),
+      );
+    });
+    await expect(page.locator(".workspace")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: "Google 계정으로 시작하기",
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
 
 test("keeps an opened device store attached when only the initial online overview fails once", async ({
   page,

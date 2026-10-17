@@ -104,6 +104,7 @@ type Command =
       key: string;
       generation?: string;
       data: unknown;
+      localEntities?: SyncEntity[];
     }
   | {
       type: "delete";
@@ -125,7 +126,7 @@ export interface ReplicaWrite {
     index: number,
     bytes: Uint8Array,
   ): void;
-  putOutbox(entry: OutboxEntry): void;
+  putOutbox(entry: OutboxEntry, localEntities?: SyncEntity[]): void;
   removeOutbox(requestId: string): void;
   putConflict(conflict: ReplicaConflict): void;
   removeConflict(requestId: string): void;
@@ -394,6 +395,21 @@ export function createReplicaStorage(
                 : [owner, command.key],
               command.data,
             );
+            if (command.localEntities) {
+              const active = await io.get("meta", [owner, "active"]);
+              if (active) {
+                const checkpoint = await state(active),
+                  localEntityRevisions = { ...checkpoint.localEntityRevisions };
+                for (const entity of new Set(command.localEntities))
+                  localEntityRevisions[entity] =
+                    (localEntityRevisions[entity] ?? 0) + 1;
+                await io.put("meta", stateKey(active), {
+                  ...checkpoint,
+                  localRevision: (checkpoint.localRevision ?? 0) + 1,
+                  localEntityRevisions,
+                });
+              }
+            }
             break;
           case "delete":
             await io.delete(
@@ -448,7 +464,7 @@ export function createReplicaStorage(
           bytes: bytes.slice(),
         });
       },
-      putOutbox(entry) {
+      putOutbox(entry, localEntities) {
         const e = outboxEntry.parse(entry);
         if (e.owner !== owner) throw Error("서재 계정이 다릅니다.");
         commands.push({
@@ -456,6 +472,7 @@ export function createReplicaStorage(
           store: "outbox",
           key: e.requestId,
           data: e,
+          localEntities,
         });
       },
       removeOutbox(requestId) {
