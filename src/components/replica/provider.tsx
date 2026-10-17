@@ -12,20 +12,30 @@ const ReplicaContext = createContext<
   | ({ runtime: LibraryRuntime } & ReturnType<LibraryRuntime["getSnapshot"]>)
   | null
 >(null);
+const noSubscribe = () => () => {};
+const noSnapshot = () => null;
 export function ReplicaProvider({
   runtime,
+  authorizeNetwork,
   children,
 }: {
-  runtime: LibraryRuntime;
+  runtime: LibraryRuntime | null;
+  authorizeNetwork?: () => Promise<void>;
   children: React.ReactNode;
 }) {
   const snapshot = useSyncExternalStore(
-    runtime.subscribe,
-    runtime.getSnapshot,
-    runtime.getSnapshot,
+    runtime?.subscribe ?? noSubscribe,
+    runtime?.getSnapshot ?? noSnapshot,
+    runtime?.getSnapshot ?? noSnapshot,
   );
-  useLayoutEffect(() => registerLibraryRuntime(runtime), [runtime]);
-  const value = useMemo(() => ({ runtime, ...snapshot }), [runtime, snapshot]);
+  useLayoutEffect(
+    () => registerLibraryRuntime(runtime, authorizeNetwork),
+    [runtime, authorizeNetwork],
+  );
+  const value = useMemo(
+    () => (runtime && snapshot ? { runtime, ...snapshot } : null),
+    [runtime, snapshot],
+  );
   return (
     <ReplicaContext.Provider value={value}>{children}</ReplicaContext.Provider>
   );

@@ -13,6 +13,7 @@ import { SyncHttpError } from "@/client/replica/transport";
 import { offlineOwnerKey } from "@/lib/offline-drafts";
 import { todayInSeoul, type Library } from "@/lib/domain";
 import { libraryEntry } from "@/lib/library-entry";
+import { readStartup, clearStartup } from "@/client/replica/startup-cache";
 export function ReplicaEntry({
   available,
   today,
@@ -30,6 +31,7 @@ export function ReplicaEntry({
       runtime: LibraryRuntime | null;
       owner: string;
       data: Library;
+      authorizeNetwork: () => Promise<void>;
     } | null>(null),
     [auth, setAuth] = useState(false),
     [error, setError] = useState("");
@@ -46,16 +48,45 @@ export function ReplicaEntry({
       libraryEntry(Object.fromEntries(new URLSearchParams(location.search))),
     );
     let cancelled = false,
+      accountChanged = false,
+      hasScreen = false,
+      attachment = 0,
       runtime: LibraryRuntime | undefined,
       screenOwner: string | undefined,
       unsubscribe: (() => void) | undefined,
       lastRevision = -1,
       loadingOnlineOverview = false;
     const controller = new AbortController();
+    const alive = () => !cancelled && !accountChanged;
     const session = verifiedSyncOwner(controller.signal)
       .then((owner) => ({ owner, error: null as unknown }))
       .catch((error) => ({ owner: null, error }));
+    const guards = new Map<string, () => Promise<void>>();
+    function accessFor(owner: string) {
+      if (!guards.has(owner))
+        guards.set(owner, async () => {
+          let result = await session;
+          if (
+            !result.owner &&
+            !(
+              result.error instanceof SyncHttpError &&
+              result.error.status === 403
+            )
+          )
+            result = {
+              owner: await verifiedSyncOwner(controller.signal),
+              error: null,
+            };
+          if (!alive())
+            throw new DOMException("서재 계정이 변경되었습니다.", "AbortError");
+          if (!result.owner) throw result.error;
+          if (result.owner !== owner)
+            throw new SyncHttpError(403, "서재 계정이 변경되었습니다.");
+        });
+      return guards.get(owner)!;
+    }
     async function attach(owner: string) {
+      const ticket = ++attachment;
       const storage = await openReplica(owner, {
         onInvalidated: () => {
           if (!cancelled)
@@ -64,19 +95,47 @@ export function ReplicaEntry({
             );
         },
       });
-      if (cancelled) {
+      if (!alive() || ticket !== attachment) {
+        storage.close();
+        return;
+      }
+      const cp = await storage.checkpoint();
+      if (!alive() || ticket !== attachment) {
         storage.close();
         return;
       }
       runtime?.close();
       unsubscribe?.();
-      const cp = await storage.checkpoint(),
-        next = createLibraryRuntime(owner, storage, cp);
+      const next = createLibraryRuntime(owner, storage, cp);
       runtime = next;
+      // Keep the same mounted app, including any form already being written.
+      setScreen((s) => (s?.owner === owner ? { ...s, runtime: next } : s));
+      const refreshOverview = () =>
+        void next.repository
+          .overview()
+          .then((data) => {
+            if (alive() && runtime === next) {
+              screenOwner = next.owner;
+              hasScreen = true;
+              setScreen({
+                runtime: next,
+                owner: next.owner,
+                data,
+                authorizeNetwork: accessFor(next.owner),
+              });
+            }
+          })
+          .catch((e) => {
+            if (alive() && runtime === next) setError(e.message);
+          });
       lastRevision = next.getSnapshot().revision;
       unsubscribe = next.subscribe(() => {
         const snapshot = next.getSnapshot();
         if (snapshot.accessDenied) {
+          accountChanged = true;
+          try {
+            clearStartup(localStorage, next.owner);
+          } catch {}
           runtime = undefined;
           next.close();
           unsubscribe?.();
@@ -87,24 +146,10 @@ export function ReplicaEntry({
         }
         if (snapshot.ready && snapshot.revision !== lastRevision) {
           lastRevision = snapshot.revision;
-          void next.repository
-            .overview()
-            .then((data) => {
-              if (!cancelled && runtime === next)
-                setScreen({ runtime: next, owner: next.owner, data });
-            })
-            .catch((e) => {
-              if (!cancelled) setError(e.message);
-            });
+          refreshOverview();
         }
       });
-      if (cp?.complete) {
-        const data = await next.repository.overview();
-        if (!cancelled) {
-          screenOwner = next.owner;
-          setScreen({ runtime: next, owner: next.owner, data });
-        }
-      }
+      if (cp?.complete) refreshOverview();
       return next;
     }
     void (async () => {
@@ -112,13 +157,39 @@ export function ReplicaEntry({
         let remembered: string | null = null;
         try {
           remembered = localStorage.getItem(offlineOwnerKey);
+          if (remembered) {
+            screenOwner = remembered;
+            const cached = readStartup(localStorage, remembered);
+            if (cached) {
+              hasScreen = true;
+              setScreen({
+                runtime: null,
+                owner: remembered,
+                data: cached,
+                authorizeNetwork: accessFor(remembered),
+              });
+            }
+          }
         } catch {}
-        if (remembered) await attach(remembered);
+        // Account verification and opening the database must not block each
+        // other: a denied/changed session hides its cached view immediately.
+        const rememberedAttachment = remembered
+          ? attach(remembered).then(
+              (value) => ({ value, error: null as unknown }),
+              (error) => ({ value: undefined, error }),
+            )
+          : null;
         const verified = await session;
-        if (cancelled) return;
+        if (!alive()) return;
         if (!verified.owner) {
+          if (!(
+            verified.error instanceof SyncHttpError &&
+            verified.error.status === 403
+          ))
+            await rememberedAttachment;
+          if (!alive()) return;
           if (
-            runtime?.getSnapshot().ready &&
+            (runtime?.getSnapshot().ready || hasScreen) &&
             !(
               verified.error instanceof SyncHttpError &&
               verified.error.status === 403
@@ -128,10 +199,20 @@ export function ReplicaEntry({
               verified.error instanceof SyncHttpError &&
               verified.error.status === 401
             )
-              runtime.requireAuthentication();
+              runtime?.requireAuthentication();
             return;
           }
           runtime?.close();
+          runtime = undefined;
+          ++attachment;
+          if (
+            remembered &&
+            verified.error instanceof SyncHttpError &&
+            verified.error.status === 403
+          )
+            try {
+              clearStartup(localStorage, remembered);
+            } catch {}
           setScreen(null);
           setAuth(true);
           setError(
@@ -141,11 +222,16 @@ export function ReplicaEntry({
           );
           return;
         }
-        if (!runtime || runtime.owner !== verified.owner) {
+        if (remembered === verified.owner && rememberedAttachment) {
+          const attached = await rememberedAttachment;
+          if (!alive()) return;
+          if (attached.error) throw attached.error;
+        } else {
+          hasScreen = false;
           setScreen(null);
           await attach(verified.owner);
         }
-        if (cancelled || !runtime) return;
+        if (!alive() || !runtime) return;
         const current = runtime;
         current.verifyOwner(verified.owner);
         try {
@@ -163,16 +249,14 @@ export function ReplicaEntry({
             throw Error(data.error ?? "서재를 불러오지 못했습니다.");
           loadingOnlineOverview = false;
           const visible = await current.withPendingReading(data);
-          if (
-            !cancelled &&
-            runtime === current &&
-            !current.getSnapshot().ready
-          ) {
+          if (alive() && runtime === current && !current.getSnapshot().ready) {
             screenOwner = current.owner;
+            hasScreen = true;
             setScreen({
               runtime: current,
               owner: current.owner,
               data: visible,
+              authorizeNetwork: accessFor(current.owner),
             });
           }
         }
@@ -182,7 +266,7 @@ export function ReplicaEntry({
         // A transient online overview error says nothing about an already opened
         // store. Keep its partial copy and background coordinator attached.
         const partialRuntime = loadingOnlineOverview ? (runtime ?? null) : null;
-        if (verified.owner && !cancelled) {
+        if (verified.owner && alive()) {
           try {
             const response = await fetch("/api/library", {
               cache: "no-store",
@@ -193,12 +277,13 @@ export function ReplicaEntry({
             const visible = partialRuntime
               ? await partialRuntime.withPendingReading(data)
               : data;
-            if (!cancelled && (!partialRuntime || runtime === partialRuntime)) {
+            if (alive() && (!partialRuntime || runtime === partialRuntime)) {
               if (!partialRuntime) {
                 runtime?.close();
                 runtime = undefined;
               }
               screenOwner = verified.owner;
+              hasScreen = true;
               setStorageMessage(
                 partialRuntime
                   ? ""
@@ -208,13 +293,23 @@ export function ReplicaEntry({
                 runtime: partialRuntime,
                 owner: verified.owner,
                 data: visible,
+                authorizeNetwork: accessFor(verified.owner),
               });
               setAuth(false);
               return;
             }
           } catch {}
         }
-        if (!cancelled) {
+        if (alive()) {
+          if (
+            verified.error instanceof SyncHttpError &&
+            verified.error.status === 403
+          ) {
+            try {
+              if (screenOwner) clearStartup(localStorage, screenOwner);
+            } catch {}
+            setScreen(null);
+          }
           setError(
             e instanceof Error ? e.message : "기기 서재를 열지 못했습니다.",
           );
@@ -232,6 +327,8 @@ export function ReplicaEntry({
         (runtime || screenOwner) &&
         event.newValue !== (runtime?.owner ?? screenOwner)
       ) {
+        accountChanged = true;
+        controller.abort();
         runtime?.close();
         runtime = undefined;
         unsubscribe?.();
@@ -279,10 +376,13 @@ export function ReplicaEntry({
         />
       </>
     );
-    return screen.runtime ? (
-      <ReplicaProvider runtime={screen.runtime}>{content}</ReplicaProvider>
-    ) : (
-      content
+    return (
+      <ReplicaProvider
+        runtime={screen.runtime}
+        authorizeNetwork={screen.authorizeNetwork}
+      >
+        {content}
+      </ReplicaProvider>
     );
   }
   if (!available || auth)

@@ -4,6 +4,7 @@ import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { SyncSettings } from "./replica/sync-settings";
 import { useReplicaOptional } from "./replica/provider";
+import { writeStartup } from "@/client/replica/startup-cache";
 import { ConflictReviewPanel } from "./replica/conflict-review";
 import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
@@ -153,6 +154,16 @@ export function LibraryApp({
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
   const [data, setData] = useState(initial);
   useEffect(() => setData(initial), [initial]);
+  useEffect(() => {
+    if (preview || !ownerId) return;
+    // Let the first frame paint before serializing the small last-opened view.
+    const timer = window.setTimeout(() => {
+      try {
+        writeStartup(localStorage, ownerId, data);
+      } catch {}
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [data, ownerId, preview]);
   const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -175,6 +186,7 @@ export function LibraryApp({
     id: string;
     book?: Book;
     error?: string;
+    complete?: boolean;
     revision: Library;
   } | null>(null);
   const remote = !!data.catalog;
@@ -196,7 +208,8 @@ export function LibraryApp({
     ]),
   );
   const catalog = useBookCatalog({
-    enabled: remote && bookPaging.ready,
+    enabled:
+      remote && (view === "books" || needle.length > 0) && bookPaging.ready,
     query: {
       q: needle,
       sort,
@@ -255,7 +268,7 @@ export function LibraryApp({
         if (!res.ok)
           throw Error(book.error ?? "책 정보를 불러오지 못했습니다.");
         if (!controller.signal.aborted)
-          setDetailState({ id: detail, book, revision: data });
+          setDetailState({ id: detail, book, revision: data, complete: true });
       })
       .catch((e) => {
         if (!controller.signal.aborted)
@@ -1752,6 +1765,7 @@ export function LibraryApp({
             </button>
             <button
               className="secondary"
+              disabled={remote && !detailState?.complete}
               onClick={() => setEditor({ kind: "book", book: detailBook })}
             >
               수정

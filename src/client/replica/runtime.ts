@@ -10,6 +10,7 @@ import { projectCycle } from "../../lib/replica/projections";
 import type { QueuedChange } from "./optimistic";
 import { migrateLegacyDrafts } from "./conflicts";
 import { withReplicaLeader } from "./leadership";
+import { clearStartup } from "./startup-cache";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
   const response = await fetch("/api/sync/session", {
     cache: "no-store",
@@ -286,6 +287,9 @@ export function createLibraryRuntime(
         async ({ storage: leader }) => leader.clearDownloaded(),
         { storage, signal: abort.signal },
       );
+      try {
+        clearStartup(localStorage, owner);
+      } catch {}
       await refreshLocal();
       announce();
     },

@@ -28,6 +28,7 @@ import {
   activeCycles,
   readingSummary,
   ReplicaQueryError,
+  runLocalQuery,
   type LocalIndex,
   type QueryKind,
   type SearchEntry,
@@ -453,7 +454,6 @@ export function createReplicaRepository(storage: ReplicaStorage) {
           }),
         );
       }
-      await worker.initialize(data);
       cached = { token, data };
       return data;
     }
@@ -467,7 +467,7 @@ export function createReplicaRepository(storage: ReplicaStorage) {
       loading = undefined;
     }));
   async function query<T>(kind: QueryKind, input: unknown): Promise<T> {
-    await index();
+    await worker.initialize(await index());
     return worker.query(kind, input);
   }
   async function detailBook(id: string): Promise<Book> {
@@ -506,7 +506,12 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     },
     async overview(): Promise<Library> {
       const data = await index(),
-        firstPage = await repository.books(),
+        firstPage = (await runLocalQuery(
+          data,
+          storage.owner,
+          "books",
+          {},
+        )) as BookPage,
         ids = new Set([
           ...firstPage.items.map((b) => b.id),
           ...(data.connectionBooks ?? []),

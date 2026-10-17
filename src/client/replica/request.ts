@@ -4,11 +4,19 @@ import type { LibraryRuntime } from "./runtime";
 import { onlineOnlyGet } from "./online-routes";
 import { commandFamily } from "./optimistic";
 let current: LibraryRuntime | null = null;
+let networkAccess: (() => Promise<void>) | undefined;
 export const isLocalReplicaReady = () => !!current?.getSnapshot().ready;
-export function registerLibraryRuntime(runtime: LibraryRuntime) {
+export function registerLibraryRuntime(
+  runtime: LibraryRuntime | null,
+  authorizeNetwork?: () => Promise<void>,
+) {
   current = runtime;
+  networkAccess = authorizeNetwork;
   return () => {
-    if (current === runtime) current = null;
+    if (current === runtime && networkAccess === authorizeNetwork) {
+      current = null;
+      networkAccess = undefined;
+    }
   };
 }
 export async function libraryRequest(
@@ -16,6 +24,7 @@ export async function libraryRequest(
   init?: RequestInit,
 ): Promise<Response> {
   const runtime = current,
+    authorizeNetwork = networkAccess,
     method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
     ).toUpperCase(),
@@ -101,6 +110,14 @@ export async function libraryRequest(
         );
       }
     }
+  }
+  // Cached screens are readable immediately. Server reads/writes must await the
+  // very same displayed owner's session, even before IndexedDB opens.
+  if (authorizeNetwork) {
+    await authorizeNetwork();
+    init?.signal?.throwIfAborted();
+    if (networkAccess !== authorizeNetwork)
+      throw new DOMException("서재 계정이 변경되었습니다.", "AbortError");
   }
   const response = await fetch(input, init);
   if (
