@@ -137,10 +137,10 @@ type OutboxEntry = {
 
 **Interfaces:** `openReplica(owner): Promise<ReplicaStorage>`. 저장 어댑터는 `stageRows(generation,rows)`, `putValuePart(...)`, `readRow(...)`, `readPage(...)`, `transaction(fn)`, `checkpoint()`, `promoteGeneration(...)`, `close()`를 제공한다. 저장 거래 안에서 통신 완료를 기다리지 않는다.
 
-- [ ] RED: 저장 실패 시 기존 세대 유지, 원자적 세대 전환, 계정 분리, 여러 탭과 versionchange, 재구성 후에도 미전송 입력 유지 여부를 실제 IndexedDB로 검증한다.
-- [ ] 실행: `playwright test e2e/replica-storage.spec.ts`와 저장 계약 유닛 검사. 새 의존 패키지를 추가하지 않고 같은 계약의 메모리 어댑터로 순수 처리도 검증한다.
-- [ ] 메타·자료·값 조각·파생 색인·송신 대기·충돌을 분리한다. 키에 계정과 세대를 포함하고 저장 실패를 성공으로 반환하지 않는다.
-- [ ] 재로딩·오프라인 재시작·DB 스키마 갱신·중간 중단을 검사하고 통과 후 커밋한다.
+- [x] RED: 저장 실패 시 기존 세대 유지, 원자적 세대 전환, 계정 분리, 여러 탭과 versionchange, 재구성 후에도 미전송 입력 유지 여부를 실제 IndexedDB로 검증한다.
+- [x] 실행: `playwright test e2e/replica-storage.spec.ts`와 저장 계약 유닛 검사. 새 의존 패키지를 추가하지 않고 같은 계약의 메모리 어댑터로 순수 처리도 검증한다.
+- [x] 메타·자료·값 조각·파생 색인·송신 대기·충돌을 분리한다. 키에 계정과 세대를 포함하고 저장 실패를 성공으로 반환하지 않는다.
+- [x] 재로딩·오프라인 재시작·DB 스키마 갱신·중간 중단을 검사하고 통과 후 커밋한다.
 
 ### Task 7: 큰 값·전체 표지·재개 가능한 전체 받기
 
