@@ -96,7 +96,7 @@ export async function readBookPage(
   const total = Number(
     (
       await tx.query(
-        `SELECT count(*)::int AS total FROM library_books b WHERE ${where.join(" AND ")}`,
+        `SELECT count(*)::int AS total FROM library_active_books b WHERE ${where.join(" AND ")}`,
         values,
       )
     ).rows[0].total,
@@ -150,7 +150,7 @@ export async function readBookPage(
     );
   }
   const result = await tx.query(
-    `SELECT ${compactBookSelect},created_at::text AS "_created" FROM library_books b WHERE ${where.join(" AND ")} ORDER BY ${fields.map((f) => f + " " + direction).join(",")} LIMIT ${param(q.limit + 1)} OFFSET ${param(offset)}`,
+    `SELECT ${compactBookSelect},created_at::text AS "_created" FROM library_active_books b WHERE ${where.join(" AND ")} ORDER BY ${fields.map((f) => f + " " + direction).join(",")} LIMIT ${param(q.limit + 1)} OFFSET ${param(offset)}`,
     values,
   );
   const rows = result.rows.slice(0, q.limit),
@@ -182,7 +182,7 @@ export async function readBookDetail(
   z.string().uuid().parse(id);
   const rows = (
     await tx.query(
-      `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2`,
+      `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND id=$2`,
       [owner, id],
     )
   ).rows as Book[];
@@ -200,7 +200,7 @@ export async function readBooksByIds(
   if (!ids.length) return [];
   const rows = (
     await tx.query(
-      `SELECT ${compactBookSelect} FROM library_books WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY title,id`,
+      `SELECT ${compactBookSelect} FROM library_active_books WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY title,id`,
       [owner, ids],
     )
   ).rows as Book[];
@@ -210,7 +210,7 @@ export async function readBooksByIds(
 export async function readCatalogCounts(tx: Executor, owner: string) {
   const rows = (
     await tx.query(
-      "SELECT category,formats,count(*)::int AS n FROM library_books WHERE owner_id=$1 GROUP BY category,formats",
+      "SELECT category,formats,count(*)::int AS n FROM library_active_books WHERE owner_id=$1 GROUP BY category,formats",
       [owner],
     )
   ).rows;

@@ -30,7 +30,7 @@ export function createKnowledgeStore(db: Database) {
       return {
         connections: (
           await tx.query(
-            "SELECT c.* FROM library_connections c WHERE owner_id=$1 AND (source_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes n WHERE n.owner_id=c.owner_id AND n.id=c.source_id)) AND (target_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes n WHERE n.owner_id=c.owner_id AND n.id=c.target_id)) ORDER BY created_at DESC,id",
+            "SELECT c.* FROM library_connections c WHERE owner_id=$1 AND (source_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes n WHERE n.owner_id=c.owner_id AND n.id=c.source_id)) AND (target_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes n WHERE n.owner_id=c.owner_id AND n.id=c.target_id)) AND (source_kind<>'book' OR EXISTS(SELECT 1 FROM library_active_books b WHERE b.owner_id=c.owner_id AND b.id=c.source_id)) AND (target_kind<>'book' OR EXISTS(SELECT 1 FROM library_active_books b WHERE b.owner_id=c.owner_id AND b.id=c.target_id)) ORDER BY created_at DESC,id",
             [owner],
           )
         ).rows,
@@ -89,7 +89,7 @@ export function createKnowledgeStore(db: Database) {
       const own = async (k: "book" | "note", id: string) => {
         const row = (
           await tx.query(
-            `SELECT * FROM ${k === "book" ? "library_books" : "library_active_notes"} WHERE owner_id=$1 AND id=$2`,
+            `SELECT * FROM ${k === "book" ? "library_active_books" : "library_active_notes"} WHERE owner_id=$1 AND id=$2`,
             [owner, id],
           )
         ).rows[0];
@@ -154,7 +154,7 @@ export function createKnowledgeStore(db: Database) {
         await own(p.kind, p.id);
         const books = (
           await tx.query(
-            "SELECT id,title,author,tags FROM library_books WHERE owner_id=$1",
+            "SELECT id,title,author,tags FROM library_active_books WHERE owner_id=$1",
             [owner],
           )
         ).rows;

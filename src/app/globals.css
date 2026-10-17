@@ -3180,7 +3180,9 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 .book-view-actions select {
   width: auto;
@@ -3369,6 +3371,37 @@ textarea {
 .note-trash .danger {
   color: #a12323;
   border-color: #d9b6b6;
+}
+.book-exclusions label {
+  display: block;
+}
+.book-exclusions .page-size-select {
+  display: flex;
+}
+.excluded-material {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.excluded-material > div {
+  min-width: 0;
+  flex: 1;
+}
+.excluded-material h3 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.excluded-material p,
+.excluded-material small {
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.excluded-material .secondary {
+  flex-shrink: 0;
+  min-height: 44px;
 }
 @media (max-width: 700px) {
   .note-controls {

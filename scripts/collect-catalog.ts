@@ -56,7 +56,7 @@ try {
   if (!owner) throw Error("소유자 확인 실패");
   const books = (
     await pool.query(
-      "SELECT b.id,b.isbn,b.version FROM library_books b WHERE b.owner_id=$1 AND b.isbn<>'' AND (coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full')) AND NOT EXISTS(SELECT 1 FROM library_curation_items c WHERE c.owner_id=b.owner_id AND c.source_kind='book' AND c.source_id=b.id::text AND c.source_version=b.version::text AND c.kind='bibliography' AND c.generator=$2) ORDER BY b.id",
+      "SELECT b.id,b.isbn,b.version FROM library_active_books b WHERE b.owner_id=$1 AND b.isbn<>'' AND (coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full')) AND NOT EXISTS(SELECT 1 FROM library_curation_items c WHERE c.owner_id=b.owner_id AND c.source_kind='book' AND c.source_id=b.id::text AND c.source_version=b.version::text AND c.kind='bibliography' AND c.generator=$2) ORDER BY b.id",
       [
         owner,
         (provider === "google" ? "Google Books" : "도서관 정보나루") + "/v1",

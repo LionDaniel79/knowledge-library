@@ -26,7 +26,7 @@ export async function GET(
       .parse((await params).id);
     const doc = (
       await database.query(
-        "SELECT id,path,relative_path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
+        "SELECT id,path,relative_path,bytes,mtime_ns FROM library_active_documents WHERE owner_id=$1 AND id=$2",
         [owner, id],
       )
     ).rows[0];

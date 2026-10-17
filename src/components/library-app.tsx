@@ -2,6 +2,7 @@
 import { CatalogAttribution } from "./catalog-attribution";
 import { NoteTagFilter } from "./note-tag-filter";
 import { NoteTrash } from "./note-trash";
+import { BookExclusions } from "./book-exclusions";
 import { OfflineDrafts } from "./offline-drafts";
 import { newDraft, writeDraft, offlineOwnerKey } from "@/lib/offline-drafts";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -141,6 +142,7 @@ export function LibraryApp({
   const [dateTo, setDateTo] = useState("");
   const [importing, setImporting] = useState(false);
   const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
+  const [exclusionsOpen, setExclusionsOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [view, setView] = useState<View>(initialView);
@@ -1142,6 +1144,14 @@ export function LibraryApp({
                         <option value="covers">표지형</option>
                       </select>
                       {!preview && (
+                        <button
+                          className="secondary"
+                          onClick={() => setExclusionsOpen(true)}
+                        >
+                          제외한 자료
+                        </button>
+                      )}
+                      {!preview && (
                         <button onClick={() => setCatalogReviewOpen(true)}>
                           도서정보 검토
                         </button>
@@ -1549,6 +1559,12 @@ export function LibraryApp({
               : undefined
           }
           onClose={() => setEditor(null)}
+        />
+      )}
+      {exclusionsOpen && (
+        <BookExclusions
+          onClose={() => setExclusionsOpen(false)}
+          onChanged={refresh}
         />
       )}
       {catalogReviewOpen && (

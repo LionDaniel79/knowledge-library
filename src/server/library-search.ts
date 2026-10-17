@@ -75,21 +75,21 @@ export async function searchLibrary(
   FROM library_active_notes n LEFT JOIN library_thought_events e ON e.owner_id=n.owner_id AND e.note_id=n.id WHERE n.owner_id=$1
   UNION ALL
   SELECT 'b:'||b.id,'book',b.id::text,b.version::text,b.title,concat_ws(' ',b.author,b.publisher,b.isbn), 'source','metadata','original',array_to_string(b.tags,' '),0
-  FROM library_books b WHERE b.owner_id=$1
+  FROM library_active_books b WHERE b.owner_id=$1
   UNION ALL
   SELECT 'c:'||c.id,c.source_kind,c.source_id,c.source_version,coalesce(b.title,n.title),
    CASE WHEN c.kind='toc' AND jsonb_typeof(c.value->'entries')='array' THEN (SELECT string_agg(e->>'title', E'\n') FROM jsonb_array_elements(c.value->'entries') e)
     WHEN c.kind='toc' AND c.value->>'method'='printed_toc_excerpt' THEN coalesce(c.value->>'editedText',c.value->>'text')
     WHEN jsonb_typeof(c.value)='string' THEN c.value#>>'{}' ELSE c.value::text END,'auxiliary',c.coverage,c.origin,'',1
-  FROM library_curation_items c LEFT JOIN library_books b ON c.source_kind='book' AND b.id::text=c.source_id AND b.owner_id=c.owner_id LEFT JOIN library_active_notes n ON c.source_kind='note' AND n.id::text=c.source_id AND n.owner_id=c.owner_id
+  FROM library_curation_items c LEFT JOIN library_active_books b ON c.source_kind='book' AND b.id::text=c.source_id AND b.owner_id=c.owner_id LEFT JOIN library_active_notes n ON c.source_kind='note' AND n.id::text=c.source_id AND n.owner_id=c.owner_id
   WHERE c.owner_id=$1 AND c.state='active' AND c.source_version=coalesce(b.version,n.version)::text
    AND ${currentOutlineDocumentSql}
    AND (b.id IS NULL OR coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full'))
   UNION ALL
   SELECT 'j:'||c.id,c.source_kind,c.source_id::text,coalesce(n.version,b.version)::text,'내 판단 · '||coalesce(n.title,b.title),c.reason,'self','full','human','',0
-  FROM library_connections c LEFT JOIN library_active_notes n ON c.source_kind='note' AND n.id=c.source_id AND n.owner_id=c.owner_id LEFT JOIN library_books b ON c.source_kind='book' AND b.id=c.source_id AND b.owner_id=c.owner_id
+  FROM library_connections c LEFT JOIN library_active_notes n ON c.source_kind='note' AND n.id=c.source_id AND n.owner_id=c.owner_id LEFT JOIN library_active_books b ON c.source_kind='book' AND b.id=c.source_id AND b.owner_id=c.owner_id
   WHERE c.owner_id=$1 AND c.status='accepted' AND coalesce(n.id,b.id) IS NOT NULL
-    AND (c.target_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes t WHERE t.owner_id=c.owner_id AND t.id=c.target_id))
+    AND (c.target_kind<>'note' OR EXISTS(SELECT 1 FROM library_active_notes t WHERE t.owner_id=c.owner_id AND t.id=c.target_id)) AND (c.target_kind<>'book' OR EXISTS(SELECT 1 FROM library_active_books t WHERE t.owner_id=c.owner_id AND t.id=c.target_id))
   UNION ALL
   SELECT 'e:'||c.id,'note',n.id::text,n.version::text,'내 생각 연결 · '||n.title,c.comparison->>'explanation','self','full','human','',0
   FROM library_evolution_candidates c JOIN library_active_notes n ON n.owner_id=c.owner_id AND n.id=c.after_id

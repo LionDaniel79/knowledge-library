@@ -180,7 +180,7 @@ try {
   if (!job) {
     const books = (
       await db.query(
-        `SELECT b.id,b.title,b.author,b.publisher,b.isbn,b.version FROM library_books b WHERE b.owner_id=$1
+        `SELECT b.id,b.title,b.author,b.publisher,b.isbn,b.version FROM library_active_books b WHERE b.owner_id=$1
       AND NOT EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND (d.processing_scope<>'full' OR d.material_kind ~* 'paper|periodical|journal|thesis'))
       AND (coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full')) ORDER BY b.title,b.id`,
         [owner],
@@ -219,7 +219,7 @@ try {
     state.currentBookId = book.id;
     const current = (
       await db.query(
-        "SELECT version FROM library_books WHERE owner_id=$1 AND id=$2",
+        "SELECT version FROM library_active_books WHERE owner_id=$1 AND id=$2",
         [owner, book.id],
       )
     ).rows[0];

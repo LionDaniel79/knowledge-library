@@ -46,17 +46,19 @@ export function pdfDocumentDetail(id: string) {
 function searchablePdfScope(db: DatabaseSync) {
   return `${fullPdfScope(db)} AND d.status NOT IN ('changed','error','locked')`;
 }
-export function pdfIndexSummary() {
+export function pdfIndexSummary(excludedDocumentIds: string[] = []) {
   return withPdfIndex((db) => {
+    const visible = "d.id NOT IN (SELECT value FROM json_each(?))";
+    const excluded = JSON.stringify(excludedDocumentIds);
     // One narrow aggregate also keeps older indexes usable without rereading large TOCs.
     const groups = db
       .prepare(
         `SELECT CASE WHEN ${fullPdfScope(db)} THEN 1 ELSE 0 END AS full,
       status,count(*) AS total,coalesce(sum(page_count),0) AS knownPages,
       coalesce(sum(indexed_pages),0) AS pages,coalesce(sum(text_pages),0) AS textPages,
-      count(sha256) AS hashes FROM documents d GROUP BY full,status`,
+      count(sha256) AS hashes FROM documents d WHERE ${visible} GROUP BY full,status`,
       )
-      .all();
+      .all(excluded);
     let total = 0,
       basicOnly = 0,
       knownPages = 0,
@@ -90,9 +92,9 @@ export function pdfIndexSummary() {
       ? Object.fromEntries(
           db
             .prepare(
-              `SELECT p.method,count(*) n FROM documents d JOIN pages p INDEXED BY pages_document_method ON p.document_id=d.id WHERE ${searchablePdfScope(db)} GROUP BY p.method`,
+              `SELECT p.method,count(*) n FROM documents d JOIN pages p INDEXED BY pages_document_method ON p.document_id=d.id WHERE ${searchablePdfScope(db)} AND ${visible} GROUP BY p.method`,
             )
-            .all()
+            .all(excluded)
             .map((r) => [String(r.method), Number(r.n)]),
         )
       : null;

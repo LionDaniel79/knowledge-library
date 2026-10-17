@@ -16,6 +16,14 @@ it("runs actual MCP reads as the restricted role and excludes other owners and t
     title: "넥서스",
     formats: ["paper"],
   });
+  const excluded = await add("mine", "addBook", {
+    title: "넥서스 제외 논문",
+    formats: ["pdf"],
+  });
+  await t.db.query(
+    "INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id) VALUES($1,'mine','paper','제외',$2)",
+    [excluded.id, randomUUID()],
+  );
   await add("other", "addBook", {
     title: "다른 소유자 넥서스 비밀",
     formats: ["paper"],
@@ -53,6 +61,15 @@ it("runs actual MCP reads as the restricted role and excludes other owners and t
     expect(JSON.stringify(found)).toContain("나의 넥서스 독서 기록");
     expect(JSON.stringify(found)).not.toContain("다른 소유자 넥서스 비밀");
     expect(JSON.stringify(found)).not.toContain("휴지통에 있는 넥서스 기록");
+    expect(JSON.stringify(found)).not.toContain("넥서스 제외 논문");
+    expect(
+      (
+        await client.callTool({
+          name: "library_get_book",
+          arguments: { id: excluded.id },
+        })
+      ).isError,
+    ).toBe(true);
     const bibliography = await client.callTool({
       name: "library_get_book",
       arguments: { id: book.id },

@@ -62,7 +62,7 @@ export function createLibraryMcp(db: Executor, owner: string) {
       try {
         const row = (
           await db.query(
-            `SELECT id,title,author,publisher,isbn,formats,total_pages AS "totalPages",tags,version FROM library_books WHERE owner_id=$1 AND id=$2`,
+            `SELECT id,title,author,publisher,isbn,formats,total_pages AS "totalPages",tags,version FROM library_active_books WHERE owner_id=$1 AND id=$2`,
             [owner, id],
           )
         ).rows[0];

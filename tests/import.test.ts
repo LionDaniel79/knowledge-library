@@ -76,6 +76,7 @@ beforeAll(async () => {
   await pg.exec(await readFile("db/015_book_relations.sql", "utf8"));
   await pg.exec(await readFile("db/016_research_organization.sql", "utf8"));
   await pg.exec(await readFile("db/017_note_trash.sql", "utf8"));
+  await pg.exec(await readFile("db/025_book_exclusions.sql", "utf8"));
   db = {
     query: (s, p = []) => pg.query(s, p),
     transaction: (fn) =>

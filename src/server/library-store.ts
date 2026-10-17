@@ -70,12 +70,13 @@ export function createLibraryStore(db: Database) {
     tx: Executor,
     owner: string,
     compact = false,
+    includeExcluded = false,
   ): Promise<Library> {
     const firstPage = compact ? await readBookPage(tx, owner, {}) : null;
     const books = await tx.query(
       "SELECT " +
         (compact ? compactBookSelect : bookSelect) +
-        " FROM library_books WHERE owner_id=$1" +
+        ` FROM ${includeExcluded ? "library_books" : "library_active_books"} WHERE owner_id=$1` +
         (compact
           ? " AND (id=ANY($2::uuid[]) OR id IN(SELECT book_id FROM library_cycles WHERE owner_id=$1 UNION SELECT book_id FROM library_active_notes WHERE owner_id=$1 AND book_id IS NOT NULL UNION SELECT source_id FROM library_connections WHERE owner_id=$1 AND source_kind='book' UNION SELECT target_id FROM library_connections WHERE owner_id=$1 AND target_kind='book'))"
           : "") +
@@ -85,7 +86,7 @@ export function createLibraryStore(db: Database) {
     const cycles = await tx.query(
       "SELECT " +
         cycleSelect +
-        " FROM library_cycles WHERE owner_id=$1" +
+        ` FROM ${includeExcluded ? "library_cycles" : "library_active_cycles"} WHERE owner_id=$1` +
         (compact ? " AND status='reading'" : "") +
         " ORDER BY created_at,id",
       [owner],
@@ -152,13 +153,19 @@ export function createLibraryStore(db: Database) {
     requiredOwner(owner);
     return db.transaction(async (tx) => {
       await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      const library = await readSnapshot(tx, owner);
+      const library = await readSnapshot(tx, owner, false, true);
       const history = await tx.query(
         'SELECT id,entity_id AS "entityId",action,before_data AS before,after_data AS after,created_at AS "createdAt" FROM library_revisions WHERE owner_id=$1 ORDER BY created_at,id',
         [owner],
       );
       return {
         schemaVersion: 7,
+        bookExclusions: (
+          await tx.query(
+            "SELECT id,kind,reason,batch_id,state,version,created_at,updated_at FROM library_book_exclusions WHERE owner_id=$1 ORDER BY id",
+            [owner],
+          )
+        ).rows,
         catalogReviews: await optionalExport(
           tx,
           owner,

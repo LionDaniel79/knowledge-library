@@ -12,6 +12,7 @@ const optionalTables = [
   "library_external_links",
   "library_catalog_reviews",
   "library_book_introductions",
+  "library_book_exclusions",
 ] as const;
 const tables = [
   "library_books",
@@ -189,6 +190,8 @@ function validateReferences(b: LibraryBackup) {
   };
   for (const r of b.tables.library_book_introductions ?? [])
     ref("library_books", r.book_id);
+  for (const r of b.tables.library_book_exclusions ?? [])
+    ref("library_books", r.id);
   for (const r of b.tables.library_catalog_reviews ?? [])
     ref("library_books", r.book_id);
   for (const r of b.tables.library_cycles) ref("library_books", r.book_id);

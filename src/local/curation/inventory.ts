@@ -60,7 +60,7 @@ export async function buildCurationInventory(
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const books = (
       await tx.query(
-        "SELECT id,title,author,publisher,isbn,tags,version,source_data FROM library_books WHERE owner_id=$1 ORDER BY id",
+        "SELECT id,title,author,publisher,isbn,tags,version,source_data FROM library_active_books WHERE owner_id=$1 ORDER BY id",
         [input.owner],
       )
     ).rows;

@@ -15,7 +15,7 @@ export async function precheckCatalogReviews(
   const rows = (
     await db.query(
       `SELECT r.id,r.book_id,r.version,r.source_version,r.decision,b.version AS current_version,b.title,b.author,b.publisher,b.isbn,r.record->'facts' AS facts
-    FROM library_catalog_reviews r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id
+    FROM library_catalog_reviews r JOIN library_active_books b ON b.owner_id=r.owner_id AND b.id=r.book_id
     WHERE r.owner_id=$1 AND r.status='pending' AND ($2::uuid IS NULL OR b.id=$2)
     AND NOT EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND (d.processing_scope<>'full' OR d.material_kind~*'paper|periodical|journal|thesis'))
     AND(coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full'))

@@ -23,7 +23,7 @@ export default async function Reader({
       query = await searchParams;
     const doc = (
       await database.query(
-        "SELECT b.title FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2",
+        "SELECT b.title FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2",
         [owner, id],
       )
     ).rows[0];

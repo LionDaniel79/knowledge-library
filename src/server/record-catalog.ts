@@ -104,13 +104,13 @@ export async function readNoteDetail(
 export async function readReadingSummary(db: Executor, owner: string) {
   const rows = (
     await db.query(
-      `WITH ordered AS(SELECT *,row_number() OVER(PARTITION BY book_id ORDER BY completed_on,id) AS occurrence FROM library_cycles WHERE owner_id=$1 AND status='completed' AND completed_on IS NOT NULL) SELECT to_char(completed_on,'YYYY-MM') AS month,count(*)::int AS "monthCount",count(DISTINCT book_id)::int AS "uniqueBooks",count(*) FILTER(WHERE occurrence>1)::int AS rereads FROM ordered GROUP BY 1 ORDER BY 1`,
+      `WITH ordered AS(SELECT *,row_number() OVER(PARTITION BY book_id ORDER BY completed_on,id) AS occurrence FROM library_active_cycles WHERE owner_id=$1 AND status='completed' AND completed_on IS NOT NULL) SELECT to_char(completed_on,'YYYY-MM') AS month,count(*)::int AS "monthCount",count(DISTINCT book_id)::int AS "uniqueBooks",count(*) FILTER(WHERE occurrence>1)::int AS rereads FROM ordered GROUP BY 1 ORDER BY 1`,
       [owner],
     )
   ).rows;
   const totals = (
     await db.query(
-      `SELECT count(*) FILTER(WHERE status='completed')::int AS "totalCompleted",count(*) FILTER(WHERE status='completed' AND completed_on IS NULL)::int AS "undatedCount",array_agg(DISTINCT book_id) FILTER(WHERE status='completed') AS "completedIds" FROM library_cycles WHERE owner_id=$1`,
+      `SELECT count(*) FILTER(WHERE status='completed')::int AS "totalCompleted",count(*) FILTER(WHERE status='completed' AND completed_on IS NULL)::int AS "undatedCount",array_agg(DISTINCT book_id) FILTER(WHERE status='completed') AS "completedIds" FROM library_active_cycles WHERE owner_id=$1`,
       [owner],
     )
   ).rows[0];
@@ -151,14 +151,14 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
   const total = Number(
       (
         await db.query(
-          `SELECT count(*)::int AS n FROM library_cycles WHERE ${where}`,
+          `SELECT count(*)::int AS n FROM library_active_cycles WHERE ${where}`,
           args,
         )
       ).rows[0].n,
     ),
     items = (
       await db.query(
-        `SELECT ${cycleSelect} FROM library_cycles WHERE ${where} ORDER BY completed_on DESC NULLS FIRST,id LIMIT $6 OFFSET $5`,
+        `SELECT ${cycleSelect} FROM library_active_cycles WHERE ${where} ORDER BY completed_on DESC NULLS FIRST,id LIMIT $6 OFFSET $5`,
         [...args, p.offset, p.limit],
       )
     ).rows as ReadingCycle[];
@@ -189,7 +189,7 @@ export async function readReadingCalendar(
     days = monthCells(month);
   const rows = (
     await db.query(
-      `WITH ranked AS(SELECT *,row_number() OVER(PARTITION BY completed_on ORDER BY created_at,id) AS rank,count(*) OVER(PARTITION BY completed_on)::int AS total FROM library_cycles WHERE owner_id=$1 AND status='completed' AND completed_on BETWEEN $2 AND $3) SELECT ${cycleSelect},total FROM ranked WHERE rank=1 ORDER BY completed_on`,
+      `WITH ranked AS(SELECT *,row_number() OVER(PARTITION BY completed_on ORDER BY created_at,id) AS rank,count(*) OVER(PARTITION BY completed_on)::int AS total FROM library_active_cycles WHERE owner_id=$1 AND status='completed' AND completed_on BETWEEN $2 AND $3) SELECT ${cycleSelect},total FROM ranked WHERE rank=1 ORDER BY completed_on`,
       [owner, days[0], days.at(-1)],
     )
   ).rows;

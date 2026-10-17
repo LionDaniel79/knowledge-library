@@ -62,7 +62,7 @@ try {
   );
   const books = (
     await pool.query(
-      "SELECT * FROM library_books WHERE owner_id=$1 ORDER BY id",
+      "SELECT * FROM library_active_books WHERE owner_id=$1 ORDER BY id",
       [owner],
     )
   ).rows;

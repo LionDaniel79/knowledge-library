@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       .parse(JSON.parse(text));
     const doc = (
       await database.query(
-        'SELECT d.id,d.path,d.relative_path,d.bytes::text,d.mtime_ns,d.book_id AS "bookId",b.title FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2',
+        'SELECT d.id,d.path,d.relative_path,d.bytes::text,d.mtime_ns,d.book_id AS "bookId",b.title FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2',
         [owner, p.documentId],
       )
     ).rows[0];

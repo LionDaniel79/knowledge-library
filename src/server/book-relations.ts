@@ -49,7 +49,7 @@ export function createBookRelationStore(
       const ids = [p.leftId, p.rightId].sort(),
         books = (
           await tx.query(
-            "SELECT id,title,author,publisher,isbn,version FROM library_books WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+            "SELECT id,title,author,publisher,isbn,version FROM library_active_books WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
             [owner, ids],
           )
         ).rows;
@@ -129,7 +129,7 @@ export function createBookRelationStore(
     z.string().uuid().parse(id);
     const rows = (
       await db.query(
-        "SELECT r.*,a.title AS left_title,b.title AS right_title,a.version AS left_version,b.version AS right_version FROM library_book_relations r JOIN library_books a ON a.owner_id=r.owner_id AND a.id=r.left_id JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.right_id WHERE r.owner_id=$1 AND (r.left_id=$2 OR r.right_id=$2) ORDER BY r.created_at,r.id",
+        "SELECT r.*,a.title AS left_title,b.title AS right_title,a.version AS left_version,b.version AS right_version FROM library_book_relations r JOIN library_active_books a ON a.owner_id=r.owner_id AND a.id=r.left_id JOIN library_active_books b ON b.owner_id=r.owner_id AND b.id=r.right_id WHERE r.owner_id=$1 AND (r.left_id=$2 OR r.right_id=$2) ORDER BY r.created_at,r.id",
         [owner, id],
       )
     ).rows;

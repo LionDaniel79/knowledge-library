@@ -57,7 +57,7 @@ export async function readCurationSource(
       throw new LibraryError(400, "페이지를 확인해 주세요.");
     const doc = (
       await db.query(
-        "SELECT id FROM library_documents WHERE owner_id=$1 AND id=$2 AND processing_scope='full'",
+        "SELECT id FROM library_active_documents WHERE owner_id=$1 AND id=$2 AND processing_scope='full'",
         [owner, id],
       )
     ).rows[0];
@@ -78,7 +78,7 @@ export async function readCurationSource(
   }
   z.string().uuid().parse(source.id);
   const table =
-    source.kind === "book" ? "library_books" : "library_active_notes";
+    source.kind === "book" ? "library_active_books" : "library_active_notes";
   const row =
     source.kind === "note"
       ? await readActiveNote(db, owner, source.id, lock)
@@ -91,7 +91,7 @@ export async function readCurationSource(
   if (!row) throw new LibraryError(404, "자료를 찾을 수 없습니다.");
   if (source.kind === "book" && row.source_data?.app === "Local PDF") {
     const eligible = await db.query(
-      "SELECT id FROM library_documents WHERE owner_id=$1 AND book_id=$2 AND processing_scope='full'",
+      "SELECT id FROM library_active_documents WHERE owner_id=$1 AND book_id=$2 AND processing_scope='full'",
       [owner, source.id],
     );
     if (!eligible.rows.length)

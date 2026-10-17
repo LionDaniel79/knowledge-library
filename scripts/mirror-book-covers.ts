@@ -77,7 +77,7 @@ try {
   while (state.attempts < max) {
     const books = (
       await db.query(
-        `SELECT b.id,b.isbn,b.cover_url AS "coverUrl",b.source_data AS "sourceData" FROM library_books b WHERE b.owner_id=$1
+        `SELECT b.id,b.isbn,b.cover_url AS "coverUrl",b.source_data AS "sourceData" FROM library_active_books b WHERE b.owner_id=$1
    AND NOT EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND(d.processing_scope<>'full' OR d.material_kind~*'paper|periodical|journal|thesis'))
    AND(coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.processing_scope='full'))`,
         [owner],

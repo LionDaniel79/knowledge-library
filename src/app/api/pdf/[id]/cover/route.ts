@@ -19,7 +19,7 @@ export async function GET(
         .parse((await params).id);
     const d = (
       await database.query(
-        "SELECT bytes,mtime_ns FROM library_documents WHERE owner_id=$1 AND id=$2",
+        "SELECT bytes,mtime_ns FROM library_active_documents WHERE owner_id=$1 AND id=$2",
         [owner, id],
       )
     ).rows[0];

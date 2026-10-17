@@ -201,7 +201,7 @@ try {
   );
   const books = (
     await pool.query(
-      "SELECT b.id,b.title,b.author,b.isbn,b.version,d.id AS document_id FROM library_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND d.processing_scope='full' AND trim(b.isbn)='' ORDER BY b.id",
+      "SELECT b.id,b.title,b.author,b.isbn,b.version,d.id AS document_id FROM library_active_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND d.processing_scope='full' AND trim(b.isbn)='' ORDER BY b.id",
       [owner],
     )
   ).rows;

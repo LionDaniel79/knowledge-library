@@ -111,7 +111,7 @@ try {
   );
   const books = (
     await pool.query(
-      "SELECT b.id,b.title,b.version,d.id AS document_id,EXISTS(SELECT 1 FROM library_curation_items c WHERE c.owner_id=b.owner_id AND c.source_kind='book' AND c.source_id=b.id::text AND c.kind='toc' AND c.origin='rule' AND c.state='active' AND c.reviewed_by IS NULL) AS has_generated_outline FROM library_books b JOIN library_documents d ON d.book_id=b.id AND d.owner_id=b.owner_id WHERE b.owner_id=$1 AND d.processing_scope='full' ORDER BY b.id",
+      "SELECT b.id,b.title,b.version,d.id AS document_id,EXISTS(SELECT 1 FROM library_curation_items c WHERE c.owner_id=b.owner_id AND c.source_kind='book' AND c.source_id=b.id::text AND c.kind='toc' AND c.origin='rule' AND c.state='active' AND c.reviewed_by IS NULL) AS has_generated_outline FROM library_active_books b JOIN library_documents d ON d.book_id=b.id AND d.owner_id=b.owner_id WHERE b.owner_id=$1 AND d.processing_scope='full' ORDER BY b.id",
       [owner],
     )
   ).rows;

@@ -87,7 +87,7 @@ export async function bookDuplicateCandidates(
 ) {
   const source = (
     await db.query(
-      "SELECT id,title,isbn,version FROM library_books WHERE owner_id=$1 AND id=$2",
+      "SELECT id,title,isbn,version FROM library_active_books WHERE owner_id=$1 AND id=$2",
       [owner, id],
     )
   ).rows[0];
@@ -120,7 +120,7 @@ export async function bookDuplicateCandidates(
       await db.query(
         `SELECT DISTINCT b.id,b.title,b.author,b.isbn,b.version,
  EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.id=ANY($3::uuid[])) AS same_file
- FROM library_books b WHERE b.owner_id=$1 AND b.id<>$2 AND (($4<>'' AND regexp_replace(b.isbn,'[^0-9Xx]','','g')=$4) OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.id=ANY($3::uuid[]))) ORDER BY same_file DESC,b.title,b.id LIMIT 50`,
+ FROM library_active_books b WHERE b.owner_id=$1 AND b.id<>$2 AND (($4<>'' AND regexp_replace(b.isbn,'[^0-9Xx]','','g')=$4) OR EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.id=ANY($3::uuid[]))) ORDER BY same_file DESC,b.title,b.id LIMIT 50`,
         [owner, id, sameIds, isbn],
       )
     ).rows;

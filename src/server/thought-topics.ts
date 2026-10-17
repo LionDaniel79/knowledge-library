@@ -17,7 +17,7 @@ export async function mutateTopics(
   if (type === "proposeTopics") {
     const sources = (
       await tx.query(
-        "SELECT id,version,tags,'book' AS kind FROM library_books WHERE owner_id=$1 UNION ALL SELECT id,version,tags,'note' AS kind FROM library_active_notes WHERE owner_id=$1",
+        "SELECT id,version,tags,'book' AS kind FROM library_active_books WHERE owner_id=$1 UNION ALL SELECT id,version,tags,'note' AS kind FROM library_active_notes WHERE owner_id=$1",
         [owner],
       )
     ).rows;
@@ -136,7 +136,7 @@ export async function mutateTopics(
     z.string().uuid().parse(p.sourceId);
     const source = await ownRow(
       tx,
-      p.sourceKind === "note" ? "library_active_notes" : "library_books",
+      p.sourceKind === "note" ? "library_active_notes" : "library_active_books",
       owner,
       p.sourceId,
       true,

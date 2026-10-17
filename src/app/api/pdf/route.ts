@@ -2,11 +2,11 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
 import {
-  pdfIndexSummary,
   searchPdfPages,
   withPdfIndex,
   pdfDocumentDetail,
 } from "@/server/pdf-index";
+import { readVisiblePdfSummary } from "@/server/pdf-visible-summary";
 import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     if (mode === "search") {
       const hits = searchPdfPages(query, id ?? undefined);
       const owned = await database.query(
-        'SELECT d.id,d.book_id AS "bookId",b.title,b.author FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=ANY($2::uuid[])',
+        'SELECT d.id,d.book_id AS "bookId",b.title,b.author FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=ANY($2::uuid[])',
         [owner, hits.map((h) => h.documentId)],
       );
       const map = new Map(owned.rows.map((d) => [d.id, d]));
@@ -30,12 +30,12 @@ export async function GET(request: Request) {
         hits: hits
           .filter((h) => map.has(h.documentId))
           .map((h) => ({ ...h, ...map.get(h.documentId) })),
-        summary: pdfIndexSummary(),
+        summary: await readVisiblePdfSummary(database, owner),
       };
     } else if (mode === "detail" && id) {
       const owned = (
         await database.query(
-          'SELECT id,book_id AS "bookId",relative_path AS "relativePath" FROM library_documents WHERE owner_id=$1 AND id=$2',
+          'SELECT id,book_id AS "bookId",relative_path AS "relativePath" FROM library_active_documents WHERE owner_id=$1 AND id=$2',
           [owner, id],
         )
       ).rows[0];
@@ -58,13 +58,13 @@ export async function GET(request: Request) {
         .default(30)
         .parse(params.get("limit") ?? undefined);
       const docs = await database.query(
-        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3) ORDER BY b.title,d.id LIMIT $5 OFFSET $4`,
+        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3) ORDER BY b.title,d.id LIMIT $5 OFFSET $4`,
         [owner, query, "%" + query + "%", Math.floor(page) * limit, limit],
       );
       const total = Number(
         await database
           .query(
-            "SELECT count(*) n FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3)",
+            "SELECT count(*) n FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3)",
             [owner, query, "%" + query + "%"],
           )
           .then((r) => r.rows[0].n),
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
       let summary = null;
       let states = new Map<string, Record<string, unknown>>();
       try {
-        summary = pdfIndexSummary();
+        summary = await readVisiblePdfSummary(database, owner);
         states = withPdfIndex(
           (db) =>
             new Map(

@@ -34,6 +34,7 @@ beforeAll(async () => {
     "012_library_assist",
     "013_pdf_processing_scope",
     "017_note_trash",
+    "025_book_exclusions",
   ])
     await pg.exec(await readFile(`db/${f}.sql`, "utf8"));
   db = {

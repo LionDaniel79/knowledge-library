@@ -4,7 +4,8 @@
 -- tables must also be readable. MCP note tools still query the active view.
 GRANT USAGE ON SCHEMA public TO library_mcp_remote_read;
 GRANT SELECT ON
-  library_books, library_active_notes, library_notes, library_note_trash,
+  library_books, library_active_books, library_active_documents, library_book_exclusions,
+  library_active_notes, library_notes, library_note_trash,
   library_curation_items,
   library_connections, library_documents, library_evolution_candidates,
   library_thought_events, library_topic_memberships,

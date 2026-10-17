@@ -144,7 +144,12 @@ export function createThoughtMapStore(db: Database) {
         (await tx.query(`SELECT * FROM ${table} WHERE owner_id=$1`, [owner]))
           .rows;
       const topics = (await read("library_topics")).map(dto),
-        memberships = (await read("library_topic_memberships")).map(dto),
+        memberships = (
+          await tx.query(
+            "SELECT m.* FROM library_topic_memberships m WHERE m.owner_id=$1 AND (m.source_kind<>'book' OR EXISTS(SELECT 1 FROM library_active_books b WHERE b.owner_id=m.owner_id AND b.id::text=m.source_id))",
+            [owner],
+          )
+        ).rows.map(dto),
         topicLinks = (await read("library_topic_links")).map(dto);
       const saved = (await read("library_thought_events")).map(
         dto,
