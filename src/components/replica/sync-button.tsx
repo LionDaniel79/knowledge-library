@@ -1,6 +1,7 @@
 "use client";
 import { RefreshCw } from "lucide-react";
 import { useReplicaOptional } from "./provider";
+import { syncLabel } from "./sync-status";
 const busyPhases = [
   "preparing",
   "downloading",
@@ -37,24 +38,7 @@ export function SyncSummary() {
   const r = useReplicaOptional();
   if (!r) return null;
   const s = r.status;
-  const label =
-    s.phase === "complete"
-      ? s.pending
-        ? `${s.pending}개 전송 대기`
-        : "동기화 완료"
-      : s.phase === "downloading"
-        ? `${s.rows.toLocaleString("ko-KR")}개 받는 중`
-        : s.phase === "checking"
-          ? "검증 중"
-          : s.phase === "offline"
-            ? "오프라인"
-            : s.phase === "error"
-              ? "동기화 실패"
-              : busyPhases.includes(s.phase)
-                ? "동기화 중"
-                : r.ready
-                  ? "기기에 저장됨"
-                  : "기기 자료 준비";
+  const label = syncLabel(s, r.ready);
   return (
     <span
       className="sync-summary"

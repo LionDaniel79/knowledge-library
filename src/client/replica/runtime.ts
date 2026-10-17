@@ -6,6 +6,7 @@ import { createReplicaCoordinator } from "./coordinator";
 import { createSyncTransport, SyncHttpError } from "./transport";
 import { queueReplicaCommand } from "./outbox";
 import { migrateLegacyDrafts } from "./conflicts";
+import { withReplicaLeader } from "./leadership";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
   const response = await fetch("/api/sync/session", {
     cache: "no-store",
@@ -48,6 +49,49 @@ export function createLibraryRuntime(
     closed = false,
     active: Promise<SyncStatus> | null = null;
   let capabilitiesAt = 0;
+  const channel =
+    typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel("knowledge-library-replica:" + owner)
+      : null;
+  const changeKey = "knowledge-library-replica-change:" + owner;
+  function announce() {
+    if (closed) return;
+    if (channel) channel.postMessage("changed");
+    else if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(changeKey, crypto.randomUUID());
+      } catch {}
+    }
+  }
+  async function refreshLocal() {
+    const cp = await storage.checkpoint(),
+      entries = await storage.listOutbox();
+    if (closed) return;
+    repository.invalidate();
+    emit({
+      ready: !!cp?.complete,
+      revision: snapshot.revision + 1,
+      status: {
+        ...snapshot.status,
+        rows: cp?.rows ?? 0,
+        bytes: cp?.bytes ?? 0,
+        lastSyncedAt: cp?.lastSyncedAt ?? null,
+        pending: entries.filter((e) => ["pending", "sending"].includes(e.state))
+          .length,
+        conflicts: entries.filter((e) => e.state === "conflict").length,
+        failed: entries.filter((e) => e.state === "failed").length,
+      },
+    });
+  }
+  const onChanged = () => {
+    void refreshLocal().catch(() => {});
+  };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === changeKey) onChanged();
+  };
+  if (channel) channel.onmessage = onChanged;
+  else if (typeof window !== "undefined")
+    window.addEventListener("storage", onStorage);
   let dataToken = checkpoint
     ? checkpoint.generation + "\0" + checkpoint.cursor
     : "";
@@ -68,6 +112,7 @@ export function createLibraryRuntime(
     snapshot = Object.freeze({ ...snapshot, ...patch });
     for (const listener of listeners) listener();
   }
+  queueMicrotask(onChanged);
   const unsubscribe = coordinator.subscribe(() => {
     const status = coordinator.getStatus();
     emit({
@@ -96,6 +141,13 @@ export function createLibraryRuntime(
     active = Promise.resolve()
       .then(async () => {
         try {
+          if (["manual", "local-save", "server-save"].includes(options.reason))
+            await storage.enableAutoSync();
+          else if (!(await storage.autoSyncEnabled())) {
+            const status = { ...snapshot.status, phase: "idle" as const };
+            emit({ status });
+            return status;
+          }
           verifyOwner(await verifiedSyncOwner(abort.signal));
           let status = await coordinator.syncReplica({
             ...options,
@@ -131,6 +183,7 @@ export function createLibraryRuntime(
             authRequired: false,
           });
           dataToken = token;
+          announce();
           if (cp?.complete && Date.now() - capabilitiesAt > 300000) {
             capabilitiesAt = Date.now();
             void fetch("/api/sync/capabilities", {
@@ -184,7 +237,7 @@ export function createLibraryRuntime(
             status: {
               ...snapshot.status,
               phase:
-                typeof navigator !== "undefined" && !navigator.onLine
+                typeof navigator !== "undefined" && navigator.onLine === false
                   ? "offline"
                   : "error",
               error:
@@ -220,8 +273,19 @@ export function createLibraryRuntime(
           failed: entries.filter((e) => e.state === "failed").length,
         },
       });
+      announce();
     },
     sync,
+    async clearDownloaded() {
+      if (active) throw Error("동기화가 끝난 뒤 다시 시도해 주세요.");
+      await withReplicaLeader(
+        owner,
+        async ({ storage: leader }) => leader.clearDownloaded(),
+        { storage, signal: abort.signal },
+      );
+      await refreshLocal();
+      announce();
+    },
     async queue(path: string, body: unknown) {
       const result = await queueReplicaCommand({
         storage,
@@ -240,6 +304,7 @@ export function createLibraryRuntime(
         },
       });
       void sync({ reason: "local-save" }).catch(() => {});
+      announce();
       return result;
     },
     verifyOwner,
@@ -257,6 +322,9 @@ export function createLibraryRuntime(
     close() {
       closed = true;
       abort.abort();
+      channel?.close();
+      if (typeof window !== "undefined")
+        window.removeEventListener("storage", onStorage);
       unsubscribe();
       repository.close();
       storage.close();

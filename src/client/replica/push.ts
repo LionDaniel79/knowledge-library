@@ -34,6 +34,7 @@ export async function pushReplica(input: {
     try {
       if (!change.ack) {
         await storage.putOutbox({ ...entry, state: "sending" });
+        await storage.assertWriteLease();
         const ack = await send(entry);
         await storage.putOutbox({
           ...entry,
@@ -45,7 +46,6 @@ export async function pushReplica(input: {
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 409 || status === 404) {
-        const cp = await storage.checkpoint();
         await storage.transaction((tx) => {
           tx.putOutbox({
             ...entry,
@@ -60,10 +60,6 @@ export async function pushReplica(input: {
             server: null,
             createdAt: new Date().toISOString(),
           });
-          if (cp)
-            tx.setCheckpoint(cp.generation, {
-              localRevision: (cp.localRevision ?? 0) + 1,
-            });
         });
         blocked.add(entry.requestId);
         continue;
@@ -89,20 +85,30 @@ export async function pushReplica(input: {
   }
   if (confirmed.length) {
     await pull();
-    const cp = await storage.checkpoint(),
-      localEntityRevisions = { ...cp?.localEntityRevisions };
-    for (const e of entries.filter((e) => confirmed.includes(e.requestId)))
-      for (const effect of (e.command as QueuedChange).effects ?? [])
-        localEntityRevisions[effect.entity] =
-          (localEntityRevisions[effect.entity] ?? 0) + 1;
-    await storage.transaction((tx) => {
-      for (const id of confirmed) tx.removeOutbox(id);
-      if (cp)
-        tx.setCheckpoint(cp.generation, {
-          localRevision: (cp.localRevision ?? 0) + 1,
-          localEntityRevisions,
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cp = await storage.checkpoint(),
+        localEntityRevisions = { ...cp?.localEntityRevisions };
+      for (const e of entries.filter((e) => confirmed.includes(e.requestId)))
+        for (const effect of (e.command as QueuedChange).effects ?? [])
+          localEntityRevisions[effect.entity] =
+            (localEntityRevisions[effect.entity] ?? 0) + 1;
+      try {
+        await storage.transaction((tx) => {
+          if (cp) tx.expectCheckpoint(cp.generation, cp);
+          for (const id of confirmed) tx.removeOutbox(id);
+          if (cp)
+            tx.setCheckpoint(cp.generation, {
+              localRevision: (cp.localRevision ?? 0) + 1,
+              localEntityRevisions,
+            });
         });
-    });
+      } catch (error) {
+        if ((error as { status?: number }).status === 409 && attempt < 4)
+          continue;
+        throw error;
+      }
+      break;
+    }
   }
   const remaining = await storage.listOutbox();
   return {

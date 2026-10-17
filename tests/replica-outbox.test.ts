@@ -186,3 +186,51 @@ it("retries a lost response with the same request id and preserves a later edit 
   expect(await f.s.listOutbox()).toHaveLength(1);
   f.repo.close();
 });
+it("does not lose a local edit committed between an acknowledgement checkpoint read and cleanup", async () => {
+  const f = await resourceFixture();
+  const queue = (content: string, expectedVersion: number) =>
+    queueReplicaCommand({
+      storage: f.s,
+      repository: f.repo,
+      path: "/api/library",
+      body: {
+        requestId: crypto.randomUUID(),
+        type: "editNote",
+        payload: {
+          id: f.note,
+          expectedVersion,
+          title: "내 생각",
+          content,
+          kind: "thought",
+          bookId: f.book,
+        },
+      },
+    });
+  await queue("먼저 쓴 글", 1);
+  let interleave = false,
+    sends = 0;
+  const proxy = {
+    ...f.s,
+    transaction: async (fn: Parameters<typeof f.s.transaction>[0]) => {
+      if (interleave) {
+        interleave = false;
+        await queue("전송 확인 중 쓴 글", 2);
+      }
+      return f.s.transaction(fn);
+    },
+  };
+  const report = await pushReplica({
+    storage: proxy,
+    send: async () => {
+      sends++;
+      return { id: f.note, version: 2 };
+    },
+    pull: async () => {
+      interleave = true;
+    },
+  });
+  expect(report.remaining).toBe(1);
+  expect(sends).toBe(1);
+  expect((await f.repo.note(f.note)).content).toBe("전송 확인 중 쓴 글");
+  f.repo.close();
+});

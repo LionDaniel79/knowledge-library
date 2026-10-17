@@ -86,9 +86,15 @@ export async function pullReplica(input: {
           entityRevisions[row.entity] = row.revision;
       const patch: Pick<
         ReplicaGeneration,
-        "cursor" | "rows" | "bytes" | "lastSyncedAt" | "entityRevisions"
+        | "cursor"
+        | "rows"
+        | "bytes"
+        | "lastSyncedAt"
+        | "entityRevisions"
+        | "appliedRevision"
       > = {
         cursor: page.cursor,
+        appliedRevision: next.after,
         rows: state.rows + countDelta,
         bytes: state.bytes + byteDelta,
         lastSyncedAt: new Date().toISOString(),

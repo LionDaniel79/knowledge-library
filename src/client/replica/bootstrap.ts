@@ -79,9 +79,15 @@ export async function bootstrapReplica(input: {
   const meta = await transport.meta(true, signal);
   checkSyncAbort(signal);
   let pending: ReplicaGeneration | undefined;
+  const activeGeneration = (await storage.checkpoint())?.generation ?? null;
   if (!input.fresh)
     pending = (await storage.listGenerations())
-      .filter((g) => g.epoch === meta.epoch && !g.complete)
+      .filter(
+        (g) =>
+          g.epoch === meta.epoch &&
+          !g.complete &&
+          (g.baseGeneration ?? null) === activeGeneration,
+      )
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   if (pending) {
     const pos = parseSyncCursor(pending.startCursor, owner, meta.epoch);
@@ -198,6 +204,7 @@ export async function bootstrapReplica(input: {
           tx.stageRows(generation, page.rows);
           tx.setCheckpoint(generation, {
             cursor: page.cursor,
+            appliedRevision: position.after,
             entityRevisions,
           });
         });
@@ -241,12 +248,14 @@ export async function bootstrapReplica(input: {
     state = {
       ...state,
       complete: true,
+      appliedRevision: parseSyncCursor(state.cursor, owner, meta.epoch).after,
       lastSyncedAt: new Date().toISOString(),
       rows: Object.values(local.entities).reduce((n, e) => n + e.rows, 0),
     };
     await storage.transaction((tx) => {
       tx.setCheckpoint(generation, {
         complete: true,
+        appliedRevision: state!.appliedRevision,
         lastSyncedAt: state!.lastSyncedAt,
         rows: state!.rows,
       });

@@ -3549,6 +3549,37 @@ textarea {
     flex: 1 1 44%;
   }
 }
+.sync-settings {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.sync-settings dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+.sync-settings dt {
+  color: var(--muted);
+}
+.sync-settings dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.sync-setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sync-settings button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+.sync-settings details p {
+  margin: 0.6rem 0;
+}
 .replica-update-warning {
   position: fixed;
   inset: 0 0 auto;

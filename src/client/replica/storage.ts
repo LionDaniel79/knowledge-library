@@ -24,6 +24,8 @@ export interface ReplicaIO {
   get(store: ReplicaStore, key: ReplicaKey): Promise<any>;
   put(store: ReplicaStore, key: ReplicaKey, data: unknown): Promise<void>;
   delete(store: ReplicaStore, key: ReplicaKey): Promise<void>;
+  countRange(store: ReplicaStore, prefix: ReplicaKey): Promise<number>;
+  deleteRange(store: ReplicaStore, prefix: ReplicaKey): Promise<void>;
 }
 export interface ReplicaBackend {
   get(store: ReplicaStore, key: ReplicaKey): Promise<any>;
@@ -37,6 +39,8 @@ export interface ReplicaBackend {
   close(): void;
 }
 export interface ReplicaGeneration extends ReplicaCheckpoint {
+  baseGeneration?: string | null;
+  appliedRevision?: string;
   localRevision?: number;
   localEntityRevisions?: Partial<Record<SyncEntity, number>>;
   entityRevisions?: Partial<Record<SyncEntity, string>>;
@@ -61,6 +65,16 @@ export interface ReplicaConflict {
   createdAt: string;
   resolvedAt?: string;
   resolution?: any;
+}
+export interface ReplicaLease {
+  holder: string;
+  term: number;
+  expiresAt: number;
+}
+export class ReplicaLeaseLost extends Error {
+  constructor() {
+    super("다른 서재 창에서 동기화하고 있습니다. 다시 동기화해 주세요.");
+  }
 }
 type Patch = Partial<Omit<ReplicaGeneration, "owner" | "generation">>;
 type Command =
@@ -116,6 +130,14 @@ export interface ReplicaWrite {
   removeIndex(generation: string, key: string): void;
 }
 export interface ReplicaStorage {
+  clearDownloaded(): Promise<void>;
+  autoSyncEnabled(): Promise<boolean>;
+  enableAutoSync(): Promise<void>;
+  claimLease(holder: string, ttl: number): Promise<ReplicaLease | null>;
+  renewLease(lease: ReplicaLease, ttl: number): Promise<ReplicaLease | null>;
+  releaseLease(lease: ReplicaLease): Promise<void>;
+  withLease(lease: ReplicaLease): ReplicaStorage;
+  assertWriteLease(): Promise<void>;
   readonly owner: string;
   createGeneration(input: {
     epoch: string;
@@ -156,6 +178,7 @@ export interface ReplicaStorage {
 export function createReplicaStorage(
   owner: string,
   backend: ReplicaBackend,
+  options: { fence?: ReplicaLease } = {},
 ): ReplicaStorage {
   if (!owner || owner.length > 128) throw Error("서재 계정을 확인해 주세요.");
   let closed = false;
@@ -172,9 +195,24 @@ export function createReplicaStorage(
     row: SyncRow,
     index: number,
   ): ReplicaKey => [owner, generation, row.entity, row.key, row.sha256!, index];
+  async function assertFence(io: ReplicaIO) {
+    if (!options.fence) return;
+    const current: ReplicaLease | undefined = await io.get("meta", [
+      owner,
+      "leadership",
+    ]);
+    if (
+      !current ||
+      current.holder !== options.fence.holder ||
+      current.term !== options.fence.term ||
+      current.expiresAt <= Date.now()
+    )
+      throw new ReplicaLeaseLost();
+  }
   async function apply(commands: Command[]) {
     check();
     await backend.transaction(async (io) => {
+      await assertFence(io);
       const state = async (generation: string): Promise<ReplicaGeneration> => {
         const s = await io.get("meta", stateKey(generation));
         if (!s) throw Error("저장 세대를 찾을 수 없습니다.");
@@ -216,6 +254,12 @@ export function createReplicaStorage(
             break;
           case "checkpoint": {
             const s = await state(command.generation);
+            if (
+              command.patch.appliedRevision !== undefined &&
+              s.appliedRevision !== undefined &&
+              BigInt(command.patch.appliedRevision) < BigInt(s.appliedRevision)
+            )
+              throw Error("이전 동기화 결과로 돌아갈 수 없습니다.");
             await io.put("meta", stateKey(command.generation), {
               ...s,
               ...command.patch,
@@ -226,6 +270,22 @@ export function createReplicaStorage(
             const s = await state(command.generation);
             if (!s.complete)
               throw Error("전체 자료의 검증이 끝나지 않았습니다.");
+            const activeId = await io.get("meta", [owner, "active"]),
+              active = activeId ? await state(activeId) : null;
+            if (
+              activeId &&
+              activeId !== s.generation &&
+              s.baseGeneration !== activeId
+            )
+              throw Error("더 최근에 준비된 기기 자료가 있습니다.");
+            if (
+              active &&
+              active.epoch === s.epoch &&
+              active.appliedRevision !== undefined &&
+              s.appliedRevision !== undefined &&
+              BigInt(s.appliedRevision) < BigInt(active.appliedRevision)
+            )
+              throw Error("이전 동기화 결과를 표시할 수 없습니다.");
             await io.put("meta", [owner, "active"], command.generation);
             break;
           }
@@ -352,11 +412,108 @@ export function createReplicaStorage(
     return id ? ((await backend.get("meta", stateKey(id))) ?? null) : null;
   }
   const storage: ReplicaStorage = {
+    async autoSyncEnabled() {
+      check();
+      return (
+        (await backend.get("meta", [owner, "preferences"]))?.autoSync !== false
+      );
+    },
+    async enableAutoSync() {
+      check();
+      await backend.transaction(async (io) => {
+        await assertFence(io);
+        await io.put("meta", [owner, "preferences"], { autoSync: true });
+      });
+    },
+    async clearDownloaded() {
+      check();
+      await backend.transaction(async (io) => {
+        await assertFence(io);
+        if (await io.countRange("outbox", [owner]))
+          throw Error(
+            "미전송 입력이 있습니다. 동기화 또는 내보내기 후 확인해 주세요.",
+          );
+        for (const store of ["rows", "parts", "indexes"] as const)
+          await io.deleteRange(store, [owner]);
+        await io.deleteRange("meta", [owner, "generation"]);
+        await io.delete("meta", [owner, "active"]);
+        await io.put("meta", [owner, "preferences"], { autoSync: false });
+      });
+    },
+    async claimLease(holder, ttl) {
+      check();
+      if (
+        !holder ||
+        holder.length > 128 ||
+        !Number.isInteger(ttl) ||
+        ttl < 100 ||
+        ttl > 60000
+      )
+        throw Error("동기화 대기 설정을 확인해 주세요.");
+      let claimed: ReplicaLease | null = null;
+      await backend.transaction(async (io) => {
+        const previous: ReplicaLease | undefined = await io.get("meta", [
+          owner,
+          "leadership",
+        ]);
+        if (previous && previous.expiresAt > Date.now()) return;
+        claimed = {
+          holder,
+          term: (previous?.term ?? 0) + 1,
+          expiresAt: Date.now() + ttl,
+        };
+        await io.put("meta", [owner, "leadership"], claimed);
+      });
+      return claimed;
+    },
+    async renewLease(lease, ttl) {
+      check();
+      let renewed: ReplicaLease | null = null;
+      await backend.transaction(async (io) => {
+        const current: ReplicaLease | undefined = await io.get("meta", [
+          owner,
+          "leadership",
+        ]);
+        if (
+          !current ||
+          current.holder !== lease.holder ||
+          current.term !== lease.term ||
+          current.expiresAt <= Date.now()
+        )
+          return;
+        renewed = { ...current, expiresAt: Date.now() + ttl };
+        await io.put("meta", [owner, "leadership"], renewed);
+      });
+      return renewed;
+    },
+    async releaseLease(lease) {
+      check();
+      await backend.transaction(async (io) => {
+        const current: ReplicaLease | undefined = await io.get("meta", [
+          owner,
+          "leadership",
+        ]);
+        if (current?.holder === lease.holder && current.term === lease.term)
+          await io.put("meta", [owner, "leadership"], {
+            ...current,
+            expiresAt: 0,
+          });
+      });
+    },
+    withLease(lease) {
+      return createReplicaStorage(owner, backend, { fence: lease });
+    },
+    async assertWriteLease() {
+      check();
+      await backend.transaction(assertFence);
+    },
     owner,
     transaction,
     checkpoint,
     async createGeneration(input) {
+      const baseGeneration = (await checkpoint())?.generation ?? null;
       const state: ReplicaGeneration = {
+        baseGeneration,
         owner,
         generation: crypto.randomUUID(),
         epoch: input.epoch,

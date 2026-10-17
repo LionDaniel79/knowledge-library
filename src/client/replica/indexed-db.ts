@@ -95,6 +95,19 @@ export async function openReplica(
       // Only queued database operations run here. The public transaction callback
       // is synchronous and is collected before opening this IndexedDB transaction.
       const io: ReplicaIO = {
+        countRange: (s, prefix) =>
+          request(
+            tx
+              .objectStore(s)
+              .count(IDBKeyRange.bound(prefix, [...prefix, []], false, true)),
+          ),
+        deleteRange: async (s, prefix) => {
+          await request(
+            tx
+              .objectStore(s)
+              .delete(IDBKeyRange.bound(prefix, [...prefix, []], false, true)),
+          );
+        },
         get: async (s, key) =>
           (await request(tx.objectStore(s).get(key)))?.data,
         put: async (s, key, data) => {

@@ -5,6 +5,7 @@ import { SyncHttpError } from "./transport";
 import { bootstrapReplica } from "./bootstrap";
 import { pullReplica } from "./pull";
 import { pushReplica } from "./push";
+import { withReplicaLeader } from "./leadership";
 export function createReplicaCoordinator(input: {
   owner: string;
   storage: ReplicaStorage;
@@ -47,11 +48,14 @@ export function createReplicaCoordinator(input: {
       ),
     };
   }
-  async function run(options: {
-    reason: string;
-    signal?: AbortSignal;
-    rebuild?: boolean;
-  }) {
+  async function run(
+    options: {
+      reason: string;
+      signal?: AbortSignal;
+      rebuild?: boolean;
+    },
+    storage: ReplicaStorage = input.storage,
+  ) {
     update({ phase: "preparing", error: "" });
     try {
       update(await counts());
@@ -196,7 +200,27 @@ export function createReplicaCoordinator(input: {
     }): Promise<SyncStatus> {
       if (running) return running;
       running = Promise.resolve()
-        .then(() => run(options))
+        .then(() =>
+          withReplicaLeader(
+            owner,
+            (leader) =>
+              run({ ...options, signal: leader.signal }, leader.storage),
+            { storage, signal: options.signal },
+          ),
+        )
+        .catch((error) => {
+          update({
+            phase:
+              typeof navigator !== "undefined" && navigator.onLine === false
+                ? "offline"
+                : "error",
+            error:
+              error instanceof Error
+                ? error.message
+                : "동기화를 다시 시도해 주세요.",
+          });
+          throw error;
+        })
         .finally(() => {
           running = null;
         });

@@ -2,6 +2,7 @@
 import { libraryRequest } from "@/client/replica/request";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
+import { SyncSettings } from "./replica/sync-settings";
 import { useReplicaOptional } from "./replica/provider";
 import { ConflictReviewPanel } from "./replica/conflict-review";
 import { NoteTagFilter } from "./note-tag-filter";
@@ -149,6 +150,7 @@ export function LibraryApp({
   const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
   const [exclusionsOpen, setExclusionsOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
+  const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
   const [data, setData] = useState(initial);
   useEffect(() => setData(initial), [initial]);
   const [view, setView] = useState<View>(initialView);
@@ -1539,6 +1541,12 @@ export function LibraryApp({
                   >
                     백업과 복원
                   </button>
+                  <button
+                    className="text-button"
+                    onClick={() => setSyncSettingsOpen(true)}
+                  >
+                    기기 저장·동기화
+                  </button>
                 </>
               )}
             </div>
@@ -1553,6 +1561,9 @@ export function LibraryApp({
           onClose={() => setBackupOpen(false)}
           onRestored={refresh}
         />
+      )}
+      {syncSettingsOpen && (
+        <SyncSettings onClose={() => setSyncSettingsOpen(false)} />
       )}
       {openingNote && (
         <Modal

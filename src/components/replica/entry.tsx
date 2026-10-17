@@ -27,7 +27,8 @@ export function ReplicaEntry({
   returnPath?: string;
 }) {
   const [screen, setScreen] = useState<{
-      runtime: LibraryRuntime;
+      runtime: LibraryRuntime | null;
+      owner: string;
       data: Library;
     } | null>(null),
     [auth, setAuth] = useState(false),
@@ -46,6 +47,7 @@ export function ReplicaEntry({
     );
     let cancelled = false,
       runtime: LibraryRuntime | undefined,
+      screenOwner: string | undefined,
       unsubscribe: (() => void) | undefined,
       lastRevision = -1;
     const controller = new AbortController();
@@ -88,7 +90,7 @@ export function ReplicaEntry({
             .overview()
             .then((data) => {
               if (!cancelled && runtime === next)
-                setScreen({ runtime: next, data });
+                setScreen({ runtime: next, owner: next.owner, data });
             })
             .catch((e) => {
               if (!cancelled) setError(e.message);
@@ -97,7 +99,10 @@ export function ReplicaEntry({
       });
       if (cp?.complete) {
         const data = await next.repository.overview();
-        if (!cancelled) setScreen({ runtime: next, data });
+        if (!cancelled) {
+          screenOwner = next.owner;
+          setScreen({ runtime: next, owner: next.owner, data });
+        }
       }
       return next;
     }
@@ -154,10 +159,39 @@ export function ReplicaEntry({
           const data = await response.json();
           if (!response.ok)
             throw Error(data.error ?? "서재를 불러오지 못했습니다.");
-          if (!cancelled && runtime === current && !current.getSnapshot().ready)
-            setScreen({ runtime: current, data });
+          if (
+            !cancelled &&
+            runtime === current &&
+            !current.getSnapshot().ready
+          ) {
+            screenOwner = current.owner;
+            setScreen({ runtime: current, owner: current.owner, data });
+          }
         }
       } catch (e) {
+        // An unavailable device store must not prevent a verified online session.
+        const verified = await session;
+        if (verified.owner && !cancelled) {
+          try {
+            const response = await fetch("/api/library", {
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            if (!response.ok) throw Error("서재를 불러오지 못했습니다.");
+            const data = await response.json();
+            if (!cancelled) {
+              runtime?.close();
+              runtime = undefined;
+              screenOwner = verified.owner;
+              setStorageMessage(
+                "기기 저장소를 사용할 수 없어 온라인으로 표시합니다. 기기 자료는 유지됩니다.",
+              );
+              setScreen({ runtime: null, owner: verified.owner, data });
+              setAuth(false);
+              return;
+            }
+          } catch {}
+        }
         if (!cancelled) {
           setError(
             e instanceof Error ? e.message : "기기 서재를 열지 못했습니다.",
@@ -173,10 +207,10 @@ export function ReplicaEntry({
     const accountStorage = (event: StorageEvent) => {
       if (
         event.key === offlineOwnerKey &&
-        runtime &&
-        event.newValue !== runtime.owner
+        (runtime || screenOwner) &&
+        event.newValue !== (runtime?.owner ?? screenOwner)
       ) {
-        runtime.close();
+        runtime?.close();
         runtime = undefined;
         unsubscribe?.();
         setScreen(null);
@@ -205,24 +239,30 @@ export function ReplicaEntry({
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [available]);
-  if (screen)
-    return (
-      <ReplicaProvider runtime={screen.runtime}>
+  if (screen) {
+    const content = (
+      <>
         {storageMessage && (
           <p className="replica-update-warning" role="alert">
             {storageMessage}
           </p>
         )}
         <LibraryApp
-          key={screen.runtime.owner}
+          key={screen.owner}
           initial={screen.data}
           today={clientToday}
-          ownerId={screen.runtime.owner}
+          ownerId={screen.owner}
           initialView={clientEntry.view}
           initialOperationsOpen={clientEntry.operations}
         />
-      </ReplicaProvider>
+      </>
     );
+    return screen.runtime ? (
+      <ReplicaProvider runtime={screen.runtime}>{content}</ReplicaProvider>
+    ) : (
+      content
+    );
+  }
   if (!available || auth)
     return (
       <AuthPanel
