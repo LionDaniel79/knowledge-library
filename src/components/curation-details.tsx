@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReplicaOptional } from "./replica/provider";
 import { displayProviderText } from "../lib/provider-text";
 import { PdfOutlineView } from "./pdf-outline";
 import { PrintedTocView } from "./printed-toc";
@@ -41,7 +42,14 @@ export function CurationDetails({
     [editing, setEditing] = useState<string | null>(null),
     [draft, setDraft] = useState(""),
     [busy, setBusy] = useState(false);
+  const replica = useReplicaOptional(),
+    loadTicket = useRef(0),
+    opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) void load().catch((e) => setError(e.message));
+  }, [replica?.revision]);
   async function load() {
+    const ticket = ++loadTicket.current;
     setError("");
     const r = await libraryRequest(
         `/api/curation?kind=${kind}&id=${encodeURIComponent(id)}`,
@@ -49,9 +57,10 @@ export function CurationDetails({
       ),
       j = await r.json();
     if (!r.ok) throw Error(j.error ?? "정리 정보를 불러오지 못했습니다.");
-    setState(j);
+    if (ticket === loadTicket.current) setState(j);
   }
   async function save(item: any, hidden: boolean) {
+    loadTicket.current++;
     setBusy(true);
     setError("");
     try {
@@ -77,9 +86,22 @@ export function CurationDetails({
       });
       const j = await r.json();
       if (!r.ok) throw Error(j.error ?? "저장하지 못했습니다.");
+      setState((old: any) => ({
+        ...old,
+        items: old.items.map((i: any) =>
+          i.id === item.id
+            ? {
+                ...i,
+                value,
+                version: j.version ?? item.version + 1,
+                state: hidden ? "hidden" : "active",
+              }
+            : i,
+        ),
+      }));
       setEditing(null);
-      await load();
-      await onChanged?.();
+      void load().catch((e) => setError(e.message));
+      void onChanged?.().catch((e) => setError(e.message));
     } catch (e) {
       setError(e instanceof Error ? e.message : "입력을 확인해 주세요.");
     } finally {
@@ -90,8 +112,10 @@ export function CurationDetails({
     <details
       className="curation-details"
       onToggle={(e) => {
-        if (e.target === e.currentTarget && e.currentTarget.open && !state)
-          void load().catch((e) => setError(e.message));
+        if (e.target === e.currentTarget && e.currentTarget.open) {
+          opened.current = true;
+          if (!state) void load().catch((e) => setError(e.message));
+        }
       }}
     >
       <summary>

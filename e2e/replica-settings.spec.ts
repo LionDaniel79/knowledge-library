@@ -160,3 +160,54 @@ test("takes over an expired lease after the owning tab closes", async ({
   );
   await expect(other.getByRole("dialog")).toContainText("동기화 완료");
 });
+test("cleans only old device copies while retaining the current generation and unsent note", async ({
+  context,
+  page,
+}) => {
+  const f = await setup(context);
+  await f.mount(page);
+  await page.evaluate(async () => {
+    const runtime = (window as any).runtime,
+      s = runtime.storage,
+      old = await s.checkpoint();
+    const g = await s.createGeneration({
+      epoch: old.epoch,
+      cursor: old.cursor,
+    });
+    const rows = await s.readPage("library_books", {
+      generation: old.generation,
+    });
+    await s.stageRows(g.generation, rows.rows);
+    await s.setCheckpoint(g.generation, { complete: true });
+    await s.promoteGeneration(g.generation);
+    await runtime.queue("/api/library", {
+      requestId: crypto.randomUUID(),
+      type: "addNote",
+      payload: {
+        title: "정리해도 남는 글",
+        content: "미전송",
+        kind: "thought",
+      },
+    });
+  });
+  const clean = page.getByRole("button", {
+    name: "불필요한 기기 사본 정리",
+    exact: true,
+  });
+  await expect(clean).toBeEnabled();
+  await clean.click();
+  await expect(page.getByRole("alert")).toContainText("이전 기기 사본 1개");
+  expect(
+    await page.evaluate(
+      async () => (await (window as any).store.listGenerations()).length,
+    ),
+  ).toBe(1);
+  expect(
+    await page.evaluate(
+      async () => (await (window as any).store.listOutbox()).length,
+    ),
+  ).toBe(1);
+  await expect(
+    page.getByRole("button", { name: "이 기기의 내려받은 자료 지우기" }),
+  ).toBeDisabled();
+});

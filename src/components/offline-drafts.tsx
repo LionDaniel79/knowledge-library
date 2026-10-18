@@ -89,7 +89,7 @@ export function OfflineDrafts({
           ? "기기에 저장했습니다. 연결되면 동기화합니다."
           : "서재에 저장했습니다.",
       );
-      await onSaved();
+      void onSaved().catch((e) => setMessage(e.message));
     } catch (e) {
       setMessage((e as Error).message);
     } finally {

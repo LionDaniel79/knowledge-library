@@ -98,7 +98,8 @@ export function CatalogReviewPanel({
       if (!r.ok) throw Error(j.error);
       setDetail(null);
       setRevision((n) => n + 1);
-      if (action === "apply") await onChanged();
+      if (action === "apply")
+        void onChanged().catch((e) => setError(e.message));
     } catch (e) {
       setError((e as Error).message);
     } finally {

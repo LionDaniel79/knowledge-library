@@ -298,6 +298,49 @@ test("online progress does not wait for a slow overview and later reordered resp
   await expect(page.locator(".reading-copy h3")).toHaveText("순서 2");
   await expect(page.getByTestId("carousel-position")).toHaveText("2 / 3");
 });
+test("completion and new notes close immediately while the overview is slow", async ({
+  page,
+}) => {
+  const fixture = structuredClone(previewLibrary);
+  let reads = 0;
+  await page.route("https://library.test/api/library", async (r) => {
+    if (r.request().method() === "POST") {
+      const cmd = r.request().postDataJSON();
+      return r.fulfill({
+        json: {
+          id: cmd.payload.id ?? "55555555-5555-4555-8555-555555555555",
+          version: (cmd.payload.expectedVersion ?? 0) + 1,
+        },
+      });
+    }
+    reads++;
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+    return r.fulfill({ json: fixture });
+  });
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';createRoot(document.getElementById('root')).render(<LibraryApp initial={${JSON.stringify(fixture)}} ownerId="fast-saves" today="2026-10-18"/>);`,
+  );
+  const before = await page.locator(".reading-copy h3").textContent();
+  await page.getByRole("button", { name: "완독", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "저장하기", exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 1000 });
+  await expect(page.locator(".reading-copy h3")).not.toHaveText(before!);
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page.getByRole("button", { name: /^기록과 생각/ }).click();
+  await page.getByRole("button", { name: "새 기록", exact: true }).click();
+  const note = page.getByRole("dialog");
+  await note
+    .getByRole("textbox", { name: "제목", exact: true })
+    .fill("즉시 저장되는 글");
+  await note
+    .getByRole("textbox", { name: "내용", exact: true })
+    .fill("뒤에서 동기화하는 내 기록");
+  await note.getByRole("button", { name: "저장하기", exact: true }).click();
+  await expect(note).not.toBeVisible({ timeout: 1000 });
+  expect(reads).toBeGreaterThan(0);
+});
 test("cover/list preference survives reload and list opens the same book on a narrow screen", async ({
   page,
 }) => {

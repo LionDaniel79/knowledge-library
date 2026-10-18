@@ -57,8 +57,9 @@ export function NoteTagFilter({
       if (!r.ok) throw Error(body.error);
       if (value === pending.tag) onChange("all");
       setPending(null);
-      await onUpdated();
-      await load();
+      setItems((items) => items.filter((t) => t.tag !== pending.tag));
+      void onUpdated().catch((e) => setError(e.message));
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "태그 삭제 실패");
     } finally {

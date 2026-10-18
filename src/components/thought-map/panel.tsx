@@ -21,19 +21,22 @@ export function ThoughtMapPanel({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   const requests = useRef(new Map<string, string>());
+  const loadTicket = useRef(0);
   async function load() {
+    const ticket = ++loadTicket.current;
     const r = await libraryRequest("/api/thought-map", { cache: "no-store" }),
       data = await r.json();
     if (!r.ok) throw Error(data.error ?? "사유의 지도를 불러오지 못했습니다.");
-    setState(data);
+    if (ticket === loadTicket.current) setState(data);
   }
   useEffect(() => {
+    const ticket = ++loadTicket.current;
     let live = true;
     void libraryRequest("/api/thought-map", { cache: "no-store" })
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok) throw Error(data.error ?? "자료를 불러오지 못했습니다.");
-        if (live) setState(data);
+        if (live && ticket === loadTicket.current) setState(data);
       })
       .catch((e) => {
         if (live) setError(e.message);
@@ -44,6 +47,7 @@ export function ThoughtMapPanel({
   }, [library.notes]);
   async function send(type: string, payload: unknown) {
     if (busy) return;
+    loadTicket.current++;
     setBusy(true);
     setError("");
     setMessage("");
@@ -62,7 +66,7 @@ export function ThoughtMapPanel({
         throw Error(data.error ?? "저장하지 못했습니다.");
       }
       requests.current.delete(key);
-      await load();
+      void load().catch((e) => setError(e.message));
       setMessage("판단과 수정 이력을 저장했습니다.");
     } catch (e) {
       setError((e as Error).message);

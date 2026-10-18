@@ -53,6 +53,7 @@ export function createLibraryRuntime(
     closed = false,
     active: Promise<SyncStatus> | null = null;
   let capabilitiesAt = 0;
+  let followup: Promise<SyncStatus> | null = null;
   const channel =
     typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
       ? new BroadcastChannel("knowledge-library-replica:" + owner)
@@ -69,7 +70,8 @@ export function createLibraryRuntime(
   }
   async function refreshLocal() {
     const cp = await storage.checkpoint(),
-      entries = await storage.listOutbox();
+      entries = await storage.listOutbox(),
+      partial = !cp ? await storage.deviceCopies() : null;
     if (closed) return;
     repository.invalidate();
     emit({
@@ -77,8 +79,8 @@ export function createLibraryRuntime(
       revision: snapshot.revision + 1,
       status: {
         ...snapshot.status,
-        rows: cp?.rows ?? 0,
-        bytes: cp?.bytes ?? 0,
+        rows: cp?.rows ?? partial?.resumableRows ?? 0,
+        bytes: cp?.bytes ?? partial?.resumableBytes ?? 0,
         lastSyncedAt: cp?.lastSyncedAt ?? null,
         pending: entries.filter((e) => ["pending", "sending"].includes(e.state))
           .length,
@@ -136,9 +138,24 @@ export function createLibraryRuntime(
     reason: string;
     rebuild?: boolean;
   }): Promise<SyncStatus> {
+    if (closed)
+      return Promise.reject(
+        new DOMException("서재 창이 닫혔습니다.", "AbortError"),
+      );
     if (active) {
-      if (["server-save", "local-save"].includes(options.reason))
-        return active.then(() => sync(options));
+      if (["server-save", "local-save"].includes(options.reason)) {
+        followup ??= active.then(
+          () => {
+            followup = null;
+            return sync(options);
+          },
+          (error) => {
+            followup = null;
+            throw error;
+          },
+        );
+        return followup;
+      }
       return active;
     }
     emit({ status: { ...snapshot.status, phase: "preparing", error: "" } });
@@ -280,6 +297,14 @@ export function createLibraryRuntime(
       announce();
     },
     sync,
+    async pruneUnusedCopies() {
+      if (active) throw Error("동기화가 끝난 뒤 다시 시도해 주세요.");
+      return withReplicaLeader(
+        owner,
+        async ({ storage: leader }) => leader.pruneUnusedCopies(),
+        { storage, signal: abort.signal },
+      );
+    },
     async clearDownloaded() {
       if (active) throw Error("동기화가 끝난 뒤 다시 시도해 주세요.");
       await withReplicaLeader(

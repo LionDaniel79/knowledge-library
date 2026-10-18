@@ -765,6 +765,14 @@ export function createReplicaRepository(storage: ReplicaStorage) {
     async index() {
       return index();
     },
+    async shelves() {
+      return [
+        ...new Set([
+          ...defaultShelves,
+          ...(await repository.all("library_shelves")).map((s) => s.name),
+        ]),
+      ];
+    },
     async raw(entity: SyncEntity, id: string) {
       return raw(entity, id);
     },

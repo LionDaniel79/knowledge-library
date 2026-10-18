@@ -1,5 +1,6 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
+import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { SyncSettings } from "./replica/sync-settings";
@@ -153,6 +154,7 @@ export function LibraryApp({
   const [backupOpen, setBackupOpen] = useState(false);
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
   const [data, setData] = useState(initial);
+  const saveRevision = useRef(0);
   useEffect(() => setData(initial), [initial]);
   useEffect(() => {
     if (preview || !ownerId) return;
@@ -451,6 +453,7 @@ export function LibraryApp({
     }
   }
   async function refresh() {
+    const revision = saveRevision.current;
     const res = await libraryRequest("/api/library", { cache: "no-store" });
     const json = await res.json();
     if (!res.ok) throw Error(json.error || "서재를 불러오지 못했습니다.");
@@ -480,6 +483,7 @@ export function LibraryApp({
             : [...json.cycles, latest];
       }
     }
+    if (revision !== saveRevision.current) return;
     setData(
       replica && !replica.ready
         ? await replica.runtime.withPendingReading(json)
@@ -497,7 +501,11 @@ export function LibraryApp({
     );
   }
   async function save(command: Command) {
-    if (command.type === "updateProgress") {
+    if (
+      ["updateProgress", "completeReading", "editCompletion"].includes(
+        command.type,
+      )
+    ) {
       const p = command.payload as {
         id: string;
         currentPage: number;
@@ -510,14 +518,8 @@ export function LibraryApp({
           cycle,
           book,
         });
-        setData((d) => ({
-          ...d,
-          cycles: d.cycles.map((c) =>
-            c.id === p.id
-              ? { ...c, currentPage: p.currentPage, version: result.version }
-              : c,
-          ),
-        }));
+        saveRevision.current++;
+        setData((d) => projectLibrarySave(d, command, result));
         setMessage("기기에 저장했습니다. 동기화는 뒤에서 진행합니다.");
         setFailure("");
         return;
@@ -531,32 +533,17 @@ export function LibraryApp({
     const json = await res.json();
     if (!res.ok) {
       if (res.status === 409) {
-        try {
-          await refresh();
-        } catch {
-          /* Keep the editor's unsaved content. */
-        }
+        void refresh().catch(() => {});
       }
       throw Object.assign(Error(json.error || "저장하지 못했습니다."), {
         status: res.status,
       });
     }
     try {
-      if (command.type === "updateProgress") {
-        const p = command.payload as { id: string; currentPage: number };
-        setData((d) => ({
-          ...d,
-          cycles: d.cycles.map((c) =>
-            c.id === p.id
-              ? { ...c, currentPage: p.currentPage, version: json.version }
-              : c,
-          ),
-        }));
-        setMessage("읽은 쪽을 저장했습니다.");
-        setFailure("");
-        return;
-      }
-      await refresh();
+      saveRevision.current++;
+      setData((d) => projectLibrarySave(d, command, json));
+      // A durable commit releases the form; catalog refresh is independent.
+      if (command.type !== "updateProgress") void refresh().catch(() => {});
       setMessage(
         json.queued
           ? "기기에 저장했습니다. 연결되면 동기화합니다."

@@ -118,11 +118,13 @@ export function KnowledgePanel({
     [history, setHistory] = useState<Revision[]>([]);
   const requests = useRef(new Map<string, string>()),
     initialized = useRef(false);
+  const loadTicket = useRef(0);
   async function load() {
+    const ticket = ++loadTicket.current;
     const r = await libraryRequest("/api/knowledge", { cache: "no-store" }),
       data = await r.json();
     if (!r.ok) throw Error(data.error ?? "연결을 불러오지 못했습니다.");
-    setState(data);
+    if (ticket === loadTicket.current) setState(data);
   }
   async function send(type: string, payload: unknown) {
     const key = JSON.stringify({ type, payload });
@@ -145,12 +147,13 @@ export function KnowledgePanel({
     return data;
   }
   async function run(fn: () => Promise<void>) {
+    loadTicket.current++;
     setBusy(true);
     setError("");
     setMessage("");
     try {
       await fn();
-      await load();
+      void load().catch((e) => setError(e.message));
     } catch (e) {
       setError(e instanceof Error ? e.message : "다시 시도해 주세요.");
     } finally {

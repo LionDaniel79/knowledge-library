@@ -36,7 +36,7 @@ export function DeviceSettings() {
         setToken(data.token);
         setOwnerId(data.ownerId);
       }
-      await refresh();
+      void refresh().catch((e) => setError(e.message));
     } catch (e) {
       setError((e as Error).message);
     } finally {

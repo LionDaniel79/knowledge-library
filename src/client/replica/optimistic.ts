@@ -180,7 +180,7 @@ export async function prepareOptimistic(
       entityId = after.id;
     } else if (cmd.type === "createShelf") {
       const name = z.string().trim().min(1).max(80).parse(p.name);
-      if ((await repository.index()).shelves.includes(name))
+      if ((await repository.shelves()).includes(name))
         throw new ReplicaQueryError(409, "이미 있는 책장입니다.");
       put("library_shelves", { id, name, created_at: at });
     } else if (cmd.type === "startReading") {

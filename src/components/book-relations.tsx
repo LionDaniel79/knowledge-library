@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReplicaOptional } from "./replica/provider";
 import type { Book, Library } from "@/lib/domain";
 import { BookPicker } from "./book-picker";
 const names: Record<string, string> = {
@@ -30,17 +31,27 @@ export function BookRelations({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const requests = useRef(new Map<string, string>());
-  async function load() {
+  const replica = useReplicaOptional(),
+    loadTicket = useRef(0),
+    opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) void load().catch((e) => setError(e.message));
+  }, [replica?.revision]);
+  async function load(preferServer = false) {
+    const ticket = ++loadTicket.current;
     setError("");
-    const r = await libraryRequest("/api/book-relations?bookId=" + book.id, {
-        cache: "no-store",
-      }),
+    const r = await libraryRequest(
+        "/api/book-relations?bookId=" + book.id,
+        { cache: "no-store" },
+        { preferServer },
+      ),
       j = await r.json();
     if (!r.ok) throw Error(j.error ?? "연결 정보를 읽지 못했습니다.");
-    setData(j);
+    if (ticket === loadTicket.current) setData(j);
   }
   async function save(payload: Record<string, unknown>) {
     if (busy) return;
+    loadTicket.current++;
     setBusy(true);
     setError("");
     const key = JSON.stringify(payload),
@@ -58,9 +69,11 @@ export function BookRelations({
         throw Error(j.error ?? "연결을 저장하지 못했습니다.");
       }
       requests.current.delete(key);
-      await load();
       setSelected(null);
       setReason("");
+      void load(
+        payload.relation === "same_file" && payload.state === "accepted",
+      ).catch((e) => setError(e.message));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -76,8 +89,10 @@ export function BookRelations({
     <details
       className="curation-details"
       onToggle={(e) => {
-        if (e.currentTarget === e.target && e.currentTarget.open && !data)
-          void load().catch((e) => setError(e.message));
+        if (e.currentTarget === e.target && e.currentTarget.open) {
+          opened.current = true;
+          if (!data) void load().catch((e) => setError(e.message));
+        }
       }}
     >
       <summary>다른 소장본·판본 연결</summary>

@@ -59,6 +59,12 @@ export function createReplicaCoordinator(input: {
     update({ phase: "preparing", error: "" });
     try {
       update(await counts());
+      const saved = await storage.checkpoint();
+      const partial = !saved ? await storage.deviceCopies() : null;
+      update({
+        rows: saved?.rows ?? partial?.resumableRows ?? 0,
+        bytes: saved?.bytes ?? partial?.resumableBytes ?? 0,
+      });
       const meta = await transport.meta(false, options.signal),
         current = await storage.checkpoint();
       let state = current;

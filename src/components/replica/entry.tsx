@@ -110,11 +110,13 @@ export function ReplicaEntry({
       runtime = next;
       // Keep the same mounted app, including any form already being written.
       setScreen((s) => (s?.owner === owner ? { ...s, runtime: next } : s));
-      const refreshOverview = () =>
+      let overviewTicket = 0;
+      const refreshOverview = () => {
+        const ticket = ++overviewTicket;
         void next.repository
           .overview()
           .then((data) => {
-            if (alive() && runtime === next) {
+            if (alive() && runtime === next && ticket === overviewTicket) {
               screenOwner = next.owner;
               hasScreen = true;
               setScreen({
@@ -128,6 +130,7 @@ export function ReplicaEntry({
           .catch((e) => {
             if (alive() && runtime === next) setError(e.message);
           });
+      };
       lastRevision = next.getSnapshot().revision;
       unsubscribe = next.subscribe(() => {
         const snapshot = next.getSnapshot();

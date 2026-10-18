@@ -5,6 +5,7 @@ import { onlineOnlyGet } from "./online-routes";
 import { commandFamily } from "./optimistic";
 let current: LibraryRuntime | null = null;
 let networkAccess: (() => Promise<void>) | undefined;
+const reconciling = new WeakMap<LibraryRuntime, Promise<unknown>>();
 export const isLocalReplicaReady = () => !!current?.getSnapshot().ready;
 export function registerLibraryRuntime(
   runtime: LibraryRuntime | null,
@@ -22,6 +23,7 @@ export function registerLibraryRuntime(
 export async function libraryRequest(
   input: RequestInfo | URL,
   init?: RequestInit,
+  options: { preferServer?: boolean } = {},
 ): Promise<Response> {
   const runtime = current,
     authorizeNetwork = networkAccess,
@@ -73,7 +75,14 @@ export async function libraryRequest(
       );
     }
   }
-  if (local && method === "GET") {
+  // Only online AI results need a direct read until the pull catches up. Catalog
+  // reads must retain the device overlay, including other unsent edits.
+  if (
+    local &&
+    method === "GET" &&
+    !options.preferServer &&
+    !(url.pathname === "/api/assist" && reconciling.has(runtime))
+  ) {
     init?.signal?.throwIfAborted();
     try {
       const value = await runtime.repository.read(url.pathname + url.search);
@@ -127,9 +136,11 @@ export async function libraryRequest(
     url.pathname.startsWith("/api/") &&
     !url.pathname.startsWith("/api/auth/")
   ) {
-    if (runtime.getSnapshot().ready)
-      await runtime.sync({ reason: "server-save" }).catch(() => {});
-    else void runtime.sync({ reason: "server-save" }).catch(() => {});
+    const task = runtime.sync({ reason: "server-save" }).catch(() => {});
+    reconciling.set(runtime, task);
+    void task.finally(() => {
+      if (reconciling.get(runtime) === task) reconciling.delete(runtime);
+    });
   }
   return response;
 }

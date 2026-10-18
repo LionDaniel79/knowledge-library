@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { FileText, Search, RefreshCw, ExternalLink, Quote } from "lucide-react";
 import { PdfProgress } from "./pdf-progress";
@@ -133,7 +134,7 @@ export function PdfLibraryPanel({
       savedRequests.current.set(fingerprint, requestId);
     }
     try {
-      const response = await fetch("/api/pdf/citation", {
+      const response = await libraryRequest("/api/pdf/citation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -149,7 +150,7 @@ export function PdfLibraryPanel({
       if (!response.ok)
         throw Error(result.error ?? "인용 저장에 실패했습니다.");
       setMessage("원문 페이지와 함께 하이라이트를 저장했습니다.");
-      await onSaved();
+      void onSaved().catch((e) => setError(e.message));
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장 실패");
     } finally {

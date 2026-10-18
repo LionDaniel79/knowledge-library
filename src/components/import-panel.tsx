@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
 import { Modal } from "./modal";
 import type { ImportSummary } from "@/lib/import-package";
@@ -15,7 +16,7 @@ export function ImportPanel({
     [error, setError] = useState("");
   const [done, setDone] = useState(false);
   async function request(action: string, value: unknown) {
-    const response = await fetch("/api/import", {
+    const response = await libraryRequest("/api/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, bundle: value }),
@@ -112,7 +113,7 @@ export function ImportPanel({
               try {
                 setSummary(await request("apply", bundle));
                 setDone(true);
-                await onImported();
+                void onImported().catch((e) => setError(e.message));
               } catch (e) {
                 setError(e instanceof Error ? e.message : "가져오기 실패");
               } finally {

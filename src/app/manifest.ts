@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "나의 지식서재",
     short_name: "지식서재",
     description: "책과 생각을 오래 보관하는 나의 서재",

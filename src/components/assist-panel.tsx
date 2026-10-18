@@ -102,7 +102,7 @@ export function AssistPanel({
         setPreview(j);
         requestId.current = crypto.randomUUID();
       } else {
-        await load();
+        void load().catch((e) => setError(e.message));
         if (action === "request") {
           setPreview(null);
           setMessage(

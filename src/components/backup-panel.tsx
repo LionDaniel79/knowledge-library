@@ -90,11 +90,9 @@ export function BackupPanel({
       setPreview(null);
       setBackup(null);
       setMessage("복원을 마쳤습니다.");
-      try {
-        await onRestored();
-      } catch {
+      void onRestored().catch(() => {
         setError("복원은 완료됐습니다. 화면을 새로고침해 주세요.");
-      }
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "복원 실패");
     } finally {

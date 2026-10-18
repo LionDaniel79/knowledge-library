@@ -47,7 +47,15 @@ export function BookIntroduction({ id }: { id: string }) {
         }),
         j = await r.json();
       if (!r.ok) throw Error(j.error);
-      await load();
+      setData((old: any) => ({
+        ...old,
+        introduction: {
+          ...old.introduction,
+          version: j.version,
+          text,
+          sources,
+        },
+      }));
       setSaved(true);
     } catch (e) {
       setError((e as Error).message);

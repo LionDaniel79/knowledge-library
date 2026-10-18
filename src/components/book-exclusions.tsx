@@ -59,11 +59,9 @@ export function BookExclusions({
       pending.current = null;
       setRevision((x) => x + 1);
       setMessage("소장 도서로 복원했습니다.");
-      try {
-        await onChanged();
-      } catch {
+      void onChanged().catch(() => {
         setMessage("복원했습니다. 서재를 새로고침하면 목록에 반영됩니다.");
-      }
+      });
     } catch (error) {
       setError(
         error instanceof TypeError

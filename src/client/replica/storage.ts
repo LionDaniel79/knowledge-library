@@ -134,6 +134,13 @@ export interface ReplicaWrite {
   removeIndex(generation: string, key: string): void;
 }
 export interface ReplicaStorage {
+  deviceCopies(): Promise<{
+    total: number;
+    unused: number;
+    resumableRows: number;
+    resumableBytes: number;
+  }>;
+  pruneUnusedCopies(): Promise<number>;
   clearDownloaded(): Promise<void>;
   autoSyncEnabled(): Promise<boolean>;
   enableAutoSync(): Promise<void>;
@@ -517,6 +524,54 @@ export function createReplicaStorage(
     return id ? ((await backend.get("meta", stateKey(id))) ?? null) : null;
   }
   const storage: ReplicaStorage = {
+    async deviceCopies() {
+      const active = await checkpoint(),
+        generations = await storage.listGenerations();
+      const pending = generations
+        .filter(
+          (g) =>
+            !g.complete &&
+            (g.baseGeneration ?? null) === (active?.generation ?? null),
+        )
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+      return {
+        total: generations.length,
+        unused: generations.filter(
+          (g) =>
+            g.generation !== active?.generation &&
+            g.generation !== pending?.generation,
+        ).length,
+        resumableRows: pending?.rows ?? 0,
+        resumableBytes: pending?.bytes ?? 0,
+      };
+    },
+    async pruneUnusedCopies() {
+      check();
+      let removed = 0;
+      await backend.transaction(async (io) => {
+        await assertFence(io);
+        const active = await io.get("meta", [owner, "active"]),
+          keys = await io.keysRange("meta", [owner, "generation"]);
+        const generations: ReplicaGeneration[] = await io.getMany("meta", keys);
+        const pending = generations
+          .filter(
+            (g) =>
+              !g.complete && (g.baseGeneration ?? null) === (active ?? null),
+          )
+          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+        for (const key of keys) {
+          const id = String(key[2]);
+          if (id === active || id === pending?.generation) continue;
+          for (const store of ["rows", "parts", "indexes"] as const)
+            await io.deleteRange(store, [owner, id]);
+          await io.delete("meta", key);
+          removed++;
+        }
+        // These are download generations, never business records or unsent edits.
+        await io.delete("meta", [owner, "previous"]);
+      });
+      return removed;
+    },
     async autoSyncEnabled() {
       check();
       return (

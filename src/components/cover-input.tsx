@@ -1,4 +1,5 @@
 "use client";
+import { libraryRequest } from "@/client/replica/request";
 import { useEffect, useRef, useState } from "react";
 export function CoverInput({
   value,
@@ -65,7 +66,7 @@ export function CoverInput({
           0.82,
         ),
       );
-      const r = await fetch("/api/book-covers", {
+      const r = await libraryRequest("/api/book-covers", {
           method: "POST",
           headers: { "Content-Type": body.type },
           body,
