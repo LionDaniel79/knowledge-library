@@ -134,6 +134,7 @@ export interface ReplicaWrite {
   removeIndex(generation: string, key: string): void;
 }
 export interface ReplicaStorage {
+  readonly databaseName?: string;
   deviceCopies(): Promise<{
     total: number;
     unused: number;

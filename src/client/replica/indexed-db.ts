@@ -169,5 +169,7 @@ export async function openReplica(
       db.close();
     },
   };
-  return createReplicaStorage(owner, backend);
+  return Object.assign(createReplicaStorage(owner, backend), {
+    databaseName: db.name,
+  });
 }

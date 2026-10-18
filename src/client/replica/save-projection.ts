@@ -44,14 +44,19 @@ export function projectLibrarySave(
       old = data.notes.find((n) => n.id === result.id);
     return {
       ...data,
-      notes: upsert(data.notes, {
-        ...old,
-        ...value,
-        ...result,
-        summary: false,
-        createdAt: old?.createdAt ?? at,
-        updatedAt: at,
-      }),
+      notes: [
+        ...upsert(data.notes, {
+          ...old,
+          ...value,
+          ...result,
+          summary: false,
+          createdAt: old?.createdAt ?? at,
+          updatedAt: at,
+        }),
+      ].sort(
+        (a, b) =>
+          b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id),
+      ),
     };
   }
   if (command.type === "createShelf")

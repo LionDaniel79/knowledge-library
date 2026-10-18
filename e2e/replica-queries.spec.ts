@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
-let bundle: string, worker: string;
+let bundle: string, worker: string, reader: string;
 test.beforeAll(async () => {
   bundle = (
     await build({
@@ -26,6 +26,15 @@ test.beforeAll(async () => {
       platform: "browser",
     })
   ).outputFiles[0].text;
+  reader = (
+    await build({
+      entryPoints: ["src/client/replica/reader-worker.ts"],
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "browser",
+    })
+  ).outputFiles[0].text;
 });
 test("uses the real search worker and local records for book, note and date queries while offline", async ({
   page,
@@ -42,6 +51,9 @@ test("uses the real search worker and local records for book, note and date quer
   );
   await page.route("https://replica.test/assets/search-worker.ts", (r) =>
     r.fulfill({ contentType: "text/javascript", body: worker }),
+  );
+  await page.route("https://replica.test/assets/reader-worker.ts", (r) =>
+    r.fulfill({ contentType: "text/javascript", body: reader }),
   );
   await page.route("https://replica.test/api/**", (r) => {
     requests++;
@@ -152,7 +164,7 @@ test("uses the real search worker and local records for book, note and date quer
     await repo.books({});
     return { book, note };
   });
-  expect(workers).toBe(0);
+  expect(workers).toBe(1);
   await context.setOffline(true);
   const result = await page.evaluate(async () => {
     const repo = (window as any).repository;

@@ -106,6 +106,24 @@ it("creating a shelf never builds the full-text index", async () => {
   expect(f.repo.index).not.toHaveBeenCalled();
 });
 afterEach(() => vi.unstubAllGlobals());
+it("puts a newly saved note in the recent records immediately without waiting for a catalog refresh", () => {
+  const data = structuredClone(previewLibrary);
+  const saved = projectLibrarySave(
+    data,
+    {
+      requestId: crypto.randomUUID(),
+      type: "addNote",
+      payload: {
+        title: "즉시 보이는 새 메모",
+        content: "본문",
+        kind: "thought",
+      },
+    },
+    { id: "new-note", version: 1 },
+  );
+  expect(saved.notes[0].title).toBe("즉시 보이는 새 메모");
+  expect(data.notes[0].title).not.toBe("즉시 보이는 새 메모");
+});
 it("never lets an older delete/restore acknowledgment remove a newer note or resurrect a newer deletion", () => {
   const data = structuredClone(previewLibrary),
     note = { ...data.notes[0], version: 3 };
