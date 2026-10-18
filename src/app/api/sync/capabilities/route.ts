@@ -2,6 +2,7 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { serverAssistConfig } from "@/server/server-assist";
 import { failure } from "@/server/http";
+import { ASSIST_COMPARISON_ENABLED } from "@/lib/assist";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
@@ -16,7 +17,7 @@ export async function GET() {
       {
         ownerId: owner,
         execution: serverAssistConfig().ready ? "server" : "pc",
-        comparisonEnabled: false,
+        comparisonEnabled: ASSIST_COMPARISON_ENABLED,
         workers,
       },
       { headers: { "Cache-Control": "private, no-store" } },

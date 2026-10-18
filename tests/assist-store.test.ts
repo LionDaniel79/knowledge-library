@@ -6,6 +6,7 @@ import { createLibraryStore } from "../src/server/library-store";
 import { createDeviceAuth } from "../src/server/thought-device-auth";
 import { createAssistStore } from "../src/server/assist-store";
 import { createCurationStore } from "../src/server/curation-store";
+import { createThoughtMapStore } from "../src/server/thought-map-store";
 import { pricingVersion } from "../src/local/ai/openai";
 import {
   ASSIST_PROMPT_VERSION,
@@ -396,7 +397,7 @@ it("rejects changed source/policy and revoked devices; never reallocates a send 
     "stale",
   );
 });
-it("requires a matching transmission preview and keeps unevaluated comparisons disabled", async () => {
+it("requires a matching transmission preview and rejects comparing the same note", async () => {
   const { store, selection } = await setup("preview");
   const p = await store.preview("preview", selection);
   await expect(
@@ -414,4 +415,54 @@ it("requires a matching transmission preview and keeps unevaluated comparisons d
       sources: [...selection.sources, ...selection.sources],
     }),
   ).rejects.toThrow();
+});
+it("offers an explicit two-record comparison with dated personal voices while keeping cost consent", async () => {
+  const { store, l, n } = await setup("map-comparison");
+  const other = await l.mutate("map-comparison", {
+    requestId: randomUUID(),
+    type: "addNote",
+    payload: {
+      title: "이후 생각",
+      content: "감정을 이해하고 말로 표현한다.",
+      kind: "thought",
+    },
+  });
+  const map = createThoughtMapStore(f.db);
+  for (const [id, occurredOn] of [
+    [n.id, "2025-01-01"],
+    [other.id, "2026-01-01"],
+  ])
+    await map.mutate("map-comparison", {
+      requestId: randomUUID(),
+      type: "setThoughtEvent",
+      payload: { noteId: id, expectedVersion: 0, occurredOn, voice: "self" },
+    });
+  expect((await store.status("map-comparison")).comparisonEnabled).toBe(true);
+  const selection = {
+    purpose: "compare_notes",
+    sources: [n, other].map((record) => ({
+      source: { kind: "note", id: record.id, version: "1" },
+    })),
+  };
+  const preview = await store.preview("map-comparison", selection);
+  expect(
+    preview.task.payload.sources.map((s) => [s.occurredOn, s.voice]),
+  ).toEqual([
+    ["2025-01-01", "self"],
+    ["2026-01-01", "self"],
+  ]);
+  await expect(
+    store.request("map-comparison", {
+      ...selection,
+      requestId: randomUUID(),
+      expectedPolicyVersion: preview.policy.version,
+      scopeHash: "not-the-reviewed-preview",
+    }),
+  ).rejects.toThrow();
+  await expect(
+    createAssistStore(f.db, { compareEnabled: false }).preview(
+      "map-comparison",
+      selection,
+    ),
+  ).rejects.toMatchObject({ status: 409 });
 });

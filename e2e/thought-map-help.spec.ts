@@ -68,7 +68,7 @@ for (const width of [360, 1440]) {
     ).toBeVisible();
     await dialog.getByText("6. 자동 기능과 AI의 범위", { exact: true }).click();
     await expect(
-      dialog.getByText(/전체 서재를 AI가 자동으로 읽고/),
+      dialog.getByText(/전체 서재의 자동 분석이나 자동 확정은 하지 않습니다/),
     ).toBeVisible();
     expect(
       await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),

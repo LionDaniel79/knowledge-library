@@ -137,7 +137,21 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     return row;
   }
   async function all(e: SyncEntity) {
-    return selected(e);
+    const cp = await storage.checkpoint();
+    if (!cp?.complete)
+      throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
+    const stamp = (state: typeof cp) =>
+      `${state?.entityRevisions?.[e] ?? "0"}:${state?.localEntityRevisions?.[e] ?? 0}`;
+    const rows = [];
+    for await (const row of reader.records(e, cp.generation))
+      rows.push(dateRow(row));
+    const latest = await storage.checkpoint();
+    if (latest?.generation !== cp.generation || stamp(latest) !== stamp(cp))
+      throw new ReplicaQueryError(
+        409,
+        "자료를 갱신하고 있습니다. 다시 시도해 주세요.",
+      );
+    return rows;
   }
   async function compact(e: SyncEntity) {
     await selected(e, () => false);

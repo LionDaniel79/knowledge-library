@@ -7,6 +7,7 @@ import {
   usdUnits,
   ASSIST_PROMPT_VERSION,
   ASSIST_SCHEMA_VERSION,
+  ASSIST_COMPARISON_ENABLED,
   type AiTask,
   type AiTaskResult,
 } from "../lib/assist";
@@ -202,7 +203,9 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
 }
 export function createAssistStore(
   db: Database,
-  options: { compareEnabled?: boolean } = {},
+  options: { compareEnabled?: boolean } = {
+    compareEnabled: ASSIST_COMPARISON_ENABLED,
+  },
 ) {
   function checkPurpose(purpose: string) {
     if (purpose === "compare_notes" && !options.compareEnabled)

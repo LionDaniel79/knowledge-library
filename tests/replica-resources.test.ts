@@ -4,6 +4,21 @@ import {
   registerLibraryRuntime,
 } from "../src/client/replica/request";
 import { resourceFixture } from "./helpers/replica-resources";
+it("loads the thought map in table pages without reading thousands of excluded books individually", async () => {
+  const f = await resourceFixture();
+  const reads = vi.spyOn(f.s, "readRow");
+  try {
+    const state: any = await f.repo.read("/api/thought-map");
+    expect(state.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ noteId: f.note, voice: "self" }),
+      ]),
+    );
+    expect(reads).not.toHaveBeenCalled();
+  } finally {
+    f.repo.close();
+  }
+});
 it("reads saved review originals, curation, sources, introductions, map, research and AI results without the network", async () => {
   const f = await resourceFixture(),
     read = (path: string) => f.repo.read(path) as Promise<any>;

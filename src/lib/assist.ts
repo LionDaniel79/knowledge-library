@@ -3,6 +3,7 @@ import { sourceRefSchema } from "./curation";
 import { comparisonSchema } from "./thought-map/types";
 export const ASSIST_PROMPT_VERSION = "human-assist-v1";
 export const ASSIST_SCHEMA_VERSION = "assist-v1";
+export const ASSIST_COMPARISON_ENABLED = true;
 export const assistPurposeSchema = z.enum([
   "organize_note",
   "tag_suggestion",
