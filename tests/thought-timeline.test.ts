@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   timelineEvents,
   reviewedPassage,
+  confirmedChanges,
 } from "../src/lib/thought-map/timeline";
 import type { Note } from "../src/lib/domain";
 import type {
@@ -50,6 +51,43 @@ it("filters timeline using current confirmed topic membership, sorting unknown d
     notes[0].id,
     notes[2].id,
   ]);
+});
+it("keeps accepted historical changes visible under their topic after a source edit, without approving stale classification", () => {
+  const topic = randomUUID(),
+    a = randomUUID(),
+    b = randomUUID();
+  const notes = [
+    { id: a, version: 2 },
+    { id: b, version: 1 },
+  ] as Note[];
+  const accepted = {
+    id: randomUUID(),
+    status: "accepted",
+    topicId: null,
+    before: { id: a },
+    after: { id: b },
+    outdated: true,
+  };
+  const state = {
+    topics: [{ id: topic, confirmed: true }],
+    memberships: [a, b].map((sourceId) => ({
+      topicId: topic,
+      sourceKind: "note",
+      sourceId,
+      sourceVersion: "1",
+      status: "accepted",
+    })),
+    events: [],
+    candidates: [
+      accepted,
+      { ...accepted, id: randomUUID(), status: "pending" },
+    ],
+  } as unknown as ThoughtMapSnapshot;
+  expect(confirmedChanges(notes, state, topic)).toEqual([accepted]);
+  expect(confirmedChanges([notes[1]], state, topic)).toEqual([]);
+  state.memberships[0].status = "rejected";
+  expect(confirmedChanges(notes, state, topic)).toEqual([]);
+  expect(confirmedChanges(notes, state, "")).toEqual([accepted]);
 });
 it("keeps exact selected excerpt offsets and rejects missing or ambiguous passages", () => {
   const note = {

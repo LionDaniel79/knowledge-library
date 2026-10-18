@@ -1,5 +1,35 @@
 import type { Note } from "../domain";
 import type { ThoughtEvent, ThoughtMapSnapshot } from "./types";
+export function confirmedChanges(
+  notes: Note[],
+  state: ThoughtMapSnapshot,
+  topic: string,
+) {
+  const active = new Set(notes.map((n) => n.id));
+  if (topic && !state.topics.some((t) => t.id === topic && t.confirmed))
+    return [];
+  // A source edit invalidates the evidence, not the existence of a past judgment.
+  // Keep the historical topic association so the existing outdated warning is visible.
+  const members = new Set(
+    state.memberships
+      .filter(
+        (m) =>
+          m.topicId === topic &&
+          m.sourceKind === "note" &&
+          m.status === "accepted",
+      )
+      .map((m) => m.sourceId),
+  );
+  return state.candidates.filter(
+    (c) =>
+      c.status === "accepted" &&
+      active.has(c.before.id) &&
+      active.has(c.after.id) &&
+      (!topic ||
+        c.topicId === topic ||
+        (!c.topicId && members.has(c.before.id) && members.has(c.after.id))),
+  );
+}
 export function timelineEvents(
   notes: Note[],
   state: ThoughtMapSnapshot,

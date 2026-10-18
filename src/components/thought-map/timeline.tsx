@@ -7,7 +7,7 @@ import {
   type ThoughtEvent,
 } from "@/lib/thought-map/types";
 import { TopicPicker, type ThoughtSend } from "./topic-picker";
-import { timelineEvents } from "@/lib/thought-map/timeline";
+import { timelineEvents, confirmedChanges } from "@/lib/thought-map/timeline";
 import { ManualComparison } from "./manual-comparison";
 import { ReviewCard } from "./candidate-review";
 const voices = {
@@ -119,18 +119,7 @@ export function ThoughtTimeline({
   const personal = timelineEvents(library.notes, state, topic, "self").filter(
     (e) => !!e.occurredOn,
   );
-  const topicNotes = new Set(
-    timelineEvents(library.notes, state, topic, "all").map((e) => e.noteId),
-  );
-  const confirmed = state.candidates.filter(
-    (c) =>
-      c.status === "accepted" &&
-      (!topic ||
-        c.topicId === topic ||
-        (!c.topicId &&
-          topicNotes.has(c.before.id) &&
-          topicNotes.has(c.after.id))),
-  );
+  const confirmed = confirmedChanges(library.notes, state, topic);
   const cards = (list: ThoughtEvent[]) =>
     list.map((e) => {
       const n = library.notes.find((n) => n.id === e.noteId);
