@@ -8,7 +8,7 @@
     "curation": "node --env-file=.env.local --import tsx scripts/curate-library.ts",
     "catalog:collect": "node --env-file=.env.local --import tsx scripts/collect-catalog.ts",
     "dev": "node scripts/next-runtime.mjs dev",
-    "build": "node scripts/next-runtime.mjs build",
+    "build": "node scripts/next-runtime.mjs build --webpack",
     "verify:build": "node --import tsx scripts/verify-build-artifact.ts",
     "start": "node scripts/next-runtime.mjs start",
     "test": "vitest run",

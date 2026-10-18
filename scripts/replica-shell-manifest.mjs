@@ -8,6 +8,10 @@ export async function writeReplicaShellManifest(root) {
     for (const entry of await readdir(path, { withFileTypes: true })) {
       const full = join(path, entry.name);
       if (entry.isDirectory()) await visit(full);
+      else if (/\.(ts|tsx)$/.test(entry.name))
+        throw Error(
+          `Uncompiled TypeScript asset ${entry.name}: workers must be built as JavaScript`,
+        );
       else if (/\.(js|css|woff2?|ttf)$/.test(entry.name))
         assets.push(
           "/_next/static/" + relative(staticRoot, full).replaceAll("\\", "/"),
