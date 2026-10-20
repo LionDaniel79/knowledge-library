@@ -58,6 +58,7 @@ export async function POST(request: Request) {
             "cancel",
             "adopt",
             "resolveCost",
+            "hide",
           ]),
           payload: z.unknown(),
         })
@@ -69,6 +70,11 @@ export async function POST(request: Request) {
     else if (p.action === "request") result = await s.request(owner, p.payload);
     else if (p.action === "configure")
       result = await s.configure(owner, p.payload);
+    else if (p.action === "hide")
+      result = await s.hide(
+        owner,
+        z.object({ id: z.string().uuid() }).strict().parse(p.payload).id,
+      );
     else if (p.action === "cancel")
       result = await s.cancel(
         owner,

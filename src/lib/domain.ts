@@ -217,7 +217,7 @@ export const bookInput = z.object({
 export const noteInput = z
   .object({
     bookId: z.string().uuid().nullable().default(null),
-    title: short.min(1, "제목을 입력해 주세요."),
+    title: short.default("").transform((v) => v || "미분류 메모"),
     content: z.string().trim().min(1, "내용을 입력해 주세요.").max(50000),
     kind: z
       .enum([

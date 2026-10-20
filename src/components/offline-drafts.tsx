@@ -117,8 +117,8 @@ export function OfflineDrafts({
     <details className="panel offline-drafts">
       <summary>이 기기의 임시 기록 · {drafts.length}개</summary>
       <p>
-        ‘기기에 임시 저장’을 누른 글만 이 브라우저에 보관합니다. 서재로 보내기
-        전까지 다른 기기에서는 보이지 않습니다. 공용 기기에서는 사용하지 마세요.
+        이전 버전에서 보관한 초안입니다. 서재로 보내기 전까지 다른 기기에서는
+        보이지 않습니다. 공용 기기에서는 사용하지 마세요.
       </p>
       {!replica?.ready && (
         <button

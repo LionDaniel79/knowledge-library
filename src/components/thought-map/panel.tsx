@@ -46,7 +46,7 @@ export function ThoughtMapPanel({
     };
   }, [library.notes]);
   async function send(type: string, payload: unknown) {
-    if (busy) return;
+    if (busy) return false;
     loadTicket.current++;
     setBusy(true);
     setError("");
@@ -68,8 +68,10 @@ export function ThoughtMapPanel({
       requests.current.delete(key);
       void load().catch((e) => setError(e.message));
       setMessage("판단과 수정 이력을 저장했습니다.");
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }

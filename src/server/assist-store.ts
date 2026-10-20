@@ -606,7 +606,7 @@ export function createAssistStore(
     const policy = await getLibraryAiPolicy(db, owner);
     const requests = (
       await db.query(
-        "SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,s.result,s.adoption FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 ORDER BY r.created_at DESC,r.id LIMIT 30",
+        "SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,s.result,s.adoption FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.hidden_at IS NULL ORDER BY r.created_at DESC,r.id LIMIT 30",
         [owner],
       )
     ).rows;
@@ -734,7 +734,22 @@ export function createAssistStore(
       return { ok: true };
     });
   }
+  async function hide(owner: string, id: string) {
+    const result = await syncQuery(
+      db,
+      owner,
+      "UPDATE library_assist_requests SET hidden_at=coalesce(hidden_at,now()) WHERE owner_id=$1 AND id=$2 AND status NOT IN ('queued','claimed','sending','cost_unknown') RETURNING id",
+      [owner, id],
+    );
+    if (!result.rows.length)
+      throw new LibraryError(
+        409,
+        "처리 중인 요청은 먼저 취소하고, 비용 확인이 필요한 요청은 확인 후 삭제해 주세요.",
+      );
+    return { ok: true };
+  }
   return {
+    hide,
     preview,
     configure,
     request,

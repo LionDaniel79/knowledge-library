@@ -76,7 +76,10 @@ export async function withReplicaLeader<T>(
     return locks
       ? await locks.request(
           "knowledge-library-sync:" + owner,
-          { mode: "exclusive", signal: controller.signal },
+          // A backgrounded phone tab can retain a Web Lock indefinitely.
+          // The expiring, fenced database lease remains authoritative even
+          // when that optional advisory lock is unavailable.
+          { mode: "exclusive", ifAvailable: true },
           run,
         )
       : await run();

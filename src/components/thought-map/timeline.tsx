@@ -10,6 +10,11 @@ import { TopicPicker, type ThoughtSend } from "./topic-picker";
 import { timelineEvents, confirmedChanges } from "@/lib/thought-map/timeline";
 import { ManualComparison } from "./manual-comparison";
 import { ReviewCard } from "./candidate-review";
+import {
+  useListPagination,
+  PageSizeSelect,
+  PageNavigation,
+} from "../list-pagination";
 const voices = {
   self: "내 생각",
   quote: "책에서 옮긴 구절",
@@ -116,6 +121,14 @@ export function ThoughtTimeline({
   const [topic, setTopic] = useState(""),
     [voice, setVoice] = useState("all");
   const events = timelineEvents(library.notes, state, topic, voice);
+  const paging = useListPagination(
+    "thought-timeline",
+    JSON.stringify([topic, voice]),
+  );
+  const visibleEvents = events.slice(
+    paging.offset,
+    paging.offset + paging.size,
+  );
   const personal = timelineEvents(library.notes, state, topic, "self").filter(
     (e) => !!e.occurredOn,
   );
@@ -216,14 +229,20 @@ export function ThoughtTimeline({
         busy={busy}
         onOpen={onOpen}
       />
-      {cards(events.filter((e) => e.occurredOn))}
-      {events.some((e) => !e.occurredOn) && (
+      <PageSizeSelect label="사유의 지도 기록" paging={paging} />
+      {cards(visibleEvents.filter((e) => e.occurredOn))}
+      {visibleEvents.some((e) => !e.occurredOn) && (
         <section>
           <h3>날짜를 확인할 기록</h3>
-          {cards(events.filter((e) => !e.occurredOn))}
+          {cards(visibleEvents.filter((e) => !e.occurredOn))}
         </section>
       )}
       {!events.length && <p>선택한 조건에 맞는 기록이 없습니다.</p>}
+      <PageNavigation
+        label="사유의 지도 기록"
+        paging={paging}
+        total={events.length}
+      />
     </div>
   );
 }

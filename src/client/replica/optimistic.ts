@@ -387,6 +387,34 @@ export async function prepareOptimistic(
         version: (old?.version ?? 0) + 1,
       });
       result = { id: entityId, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "deleteTopic" || body.type === "restoreTopic") {
+      const v = z
+        .object({
+          id: z.string().uuid(),
+          expectedVersion: z.number().int().positive(),
+        })
+        .parse(p);
+      const old = await own("library_topics", v.id);
+      check(old, v.expectedVersion);
+      if (
+        body.type === "deleteTopic" &&
+        (await repository.all("library_topics")).some(
+          (t) => t.parent_id === v.id && !t.archived_at,
+        )
+      )
+        throw new ReplicaQueryError(
+          409,
+          "하위 주제를 먼저 옮기거나 삭제해 주세요.",
+        );
+      if (
+        body.type === "restoreTopic" &&
+        old.parent_id &&
+        (await own("library_topics", old.parent_id)).archived_at
+      )
+        throw new ReplicaQueryError(409, "상위 주제를 먼저 복원해 주세요.");
+      edit("library_topics", old, {
+        archived_at: body.type === "deleteTopic" ? at : null,
+      });
     } else if (body.type === "upsertTopic") {
       const v = topicCommand.parse(p),
         old = v.id ? await own("library_topics", v.id) : null;
@@ -401,6 +429,7 @@ export async function prepareOptimistic(
         description: v.description,
         kdc_codes: v.kdcCodes,
         confirmed: true,
+        archived_at: old?.archived_at ?? null,
         version: (old?.version ?? 0) + 1,
         created_at: old?.created_at ?? at,
       });

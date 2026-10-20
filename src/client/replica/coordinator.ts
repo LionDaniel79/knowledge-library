@@ -76,6 +76,7 @@ export function createReplicaCoordinator(input: {
         options.rebuild ||
         !current?.complete ||
         !position ||
+        (current.changeOrderVersion !== 2 && BigInt(meta.floor) > 0n) ||
         BigInt(position.after) < BigInt(meta.floor);
       if (rebuild) {
         state = await bootstrapReplica({
@@ -92,7 +93,10 @@ export function createReplicaCoordinator(input: {
               remaining: Math.max(0, p.totalRows - p.rows),
             }),
         });
-      } else if (position!.after !== meta.head) {
+      } else if (
+        position!.after !== meta.head ||
+        current.changeOrderVersion !== 2
+      ) {
         update({ phase: "pulling", rows: current.rows, bytes: current.bytes });
         try {
           state = await pullReplica({
@@ -100,6 +104,7 @@ export function createReplicaCoordinator(input: {
             storage,
             transport,
             meta,
+            replayChanges: current.changeOrderVersion === undefined,
             signal: options.signal,
             onProgress: (rows, bytes) => update({ rows, bytes }),
           });

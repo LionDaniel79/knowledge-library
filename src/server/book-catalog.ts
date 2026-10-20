@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Book, BookPage, Format } from "../lib/domain";
 import { categories } from "../lib/catalog";
+import { bookSearchFields, compactSearchText } from "../lib/search-fields";
 import { LibraryError, type Executor } from "./library-store";
 import {
   attachCatalogCovers,
@@ -10,6 +11,7 @@ import {
 } from "./book-records";
 const queryInput = z.object({
   q: z.string().trim().max(200).default(""),
+  ...bookSearchFields,
   sort: z.enum(["newest", "oldest", "title", "author"]).default("newest"),
   category: z
     .enum([
@@ -58,6 +60,12 @@ export async function readBookPage(
     values.push(v);
     return "$" + values.length;
   };
+  for (const field of ["title", "author", "publisher", "isbn"] as const) {
+    if (q[field])
+      where.push(
+        `strpos(regexp_replace(lower(b.${field}),'[[:space:]　 ]+','','g'),${param(compactSearchText(q[field]))})>0`,
+      );
+  }
   if (q.q) {
     const text = param("%" + q.q.replace(/[\\%_]/g, "\\$&") + "%");
     const compactText = param(q.q.replace(/\s+/g, "").toLowerCase());
@@ -86,7 +94,7 @@ export async function readBookPage(
     );
   else if (q.filter !== "all") where.push(`${param(q.filter)}=ANY(b.formats)`);
   if (q.topic !== "all") {
-    const assigned = `SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=b.owner_id AND m.source_kind='book' AND m.source_id=b.id::text AND m.status<>'rejected'`;
+    const assigned = `SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=b.owner_id AND m.source_kind='book' AND m.source_id=b.id::text AND m.status<>'rejected' AND EXISTS(SELECT 1 FROM library_topics active_topic WHERE active_topic.owner_id=m.owner_id AND active_topic.id=m.topic_id AND coalesce(to_jsonb(active_topic)->>'archived_at','')='')`;
     where.push(
       q.topic === "unclassified"
         ? `NOT EXISTS(${assigned})`

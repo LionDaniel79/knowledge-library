@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { monthCells, type Note, type ReadingCycle } from "../lib/domain";
 import { LibraryError, type Executor } from "./library-store";
+import { memoSearchFields, compactSearchText } from "../lib/search-fields";
 import {
   compactBookSelect as bookSelect,
   attachCatalogCovers,
@@ -22,10 +23,12 @@ const querySchema = z.object({
     .union([z.enum(["all", "unclassified"]), z.string().uuid()])
     .default("all"),
   q: z.string().trim().max(200).default(""),
+  ...memoSearchFields,
   tag: z.string().max(80).default("all"),
   kind: z
     .enum([
       "all",
+      "unclassified",
       "thought",
       "note",
       "highlight",
@@ -63,8 +66,11 @@ export async function readNotePage(db: Executor, owner: string, raw: unknown) {
       p.to,
       p.category,
       p.topic,
+      compactSearchText(p.title),
+      compactSearchText(p.content),
+      compactSearchText(p.bookTitle),
     ];
-  const where = `n.owner_id=$1 AND ($2='' OR strpos(lower(n.title||' '||n.content||' '||array_to_string(n.tags,' ')||' '||coalesce(b.title,'')),lower($2))>0) AND ($3='all' OR ($3='untagged' AND cardinality(n.tags)=0) OR $3=ANY(n.tags)) AND ($4='all' OR n.kind=$4) AND ($5='all' OR ($5='unlinked' AND n.book_id IS NULL) OR n.book_id::text=$5) AND ($6='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text >=$6) AND ($7='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text <=$7) AND ($8='all' OR b.category=$8) AND ($9='all' OR ($9='unclassified' AND NOT EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.status<>'rejected')) OR EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.topic_id::text=$9 AND m.status<>'rejected'))`;
+  const where = `($10='' OR strpos(regexp_replace(lower(n.title),'[[:space:]　 ]+','','g'),$10)>0) AND ($11='' OR strpos(regexp_replace(lower(n.content),'[[:space:]　 ]+','','g'),$11)>0) AND ($12='' OR strpos(regexp_replace(lower(coalesce(b.title,'')),'[[:space:]　 ]+','','g'),$12)>0) AND n.owner_id=$1 AND ($2='' OR strpos(lower(n.title||' '||n.content||' '||array_to_string(n.tags,' ')||' '||coalesce(b.title,'')),lower($2))>0) AND ($3='all' OR ($3='untagged' AND cardinality(n.tags)=0) OR $3=ANY(n.tags)) AND ($4='all' OR ($4='unclassified' AND n.title='미분류 메모') OR n.kind=$4) AND ($5='all' OR ($5='unlinked' AND n.book_id IS NULL) OR n.book_id::text=$5) AND ($6='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text >=$6) AND ($7='' OR (n.created_at AT TIME ZONE 'Asia/Seoul')::date::text <=$7) AND ($8='all' OR b.category=$8) AND ($9='all' OR ($9='unclassified' AND NOT EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.status<>'rejected' AND EXISTS(SELECT 1 FROM library_topics active_topic WHERE active_topic.owner_id=m.owner_id AND active_topic.id=m.topic_id AND coalesce(to_jsonb(active_topic)->>'archived_at','')=''))) OR EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=n.owner_id AND m.source_kind='note' AND m.source_id=n.id::text AND m.topic_id::text=$9 AND m.status<>'rejected' AND EXISTS(SELECT 1 FROM library_topics active_topic WHERE active_topic.owner_id=m.owner_id AND active_topic.id=m.topic_id AND coalesce(to_jsonb(active_topic)->>'archived_at','')='')))`;
   const join =
     " FROM library_active_notes n LEFT JOIN library_books b ON b.owner_id=n.owner_id AND b.id=n.book_id WHERE ";
   const total = Number(
@@ -73,7 +79,7 @@ export async function readNotePage(db: Executor, owner: string, raw: unknown) {
   );
   const items = (
     await db.query(
-      `SELECT ${previewNoteSelect},b.category AS "bookCategory"${join}${where} ORDER BY n.updated_at DESC,n.id LIMIT $11 OFFSET $10`,
+      `SELECT ${previewNoteSelect},b.category AS "bookCategory"${join}${where} ORDER BY n.updated_at DESC,n.id LIMIT $14 OFFSET $13`,
       [...args, p.offset, p.limit],
     )
   ).rows as (Note & { bookCategory?: string | null })[];

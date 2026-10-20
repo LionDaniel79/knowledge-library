@@ -50,7 +50,9 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
       stamp =
         (cp.entityRevisions?.[e] ?? "0") +
         ":" +
-        (cp.localEntityRevisions?.[e] ?? 0);
+        (cp.localEntityRevisions?.[e] ?? 0) +
+        ":" +
+        (cp.entityWrites?.[e] ?? 0);
     let saved = await storage.readIndex(key, cp.generation);
     if (saved?.stamp !== stamp) {
       const rows = [];
@@ -90,7 +92,9 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         latest?.generation !== cp.generation ||
         (latest.entityRevisions?.[e] ?? "0") +
           ":" +
-          (latest.localEntityRevisions?.[e] ?? 0) !==
+          (latest.localEntityRevisions?.[e] ?? 0) +
+          ":" +
+          (latest.entityWrites?.[e] ?? 0) !==
           stamp
       )
         throw new ReplicaQueryError(
@@ -141,7 +145,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     if (!cp?.complete)
       throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
     const stamp = (state: typeof cp) =>
-      `${state?.entityRevisions?.[e] ?? "0"}:${state?.localEntityRevisions?.[e] ?? 0}`;
+      `${state?.entityRevisions?.[e] ?? "0"}:${state?.localEntityRevisions?.[e] ?? 0}:${state?.entityWrites?.[e] ?? 0}`;
     const rows = [];
     for await (const row of reader.records(e, cp.generation))
       rows.push(dateRow(row));
@@ -283,7 +287,12 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         "occurredOn",
       ].every((k) => a?.[k] === b[k]);
     return {
-      topics: (await all("library_topics")).map(camel),
+      topics: (await all("library_topics"))
+        .filter((t) => !t.archived_at)
+        .map(camel),
+      archivedTopics: (await all("library_topics"))
+        .filter((t) => !!t.archived_at)
+        .map(camel),
       memberships: (await all("library_topic_memberships"))
         .filter((m) =>
           m.source_kind === "note"
@@ -363,6 +372,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
           }
         : { ...defaultAiPolicy },
       requests: (await all("library_assist_requests"))
+        .filter((r) => !r.hidden_at)
         .sort(
           (a, b) =>
             binaryCompare(b.created_at, a.created_at) ||
@@ -540,7 +550,27 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         };
       } else if (path === "/api/book-relations") {
         const id = z.string().uuid().parse(p.get("bookId"));
-        value = [];
+        const source = await current("book", id);
+        const index = await reader.index();
+        const normalizedIsbn = (v: string) =>
+          v.replace(/[^0-9Xx]/g, "").toUpperCase();
+        const isbn = normalizedIsbn(source.isbn ?? "");
+        value = {
+          source,
+          localAvailable: false,
+          candidates: isbn
+            ? index.books
+                .map((r) => r.book)
+                .filter(
+                  (b) =>
+                    b.id !== id &&
+                    !index.excluded.includes(b.id) &&
+                    normalizedIsbn(b.isbn) === isbn,
+                )
+                .slice(0, 50)
+            : [],
+          relations: [],
+        };
         for (const r of (await all("library_book_relations"))
           .filter((r) => r.left_id === id || r.right_id === id)
           .sort(order)) {
@@ -580,7 +610,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             )
               freshness = "stale";
           }
-          (value as any[]).push({
+          (value as { relations: any[] }).relations.push({
             ...r,
             left_title: a.title,
             right_title: b.title,

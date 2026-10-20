@@ -63,7 +63,7 @@ import {
   PageSizeSelect,
   PageNavigation,
 } from "./list-pagination";
-import { BookIntroduction } from "./book-introduction";
+
 import { CatalogReviewPanel } from "./catalog-review-panel";
 import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
@@ -146,8 +146,7 @@ export function LibraryApp({
   const [noteTag, setNoteTag] = useState("all");
   const [noteType, setNoteType] = useState("all");
   const [noteBook, setNoteBook] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+
   const [importing, setImporting] = useState(false);
   const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
   const [exclusionsOpen, setExclusionsOpen] = useState(false);
@@ -200,15 +199,7 @@ export function LibraryApp({
   );
   const notePaging = useListPagination(
     "notes",
-    JSON.stringify([
-      view,
-      needle,
-      noteTag,
-      noteType,
-      noteBook,
-      dateFrom,
-      dateTo,
-    ]),
+    JSON.stringify([view, needle, noteTag, noteType, noteBook]),
   );
   const catalog = useBookCatalog({
     enabled:
@@ -371,8 +362,6 @@ export function LibraryApp({
       tag: noteTag,
       kind: noteType,
       book: noteBook,
-      from: dateFrom,
-      to: dateTo,
       limit: notePaging.size,
       offset: notePaging.offset,
     },
@@ -397,11 +386,12 @@ export function LibraryApp({
               (noteTag === "untagged"
                 ? !(n.tags ?? []).length
                 : n.tags?.includes(noteTag))) &&
-            (noteType === "all" || n.kind === noteType) &&
+            (noteType === "all" ||
+              (noteType === "unclassified"
+                ? n.title === "미분류 메모"
+                : n.kind === noteType)) &&
             (noteBook === "all" ||
-              (noteBook === "unlinked" ? !n.bookId : n.bookId === noteBook)) &&
-            (!dateFrom || n.createdAt.slice(0, 10) >= dateFrom) &&
-            (!dateTo || n.createdAt.slice(0, 10) <= dateTo),
+              (noteBook === "unlinked" ? !n.bookId : n.bookId === noteBook)),
         );
   const matchedCount = remote ? catalog.total : matchedBooks.length;
   const navigate = (next: View) => {
@@ -412,8 +402,6 @@ export function LibraryApp({
     setNoteTag("all");
     setNoteType("all");
     setNoteBook("all");
-    setDateFrom("");
-    setDateTo("");
     setQuery("");
     setFilter("all");
     bookPaging.setPage(0);
@@ -954,6 +942,7 @@ export function LibraryApp({
                   }}
                 >
                   <option value="all">모든 기록</option>
+                  <option value="unclassified">미분류 메모</option>
                   {Object.entries(kindName).map(([id, name]) => (
                     <option key={id} value={id}>
                       {name}
@@ -984,23 +973,6 @@ export function LibraryApp({
                   ))}
                 </select>
               </label>
-              <label>
-                작성일 시작
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-              </label>
-              <label>
-                작성일 끝
-                <input
-                  type="date"
-                  min={dateFrom}
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-              </label>
               <span>
                 {remote ? notePage.total : matchedNotes.length}개 기록
               </span>
@@ -1010,8 +982,6 @@ export function LibraryApp({
                   setNoteTag("all");
                   setNoteType("all");
                   setNoteBook("all");
-                  setDateFrom("");
-                  setDateTo("");
                   setQuery("");
                 }}
               >
@@ -1772,12 +1742,6 @@ export function LibraryApp({
               kind="book"
               id={detailBook.id}
               onChanged={refresh}
-            />
-          )}
-          {!preview && (
-            <BookIntroduction
-              key={detailBook.id + ":intro"}
-              id={detailBook.id}
             />
           )}
           <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />

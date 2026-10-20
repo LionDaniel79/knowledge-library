@@ -130,7 +130,7 @@ export async function readSyncChanges(
       throw new LibraryError(400, "동기화 순번을 확인해 주세요.");
     const events = (
       await tx.query(
-        "SELECT entity,record_key,revision::text FROM public.library_sync_changes WHERE owner_id=$1 AND revision>$2::bigint ORDER BY revision LIMIT $3",
+        "SELECT c.entity,c.record_key,c.revision::text FROM public.library_sync_changes c WHERE c.owner_id=$1 AND c.revision>$2::bigint ORDER BY c.revision LIMIT $3",
         [owner, position.after, v.limit],
       )
     ).rows;

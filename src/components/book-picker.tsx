@@ -86,7 +86,9 @@ export function BookPicker({
         </select>
       </label>
       {disabled && <input type="hidden" name="bookId" value={value} />}
-      {catalog.loading && <small role="status">책을 찾고 있습니다…</small>}
+      <small className="book-picker-status" role="status">
+        {catalog.loading ? "책을 찾고 있습니다…" : "\u00a0"}
+      </small>
       {catalog.error && (
         <p role="alert">
           {catalog.error}

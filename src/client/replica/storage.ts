@@ -42,6 +42,8 @@ export interface ReplicaBackend {
   close(): void;
 }
 export interface ReplicaGeneration extends ReplicaCheckpoint {
+  changeOrderVersion?: number;
+  entityWrites?: Partial<Record<SyncEntity, number>>;
   baseGeneration?: string | null;
   appliedRevision?: string;
   localRevision?: number;
@@ -318,6 +320,22 @@ export function createReplicaStorage(
                   : [],
               ),
             );
+            const s = await state(command.generation);
+            const entityWrites = { ...s.entityWrites };
+            for (const entity of new Set(
+              batch
+                .filter(
+                  (row, i) =>
+                    !previous[i] ||
+                    BigInt(row.revision) > BigInt(previous[i]!.revision),
+                )
+                .map((r) => r.entity),
+            ))
+              entityWrites[entity] = (entityWrites[entity] ?? 0) + 1;
+            await io.put("meta", stateKey(command.generation), {
+              ...s,
+              entityWrites,
+            });
             break;
           }
           case "checkpoint": {

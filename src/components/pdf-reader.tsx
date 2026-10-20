@@ -121,6 +121,14 @@ export function PdfReader({
             >
               PDF 파일 열기
             </a>
+            <a
+              className="primary"
+              href={`/api/pdf/${id}/file?download=1${pin}`}
+              download
+              aria-label="PDF를 기기에 저장"
+            >
+              저장
+            </a>
           </form>
         )}
       </header>

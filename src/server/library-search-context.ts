@@ -13,7 +13,7 @@ export async function listSearchTopics(
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   return (
     await db.query(
-      "SELECT id,name,parent_id,aliases FROM library_topics WHERE owner_id=$1 AND confirmed=true ORDER BY name,id",
+      "SELECT id,name,parent_id,aliases FROM library_topics WHERE owner_id=$1 AND confirmed=true AND coalesce(to_jsonb(library_topics)->>'archived_at','')='' ORDER BY name,id",
       [owner],
     )
   ).rows.map((t) => ({

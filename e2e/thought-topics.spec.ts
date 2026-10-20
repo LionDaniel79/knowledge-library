@@ -97,6 +97,10 @@ for (const width of [390, 1440])
       "내 정서 주제",
     );
     await page
+      .getByRole("dialog", { name: "주제 만들기" })
+      .getByRole("button", { name: "닫기", exact: true })
+      .click();
+    await page
       .getByRole("button", { name: "생각의 흐름", exact: true })
       .click();
     await expect(

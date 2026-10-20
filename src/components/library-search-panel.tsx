@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
+import { AdvancedSearch } from "./advanced-search";
 import {
   useListPagination,
   PageSizeSelect,
@@ -18,6 +19,7 @@ export function LibrarySearchPanel({
     [layer, setLayer] = useState("all"),
     [error, setError] = useState(""),
     [searched, setSearched] = useState(false);
+  const [advanced, setAdvanced] = useState<"book" | "note" | null>(null);
   const [topicId, setTopicId] = useState(""),
     [topicScope, setTopicScope] = useState("exact"),
     [expandAliases, setExpandAliases] = useState(false),
@@ -72,6 +74,17 @@ export function LibrarySearchPanel({
   }
   return (
     <section className="panel library-search-panel">
+      <div className="form-footer search-advanced-actions">
+        <button onClick={() => setAdvanced("book")}>도서 상세 검색</button>
+        <button onClick={() => setAdvanced("note")}>메모 상세 검색</button>
+      </div>
+      {advanced && (
+        <AdvancedSearch
+          mode={advanced}
+          onClose={() => setAdvanced(null)}
+          onOpen={onOpen}
+        />
+      )}
       <form
         className="thought-filters"
         onSubmit={(e) => {

@@ -39,6 +39,7 @@ export async function mutateTopics(
       topics: Record<string, any>[] = [];
     for (const name of names) {
       let t = existing.find((t) => t.name === name);
+      if (t?.archived_at) continue;
       if (!t) {
         t = (
           await tx.query(
@@ -82,14 +83,57 @@ export async function mutateTopics(
     return { count: topics.length };
   }
   let before: Record<string, any> | undefined, after: Record<string, any>;
-  if (type === "upsertTopic") {
+  if (type === "deleteTopic" || type === "restoreTopic") {
+    const p = z
+      .object({
+        id: z.string().uuid(),
+        expectedVersion: z.number().int().positive(),
+      })
+      .parse(payload);
+    before = await ownRow(tx, "library_topics", owner, p.id, true);
+    checkVersion(before, p.expectedVersion);
+    if (type === "deleteTopic") {
+      const child = (
+        await tx.query(
+          "SELECT id FROM library_topics WHERE owner_id=$1 AND parent_id=$2 AND archived_at IS NULL LIMIT 1",
+          [owner, p.id],
+        )
+      ).rows[0];
+      if (child)
+        throw new LibraryError(409, "하위 주제를 먼저 옮기거나 삭제해 주세요.");
+    } else if (before.parent_id) {
+      const parent = await ownRow(
+        tx,
+        "library_topics",
+        owner,
+        before.parent_id,
+      );
+      if (parent.archived_at)
+        throw new LibraryError(409, "상위 주제를 먼저 복원해 주세요.");
+    }
+    after = (
+      await tx.query(
+        `UPDATE library_topics SET archived_at=${type === "deleteTopic" ? "now()" : "NULL"},version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *`,
+        [owner, p.id],
+      )
+    ).rows[0];
+  } else if (type === "upsertTopic") {
     const p = topicCommand.parse(payload),
       id = p.id ?? entityId ?? randomUUID();
     if (p.id) {
       before = await ownRow(tx, "library_topics", owner, p.id, true);
       checkVersion(before, p.expectedVersion ?? 0);
+      if (before.archived_at)
+        throw new LibraryError(409, "삭제한 주제는 먼저 복원해 주세요.");
     }
-    if (p.parentId) await ownRow(tx, "library_topics", owner, p.parentId);
+    if (
+      p.parentId &&
+      (await ownRow(tx, "library_topics", owner, p.parentId)).archived_at
+    )
+      throw new LibraryError(
+        409,
+        "삭제한 주제를 상위 주제로 지정할 수 없습니다.",
+      );
     const topics = (
       await tx.query(
         "SELECT id,parent_id FROM library_topics WHERE owner_id=$1",
@@ -128,7 +172,8 @@ export async function mutateTopics(
     ).rows[0];
   } else if (type === "assignTopic") {
     const p = assignmentCommand.parse(payload);
-    await ownRow(tx, "library_topics", owner, p.topicId);
+    if ((await ownRow(tx, "library_topics", owner, p.topicId)).archived_at)
+      throw new LibraryError(409, "삭제한 주제는 먼저 복원해 주세요.");
     if (p.sourceKind === "pdf_chunk")
       throw new LibraryError(
         400,

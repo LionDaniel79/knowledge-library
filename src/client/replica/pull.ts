@@ -1,4 +1,8 @@
-import { parseSyncCursor, type SyncRow } from "../../lib/replica/contracts";
+import {
+  createSyncCursor,
+  parseSyncCursor,
+  type SyncRow,
+} from "../../lib/replica/contracts";
 import type { ReplicaGeneration, ReplicaStorage } from "./storage";
 import { SyncHttpError, type SyncTransport, type SyncMeta } from "./transport";
 import { checkSyncAbort } from "./values";
@@ -9,13 +13,19 @@ export async function pullReplica(input: {
   transport: SyncTransport;
   signal?: AbortSignal;
   meta?: SyncMeta;
+  replayChanges?: boolean;
   onProgress?: (rows: number, bytes: number) => void;
 }): Promise<ReplicaGeneration> {
   const { owner, storage, transport, signal } = input;
   if (storage.owner !== owner) throw Error("서재 계정이 다릅니다.");
   const current = await storage.checkpoint();
   if (!current?.complete) throw Error("전체 자료를 먼저 내려받아 주세요.");
-  let state: ReplicaGeneration = current;
+  let state: ReplicaGeneration = input.replayChanges
+    ? {
+        ...current,
+        cursor: createSyncCursor({ owner, epoch: current.epoch, after: "0" }),
+      }
+    : current;
   const meta = input.meta ?? (await transport.meta(false, signal));
   if (meta.epoch !== state.epoch)
     throw new SyncHttpError(409, "자료 세대가 변경되었습니다.");
@@ -24,6 +34,13 @@ export async function pullReplica(input: {
     BigInt(meta.floor)
   )
     throw new SyncHttpError(410, "기기 자료를 다시 구성해야 합니다.");
+  if (input.replayChanges) {
+    await storage.setCheckpoint(state.generation, {
+      cursor: state.cursor,
+      changeOrderVersion: 1,
+    });
+    state = { ...state, changeOrderVersion: 1 };
+  }
   let retries = 0;
   for (let pages = 0; pages < 1000; pages++) {
     checkSyncAbort(signal);
@@ -94,7 +111,10 @@ export async function pullReplica(input: {
         | "appliedRevision"
       > = {
         cursor: page.cursor,
-        appliedRevision: next.after,
+        appliedRevision:
+          BigInt(current.appliedRevision ?? "0") > BigInt(next.after)
+            ? current.appliedRevision
+            : next.after,
         rows: state.rows + countDelta,
         bytes: state.bytes + byteDelta,
         lastSyncedAt: new Date().toISOString(),
@@ -107,7 +127,12 @@ export async function pullReplica(input: {
       state = { ...state, ...patch };
       input.onProgress?.(state.rows, state.bytes);
       retries = 0;
-      if (!page.hasMore) return state;
+      if (!page.hasMore) {
+        await storage.setCheckpoint(state.generation, {
+          changeOrderVersion: 2,
+        });
+        return (await storage.checkpoint())!;
+      }
     } catch (error) {
       if (
         !(error instanceof SyncHttpError) ||

@@ -12,12 +12,22 @@ import { migrateLegacyDrafts } from "./conflicts";
 import { withReplicaLeader } from "./leadership";
 import { clearStartup } from "./startup-cache";
 export async function verifiedSyncOwner(signal?: AbortSignal): Promise<string> {
-  const response = await fetch("/api/sync/session", {
+  const requestSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(20000)])
+    : AbortSignal.timeout(20000);
+  const init: RequestInit = {
     cache: "no-store",
     credentials: "same-origin",
     redirect: "error",
-    signal,
-  });
+    signal: requestSignal,
+  };
+  let response = await fetch("/api/sync/session", init);
+  if (response.status === 401) {
+    await response.body?.cancel();
+    const renewed = await fetch("/api/auth/get-session", init);
+    await renewed.body?.cancel();
+    response = await fetch("/api/sync/session", init);
+  }
   const body = await response.json();
   if (!response.ok)
     throw new SyncHttpError(

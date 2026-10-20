@@ -4,6 +4,20 @@ import {
   createMemoryReplica,
 } from "../src/client/replica/memory-storage";
 import { withReplicaLeader } from "../src/client/replica/leadership";
+it("recovers an expired lease even when a suspended tab retains its browser lock", async () => {
+  const storage = createMemoryReplica("owner");
+  const request = vi.fn(async (_name, options, fn) => {
+    if (!options.ifAvailable)
+      throw Error("Would wait forever behind a frozen browser tab");
+    return fn(null);
+  });
+  expect(
+    await withReplicaLeader("owner", async () => "resumed", {
+      storage,
+      locks: { request } as any,
+    }),
+  ).toBe("resumed");
+});
 it("serializes independent tabs with a shared store even without Web Locks", async () => {
   const backend = createMemoryBackend(),
     a = createMemoryReplica("owner", backend),

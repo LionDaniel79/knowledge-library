@@ -12,6 +12,7 @@ import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { z } from "zod";
+import { pdfDownloadDisposition } from "@/lib/pdf-download";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(
@@ -78,7 +79,10 @@ export async function GET(
       "Content-Length": String(end - start + 1),
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store",
-      "Content-Disposition": "inline",
+      "Content-Disposition":
+        new URL(request.url).searchParams.get("download") === "1"
+          ? pdfDownloadDisposition(doc.relative_path)
+          : "inline",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'",
     });

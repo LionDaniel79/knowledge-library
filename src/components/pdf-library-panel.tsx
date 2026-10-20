@@ -159,7 +159,6 @@ export function PdfLibraryPanel({
   }
   return (
     <section className="pdf-library">
-      {!documentId && <PdfConnection />}
       {!documentId && <PcAccess />}
       {!documentId && (
         <>
@@ -178,7 +177,14 @@ export function PdfLibraryPanel({
             </button>
           </div>
           {summary && <PdfProgress summary={summary} />}
-          <LibraryOperationsPanel initiallyOpen={initialOperationsOpen} />
+          <details
+            className="pdf-maintenance"
+            open={initialOperationsOpen || undefined}
+          >
+            <summary>PDF 관리</summary>
+            <PdfConnection />
+            <LibraryOperationsPanel initiallyOpen={initialOperationsOpen} />
+          </details>
         </>
       )}
       <form

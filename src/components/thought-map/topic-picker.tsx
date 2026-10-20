@@ -1,6 +1,9 @@
 "use client";
 import type { Membership, Topic } from "@/lib/thought-map/types";
-export type ThoughtSend = (type: string, payload: unknown) => Promise<void>;
+export type ThoughtSend = (
+  type: string,
+  payload: unknown,
+) => Promise<void | boolean>;
 export function TopicPicker({
   topics,
   memberships,

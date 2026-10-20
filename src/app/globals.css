@@ -3333,6 +3333,51 @@ textarea {
   min-width: 0;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.modal.memo-editor {
+  position: fixed;
+  inset-block-start: 8px;
+  inset-block-end: auto;
+  margin: 0 auto;
+  height: calc(100dvh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-anchor: none;
+}
+.book-picker-status {
+  min-height: 1.5em;
+}
+.advanced-search-form {
+  display: grid;
+  gap: 12px;
+}
+.advanced-search-form label {
+  display: block;
+  min-width: 0;
+}
+.advanced-search-form input,
+.advanced-search-form select {
+  width: 100%;
+  margin-top: 6px;
+  min-height: 44px;
+}
+.advanced-search-results article {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+.advanced-search-results p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-block: 6px;
+}
+.search-advanced-actions {
+  margin-bottom: 12px;
+}
+.pdf-maintenance {
+  margin-block: 8px;
+}
+.topic-row {
+  flex-wrap: wrap;
 }
 .modal > header {
   position: sticky;

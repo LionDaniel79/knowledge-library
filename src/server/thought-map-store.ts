@@ -144,7 +144,8 @@ export function createThoughtMapStore(db: Database) {
       const read = async (table: string) =>
         (await tx.query(`SELECT * FROM ${table} WHERE owner_id=$1`, [owner]))
           .rows;
-      const topics = (await read("library_topics")).map(dto),
+      const allTopics = (await read("library_topics")).map(dto),
+        topics = allTopics.filter((t) => !t.archivedAt),
         memberships = (
           await tx.query(
             "SELECT m.* FROM library_topic_memberships m WHERE m.owner_id=$1 AND (m.source_kind<>'book' OR EXISTS(SELECT 1 FROM library_active_books b WHERE b.owner_id=m.owner_id AND b.id::text=m.source_id))",
@@ -176,6 +177,7 @@ export function createThoughtMapStore(db: Database) {
         feedback = (await read("library_analysis_feedback")).map(dto);
       return {
         topics,
+        archivedTopics: allTopics.filter((t) => !!t.archivedAt),
         memberships: memberships.filter(
           (m) => m.sourceKind !== "note" || records.has(m.sourceId),
         ),

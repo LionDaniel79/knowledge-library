@@ -241,6 +241,7 @@ export function LibraryForm({
   return (
     <Modal
       title={heading}
+      className={editor.kind === "note" ? "memo-editor" : ""}
       canClose={!busy}
       onClose={() => {
         if (!busy) onClose();
@@ -445,14 +446,30 @@ export function LibraryForm({
                 </p>
               )}
               <label>
-                제목
+                내용
+                <textarea
+                  name="content"
+                  autoFocus={!editor.note}
+                  readOnly={verifiedQuote}
+                  required
+                  rows={7}
+                  maxLength={50000}
+                  defaultValue={editor.note?.content}
+                  placeholder="책에서 만난 문장과 나의 생각을 구분해 남겨 보세요."
+                />
+              </label>
+              <label>
+                제목 · 선택
                 <input
                   name="title"
-                  required
                   maxLength={300}
-                  defaultValue={editor.note?.title}
-                  placeholder="지금 남겨 두고 싶은 생각"
-                  autoFocus
+                  aria-label="제목"
+                  defaultValue={
+                    editor.note?.title === "미분류 메모"
+                      ? ""
+                      : editor.note?.title
+                  }
+                  placeholder="비워두면 미분류 메모로 저장"
                 />
               </label>
               {verifiedQuote && editor.kind === "note" && (
@@ -540,18 +557,7 @@ export function LibraryForm({
                   ),
                 )}
               </datalist>
-              <label>
-                내용
-                <textarea
-                  name="content"
-                  readOnly={verifiedQuote}
-                  required
-                  rows={7}
-                  maxLength={50000}
-                  defaultValue={editor.note?.content}
-                  placeholder="책에서 만난 문장과 나의 생각을 구분해 남겨 보세요."
-                />
-              </label>
+
               {noteKind === "highlight" && (
                 <p className="form-hint">
                   책에서 확인한 문장과 쪽수를 적어 주세요.
@@ -683,17 +689,6 @@ export function LibraryForm({
               onClick={() => setConfirmDelete(true)}
             >
               삭제
-            </button>
-          )}
-          {onSaveDraft && (
-            <button
-              type="submit"
-              name="saveMode"
-              value="draft"
-              className="secondary"
-              disabled={busy}
-            >
-              기기에 임시 저장
             </button>
           )}
           <button

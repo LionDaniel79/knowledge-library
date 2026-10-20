@@ -105,6 +105,7 @@ export interface LocalAi {
   unload(): Promise<void>;
 }
 export const topicSchema = z.object({
+  archivedAt: z.string().nullable().optional(),
   id: z.string().uuid(),
   name: z.string(),
   parentId: z.string().uuid().nullable(),
@@ -191,6 +192,7 @@ export interface TimelineFilter {
 }
 export interface ThoughtMapSnapshot {
   topics: Topic[];
+  archivedTopics?: Topic[];
   memberships: Membership[];
   topicLinks: TopicLink[];
   events: ThoughtEvent[];

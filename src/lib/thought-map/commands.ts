@@ -10,6 +10,8 @@ export const thoughtCommand = z.object({
   type: z.enum([
     "setThoughtEvent",
     "upsertTopic",
+    "deleteTopic",
+    "restoreTopic",
     "proposeTopics",
     "assignTopic",
     "linkTopics",

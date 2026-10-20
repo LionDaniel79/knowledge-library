@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { categories } from "../../lib/catalog";
 import {
+  bookSearchFields,
+  memoSearchFields,
+  containsSearchField,
+} from "../../lib/search-fields";
+import {
   monthCells,
   type Book,
   type Note,
@@ -61,6 +66,7 @@ const paging = {
 };
 const bookQuery = z.object({
   q: z.string().trim().max(200).default(""),
+  ...bookSearchFields,
   sort: z.enum(["newest", "oldest", "title", "author"]).default("newest"),
   category: z
     .enum([
@@ -160,6 +166,12 @@ export async function queryBooks(
     .map(([id]) => id as string);
   let rows = activeBooks(data).filter(
     ({ book: b }) =>
+      ["title", "author", "publisher", "isbn"].every((field) =>
+        containsSearchField(
+          b[field as keyof Book] as string,
+          q[field as keyof typeof bookSearchFields],
+        ),
+      ) &&
       (!q.q ||
         [
           b.title,
@@ -245,6 +257,7 @@ export function queryNotes(data: LocalIndex, input: unknown) {
           .default("all"),
         topic: str("all"),
         q: z.string().trim().max(200).default(""),
+        ...memoSearchFields,
         tag: str("all", 80),
         kind: str("all"),
         book: str("all"),
@@ -267,7 +280,13 @@ export function queryNotes(data: LocalIndex, input: unknown) {
             .includes(needle)) &&
         (p.tag === "all" ||
           (p.tag === "untagged" ? !n.tags?.length : n.tags?.includes(p.tag))) &&
-        (p.kind === "all" || n.kind === p.kind) &&
+        containsSearchField(n.title, p.title) &&
+        containsSearchField(n.content, p.content) &&
+        containsSearchField(b?.title, p.bookTitle) &&
+        (p.kind === "all" ||
+          (p.kind === "unclassified"
+            ? n.title === "미분류 메모"
+            : n.kind === p.kind)) &&
         (p.book === "all" ||
           (p.book === "unlinked" ? !n.bookId : n.bookId === p.book)) &&
         (!p.from || date >= p.from) &&

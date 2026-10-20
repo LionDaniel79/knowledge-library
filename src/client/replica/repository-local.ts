@@ -61,14 +61,17 @@ const indexStamp = (state: {
   localRevision?: number;
   localEntityRevisions?: Partial<Record<SyncEntity, number>>;
   entityRevisions?: Partial<Record<SyncEntity, string>>;
+  entityWrites?: Partial<Record<SyncEntity, number>>;
 }) =>
-  JSON.stringify(
-    indexEntities.map((e) => [
+  JSON.stringify([
+    "field-search-and-archives-v2",
+    ...indexEntities.map((e) => [
       e,
       state.entityRevisions?.[e] ?? "0",
       state.localEntityRevisions?.[e] ?? 0,
+      state.entityWrites?.[e] ?? 0,
     ]),
-  );
+  ]);
 export function createLocalReplicaRepository(
   storage: ReplicaStorage,
   background = false,
@@ -220,9 +223,14 @@ export function createLocalReplicaRepository(
           source: r.source,
           explanation: r.explanation,
         })),
-      topics: get("library_topics"),
+      topics: get("library_topics").filter((t) => !t.archived_at),
       topicLinks: get("library_topic_links"),
-      memberships: get("library_topic_memberships"),
+      memberships: get("library_topic_memberships").filter(
+        (m) =>
+          !get("library_topics").some(
+            (t) => t.id === m.topic_id && t.archived_at,
+          ),
+      ),
       entries: [],
     };
     const documents = get("library_documents"),

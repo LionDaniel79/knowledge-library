@@ -379,6 +379,18 @@ export function AssistPanel({
                     않습니다.
                   </p>
                 )}
+                {!["queued", "claimed", "sending", "cost_unknown"].includes(
+                  r.status,
+                ) && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label="도움 요청 기록 삭제"
+                    onClick={() => void act("hide", { id: r.id })}
+                  >
+                    삭제
+                  </button>
+                )}
                 {["queued", "claimed"].includes(r.status) && (
                   <button
                     disabled={busy}

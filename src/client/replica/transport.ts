@@ -149,6 +149,12 @@ export function createSyncTransport(
     input: RequestInfo | URL,
     init: RequestInit,
   ) {
+    init = {
+      ...init,
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)])
+        : AbortSignal.timeout(30000),
+    };
     await ensureSession(init.signal ?? undefined);
     let response = await fetcher(input, init);
     if (owner && response.status === 401) {

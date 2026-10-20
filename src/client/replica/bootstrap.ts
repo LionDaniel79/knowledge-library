@@ -248,6 +248,7 @@ export async function bootstrapReplica(input: {
     state = {
       ...state,
       complete: true,
+      changeOrderVersion: 2,
       appliedRevision: parseSyncCursor(state.cursor, owner, meta.epoch).after,
       lastSyncedAt: new Date().toISOString(),
       rows: Object.values(local.entities).reduce((n, e) => n + e.rows, 0),
@@ -255,6 +256,7 @@ export async function bootstrapReplica(input: {
     await storage.transaction((tx) => {
       tx.setCheckpoint(generation, {
         complete: true,
+        changeOrderVersion: 2,
         appliedRevision: state!.appliedRevision,
         lastSyncedAt: state!.lastSyncedAt,
         rows: state!.rows,
