@@ -4,6 +4,12 @@ test("Google login replaces password signup and can retry a failed provider requ
   page,
 }) => {
   let attempts = 0;
+  // This checks the login panel and failed-provider retry. Make the signed-out
+  // response deterministic; middleware access checks have their own tests.
+  for (const path of ["/api/sync/session", "/api/auth/get-session"])
+    await page.route("**" + path, (route) =>
+      route.fulfill({ status: 401, json: { error: "로그인이 필요합니다." } }),
+    );
   await page.route("**/api/auth/sign-in/social", async (route) => {
     expect(route.request().postDataJSON().provider).toBe("google");
     attempts++;
