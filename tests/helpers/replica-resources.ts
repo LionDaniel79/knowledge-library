@@ -220,7 +220,10 @@ export async function resourceFixture(provided?: ReplicaStorage) {
       },
     ]);
   }
-  await s.setCheckpoint(g.generation, { complete: true });
+  await s.setCheckpoint(g.generation, {
+    complete: true,
+    changeOrderVersion: 2,
+  });
   await s.promoteGeneration(g.generation);
   return {
     s,

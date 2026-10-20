@@ -327,7 +327,10 @@ export function createReplicaStorage(
                 .filter(
                   (row, i) =>
                     !previous[i] ||
-                    BigInt(row.revision) > BigInt(previous[i]!.revision),
+                    BigInt(row.revision) > BigInt(previous[i]!.revision) ||
+                    (row.revision === previous[i]!.revision &&
+                      (row.sha256 !== previous[i]!.sha256 ||
+                        row.deleted !== previous[i]!.deleted)),
                 )
                 .map((r) => r.entity),
             ))

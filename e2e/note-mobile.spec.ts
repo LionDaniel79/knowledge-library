@@ -121,14 +121,13 @@ test("one body tap opens immediately, fetches once and presents a fitting mobile
       .evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
   ).toBeGreaterThanOrEqual(16);
   await dialog.getByRole("button", { name: "닫기", exact: true }).tap();
-  const start = await page
-    .getByLabel("작성일 시작", { exact: true })
-    .boundingBox();
+  await expect(page.getByLabel("작성일 시작", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("작성일 끝", { exact: true })).toHaveCount(0);
   const kind = await page
     .getByRole("combobox", { name: "종류", exact: true })
     .boundingBox();
-  expect(Math.abs(start!.height - kind!.height)).toBeLessThanOrEqual(1);
-  expect(start!.x + start!.width).toBeLessThanOrEqual(390);
+  expect(kind!.height).toBeGreaterThanOrEqual(44);
+  expect(kind!.x + kind!.width).toBeLessThanOrEqual(390);
 });
 test("trash requires a second confirmation and sends only the shown trashed versions", async ({
   page,

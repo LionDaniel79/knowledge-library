@@ -52,6 +52,10 @@ for (const width of [360, 1440]) {
     await page.getByText("주제 만들기·수정", { exact: true }).click();
     const draft = page.getByLabel("주제 이름", { exact: true });
     await draft.fill("작성 중인 공감 주제");
+    await page
+      .getByRole("dialog", { name: "주제 만들기" })
+      .getByRole("button", { name: "닫기", exact: true })
+      .click();
     const help = page.getByRole("button", { name: "사용법", exact: true });
     const before = requests;
     await help.click();
@@ -81,10 +85,10 @@ for (const width of [360, 1440]) {
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible();
     await expect(help).toBeFocused();
-    await expect(draft).toHaveValue("작성 중인 공감 주제");
     expect(requests).toBe(before);
     await help.click();
     await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+    await page.getByText("주제 만들기·수정", { exact: true }).click();
     await expect(draft).toHaveValue("작성 중인 공감 주제");
   });
 }

@@ -20,6 +20,7 @@ export async function pullReplica(input: {
   if (storage.owner !== owner) throw Error("서재 계정이 다릅니다.");
   const current = await storage.checkpoint();
   if (!current?.complete) throw Error("전체 자료를 먼저 내려받아 주세요.");
+  const repairing = !!input.replayChanges || current.changeOrderVersion === 1;
   let state: ReplicaGeneration = input.replayChanges
     ? {
         ...current,
@@ -82,9 +83,19 @@ export async function pullReplica(input: {
         );
         if (old && BigInt(old.revision) > BigInt(row.revision)) continue;
         if (old?.revision === row.revision) {
-          if (old.sha256 !== row.sha256 || old.deleted !== row.deleted)
-            throw Error("같은 순번의 내용이 다릅니다.");
-          continue;
+          if (old.sha256 === row.sha256 && old.deleted === row.deleted)
+            continue;
+          if (!repairing) throw Error("같은 순번의 내용이 다릅니다.");
+          // During a one-time legacy repair the authenticated current server
+          // projection is authoritative. Values still pass full hash/part
+          // validation before staging; separate outbox overlays are untouched.
+          console.warn("Recovered legacy device projection", {
+            entity: row.entity,
+            key: row.key,
+            revision: row.revision,
+            previousSha256: old.sha256,
+            sha256: row.sha256,
+          });
         }
         rows.push(row);
         countDelta += (row.deleted ? 0 : 1) - (old && !old.deleted ? 1 : 0);

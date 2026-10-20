@@ -157,7 +157,7 @@ export function TopicBrowser({
             </button>
           </div>
         ))}
-        <button onClick={() => edit(null)}>주제 만들기·수정</button>
+        <button onClick={() => setFormOpen(true)}>주제 만들기·수정</button>
         {formOpen && (
           <Modal
             title={editing ? "주제 수정" : "주제 만들기"}

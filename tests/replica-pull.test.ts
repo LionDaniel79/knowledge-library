@@ -25,6 +25,48 @@ function edited(
     sha256: hash(inline),
   };
 }
+it("repairs a legacy same-revision device projection only during attested history repair and preserves unsent input", async () => {
+  const f = fixtureTransport("owner", false),
+    s = createMemoryReplica("owner");
+  const cp = await bootstrapReplica({
+    owner: "owner",
+    storage: s,
+    transport: f.transport,
+  });
+  const row = f.rows.find((r) => r.entity === "library_books")!;
+  await s.stageRows(cp.generation, [
+    edited(row, row.revision, { title: "Old device representation" }),
+  ]);
+  const requestId = crypto.randomUUID();
+  await s.putOutbox({
+    owner: "owner",
+    requestId,
+    entityId: crypto.randomUUID(),
+    baseVersion: null,
+    baseRevision: null,
+    family: "library",
+    command: { content: "Unsent personal memo" },
+    order: 1,
+    dependsOn: [],
+    state: "pending",
+  });
+  const base = f.transport.changes;
+  f.transport.changes = async (epoch, cursor) => ({
+    ...(await base(epoch, cursor)),
+    rows: [row],
+  });
+  await expect(
+    pullReplica({ owner: "owner", storage: s, transport: f.transport }),
+  ).rejects.toThrow("같은 순번");
+  await pullReplica({
+    owner: "owner",
+    storage: s,
+    transport: f.transport,
+    replayChanges: true,
+  });
+  expect((await s.readRow(row.entity, row.key))?.sha256).toBe(row.sha256);
+  expect((await s.listOutbox())[0].requestId).toBe(requestId);
+});
 it("applies delete then restoration and exclusions, ignores repeated/stale rows, and never resurrects an old response", async () => {
   const f = fixtureTransport("owner", false),
     s = createMemoryReplica("owner");
