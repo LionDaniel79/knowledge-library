@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/pdf": [
+      "./scripts/search_pdf_pages.mjs",
+      "./src/local/pdf-search.mjs",
+    ],
+  },
   outputFileTracingExcludes: {
     "/*": [
       "./private-data/**/*",

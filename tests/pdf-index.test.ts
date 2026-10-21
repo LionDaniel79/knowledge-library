@@ -32,7 +32,7 @@ it("keeps indexed quotations searchable when the external drive is disconnected"
     },
   ]);
 });
-it("streams ranked FTS results without sorting the entire external-drive match set", () => {
+it("streams FTS hits in page order without computing ranks for the entire match set", () => {
   process.env.LIBRARY_PDF_INDEX = file;
   const fixture = new DatabaseSync(file);
   fixture.exec(
@@ -56,7 +56,33 @@ it("streams ranked FTS results without sorting the entire external-drive match s
     expect(
       plan.some((r) => String(r.detail).includes("TEMP B-TREE FOR ORDER BY")),
     ).toBe(false);
+    expect(captured).toContain("ORDER BY pages_fts.rowid");
     expect(searchPdfPages("이야기를", "paper")).toEqual([]);
+  } finally {
+    spy.mockRestore();
+    fixture.close();
+  }
+});
+it("streams two-character hits without sorting every matching page first", () => {
+  process.env.LIBRARY_PDF_INDEX = file;
+  const fixture = new DatabaseSync(file),
+    original = DatabaseSync.prototype.prepare;
+  fixture.exec(
+    "CREATE INDEX documents_progress ON documents(processing_scope,status,id); CREATE INDEX pages_document ON pages(document_id,page_number)",
+  );
+  let captured = "";
+  const spy = vi
+    .spyOn(DatabaseSync.prototype, "prepare")
+    .mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (sql.startsWith("SELECT p.document_id")) captured = sql;
+      return original.call(this, sql);
+    });
+  try {
+    expect(searchPdfPages("상담")).toHaveLength(1);
+    const plan = fixture.prepare("EXPLAIN QUERY PLAN " + captured).all("상담");
+    expect(
+      plan.some((r) => String(r.detail).includes("TEMP B-TREE FOR ORDER BY")),
+    ).toBe(false);
   } finally {
     spy.mockRestore();
     fixture.close();

@@ -1,11 +1,8 @@
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
-import {
-  searchPdfPages,
-  withPdfIndex,
-  pdfDocumentDetail,
-} from "@/server/pdf-index";
+import { withPdfIndex, pdfDocumentDetail } from "@/server/pdf-index";
+import { searchPdfPagesInWorker } from "@/server/pdf-search";
 import { readVisiblePdfSummary } from "@/server/pdf-visible-summary";
 import { z } from "zod";
 import { existsSync } from "node:fs";
@@ -30,6 +27,7 @@ export async function GET(request: Request) {
         (!process.env.LIBRARY_PDF_INDEX ||
           !existsSync(process.env.LIBRARY_PDF_INDEX)) &&
         pc &&
+        privatePcOrigin(process.env.APP_ORIGIN) !== pc &&
         new URL(request.url).origin !== pc
       ) {
         // The browser navigates in the same window. No public proxy or new
@@ -39,7 +37,9 @@ export async function GET(request: Request) {
           { headers: { "Cache-Control": "private, no-store" } },
         );
       }
-      const hits = searchPdfPages(query, id ?? undefined);
+      const hits = await searchPdfPagesInWorker(query, id ?? undefined, {
+        signal: request.signal,
+      });
       const owned = await database.query(
         'SELECT d.id,d.book_id AS "bookId",b.title,b.author FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=ANY($2::uuid[])',
         [owner, hits.map((h) => h.documentId)],
@@ -49,7 +49,6 @@ export async function GET(request: Request) {
         hits: hits
           .filter((h) => map.has(h.documentId))
           .map((h) => ({ ...h, ...map.get(h.documentId) })),
-        summary: await readVisiblePdfSummary(database, owner),
       };
     } else if (mode === "detail" && id) {
       const owned = (

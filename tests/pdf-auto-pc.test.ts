@@ -59,3 +59,13 @@ it("never creates a redirect loop or sends a search to an unconfirmed host", asy
   );
   expect(r.status).toBeGreaterThanOrEqual(400);
 });
+it("does not route a private server back to itself when its reverse proxy uses a loopback URL", async () => {
+  vi.stubEnv("LIBRARY_PDF_INDEX", "");
+  vi.stubEnv("LIBRARY_PC_ORIGIN", "https://library.example.ts.net");
+  vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "true");
+  vi.stubEnv("APP_ORIGIN", "https://library.example.ts.net");
+  expect(
+    (await GET(new Request("http://127.0.0.1:3001/api/pdf?mode=search&q=test")))
+      .status,
+  ).toBeGreaterThanOrEqual(400);
+});

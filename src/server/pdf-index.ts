@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { LibraryError } from "./library-store";
 import { pdfWorkerStatus } from "./pdf-job-status";
+import { searchPdfRows } from "../local/pdf-search.mjs";
 export function withPdfIndex<T>(fn: (db: DatabaseSync) => T): T {
   const path = process.env.LIBRARY_PDF_INDEX;
   if (!path || !existsSync(path))
@@ -119,41 +120,7 @@ export function searchPdfPages(query: string, documentId?: string) {
   const terms = query.trim().split(/\s+/).filter(Boolean).slice(0, 8);
   if (!terms.length || query.length > 200 || terms.some((t) => t.length < 2))
     throw new LibraryError(400, "검색어를 두 글자 이상 입력해 주세요.");
-  return withPdfIndex((db) => {
-    const useFts = terms.every((t) => [...t].length >= 3);
-    const where = useFts
-      ? "pages_fts MATCH ?"
-      : terms.map(() => "instr(lower(p.text),lower(?))>0").join(" AND ");
-    const args = useFts
-      ? [terms.map((t) => '"' + t.replaceAll('"', '""') + '"').join(" AND ")]
-      : terms;
-    if (documentId) args.push(documentId);
-    // FTS5 can stream by rank and stop at 40 eligible pages. Extra tie-break
-    // columns force an all-matches sort and random reads on the external drive.
-    const sql = `SELECT p.document_id AS documentId,p.page_number AS pageNumber,p.text,p.method,d.signature,d.title,d.status FROM pages p JOIN documents d ON d.id=p.document_id ${useFts ? "JOIN pages_fts ON pages_fts.rowid=p.id" : ""} WHERE ${where} AND ${searchablePdfScope(db)} ${documentId ? "AND d.id=?" : ""} ORDER BY ${useFts ? "pages_fts.rank" : "p.document_id,p.page_number"} LIMIT 40`;
-    return db
-      .prepare(sql)
-      .all(...args)
-      .map((r) => {
-        const text = String(r.text);
-        const positions = terms
-          .map((t) => text.toLocaleLowerCase().indexOf(t.toLocaleLowerCase()))
-          .filter((n) => n >= 0);
-        const start = Math.max(
-          0,
-          (positions.length ? Math.min(...positions) : 0) - 100,
-        );
-        return {
-          documentId: String(r.documentId),
-          status: String(r.status),
-          pageNumber: Number(r.pageNumber),
-          signature: String(r.signature),
-          extractionMethod: String(r.method),
-          title: String(r.title),
-          quote: text.slice(start, start + 900),
-        };
-      });
-  });
+  return withPdfIndex((db) => searchPdfRows(db, query, documentId));
 }
 export function readPdfPage(id: string, page: number) {
   return withPdfIndex((db) => {
