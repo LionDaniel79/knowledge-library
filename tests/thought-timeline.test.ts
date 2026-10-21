@@ -10,7 +10,7 @@ import type {
   ThoughtMapSnapshot,
   ThoughtEvent,
 } from "../src/lib/thought-map/types";
-it("filters timeline using current confirmed topic membership, sorting unknown dates last", () => {
+it("browses active topics without approving suggested classifications and sorts unknown dates last", () => {
   const topic = randomUUID(),
     notes = [0, 1, 2].map(
       (i) =>
@@ -45,6 +45,15 @@ it("filters timeline using current confirmed topic membership, sorting unknown d
     timelineEvents(notes, state, topic, "all").map((e) => e.noteId),
   ).toEqual([notes[1].id, notes[2].id]);
   state.topics[0].confirmed = false;
+  state.memberships[1].status = "suggested";
+  expect(
+    timelineEvents(notes, state, topic, "all").map((e) => e.noteId),
+  ).toEqual([notes[1].id, notes[2].id]);
+  expect(state.memberships[1].status).toBe("suggested");
+  expect(
+    timelineEvents(notes, state, "", "all", "newest").map((e) => e.noteId),
+  ).toEqual([notes[0].id, notes[1].id, notes[2].id]);
+  state.topics[0].archivedAt = "2026-10-21T00:00:00Z";
   expect(timelineEvents(notes, state, topic, "all")).toEqual([]);
   expect(timelineEvents(notes, state, "", "all").map((e) => e.noteId)).toEqual([
     notes[1].id,

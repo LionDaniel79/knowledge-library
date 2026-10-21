@@ -502,6 +502,28 @@ export async function prepareOptimistic(
             quote,
           };
         };
+      if (v.topicId) {
+        const topic = await own("library_topics", v.topicId);
+        if (!topic.confirmed || topic.archived_at)
+          throw new ReplicaQueryError(409, "먼저 주제를 확인해 주세요.");
+        const memberships = await repository.all("library_topic_memberships");
+        if (
+          ![before, after].every((r) =>
+            memberships.some(
+              (m) =>
+                m.topic_id === v.topicId &&
+                m.source_kind === "note" &&
+                m.source_id === r.id &&
+                m.status === "accepted" &&
+                String(m.source_version) === String(r.version),
+            ),
+          )
+        )
+          throw new ReplicaQueryError(
+            409,
+            "두 기록의 최신 주제 지정을 먼저 확인해 주세요.",
+          );
+      }
       body.payload.reviewedRecords ??= {
         before: { ...evidence(before), eventVersion: before.eventVersion },
         after: { ...evidence(after), eventVersion: after.eventVersion },

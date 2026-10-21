@@ -248,7 +248,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
       );
     return { items, references, history, version: String(source.version) };
   }
-  async function thoughtMap() {
+  async function buildThoughtMap() {
     const trash = new Set(
         (await all("library_note_trash"))
           .filter((t) => t.restored_at === null)
@@ -286,13 +286,11 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         "voice",
         "occurredOn",
       ].every((k) => a?.[k] === b[k]);
+    const allTopics = await all("library_topics");
     return {
-      topics: (await all("library_topics"))
-        .filter((t) => !t.archived_at)
-        .map(camel),
-      archivedTopics: (await all("library_topics"))
-        .filter((t) => !!t.archived_at)
-        .map(camel),
+      notes: notes.map((n) => projectNote(n)),
+      topics: allTopics.filter((t) => !t.archived_at).map(camel),
+      archivedTopics: allTopics.filter((t) => !!t.archived_at).map(camel),
       memberships: (await all("library_topic_memberships"))
         .filter((m) =>
           m.source_kind === "note"
@@ -322,6 +320,46 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         })),
       feedback: (await all("library_analysis_feedback")).map(camel),
     };
+  }
+  async function thoughtMap() {
+    const tables: SyncEntity[] = [
+      "library_notes",
+      "library_note_trash",
+      "library_book_exclusions",
+      "library_thought_events",
+      "library_topics",
+      "library_topic_memberships",
+      "library_topic_links",
+      "library_evolution_candidates",
+      "library_analysis_feedback",
+    ];
+    const cp = await storage.checkpoint();
+    if (!cp?.complete)
+      throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
+    const stamp = (state: typeof cp) =>
+      JSON.stringify(
+        tables.map((e) => [
+          e,
+          state?.entityRevisions?.[e] ?? "0",
+          state?.localEntityRevisions?.[e] ?? 0,
+          state?.entityWrites?.[e] ?? 0,
+        ]),
+      );
+    const token = stamp(cp),
+      key = "thought-map-view-v1";
+    const cached = await storage.readIndex(key, cp.generation);
+    if (cached?.stamp === token) return cached.value;
+    const value = await buildThoughtMap();
+    const latest = await storage.checkpoint();
+    if (latest?.generation !== cp.generation || stamp(latest) !== token)
+      throw new ReplicaQueryError(
+        409,
+        "자료를 갱신하고 있습니다. 다시 시도해 주세요.",
+      );
+    await storage.transaction((tx) =>
+      tx.putIndex(cp.generation, key, { stamp: token, value }),
+    );
+    return value;
   }
   async function assist() {
     const policy = (await all("library_ai_policy"))[0],

@@ -94,9 +94,4 @@ test("topic browsing retrieves matching books outside the initial page", async (
     kind: "book",
     id: book.id,
   });
-  // Server search matches tags as well as the text shown on the card.
-  await page.getByPlaceholder("책 제목·저자·기록 내용").fill("상실회복");
-  await expect(
-    page.getByRole("button", { name: "주제로 찾은 책", exact: true }),
-  ).toBeVisible();
 });

@@ -65,10 +65,11 @@ export function KnowledgePanel({
   onOpen: (kind: string, id: string) => void;
 }) {
   const [find, setFind] = useState("");
+  const [tab, setTab] = useState("topics");
   const [helpOpen, setHelpOpen] = useState(false);
   const paging = useListPagination("connection-materials", find);
   const catalog = useMaterialPage(
-    !!library.catalog && paging.ready,
+    !!library.catalog && paging.ready && tab === "connections",
     { q: find, limit: paging.size, offset: paging.offset },
     library,
   );
@@ -109,15 +110,13 @@ export function KnowledgePanel({
     [anchor, setAnchor] = useState(
       nodes[0] ? `${nodes[0].kind}:${nodes[0].id}` : "",
     ),
-    [tab, setTab] = useState("topics"),
     [status, setStatus] = useState("suggested"),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [researchId, setResearchId] = useState(""),
     [history, setHistory] = useState<Revision[]>([]);
-  const requests = useRef(new Map<string, string>()),
-    initialized = useRef(false);
+  const requests = useRef(new Map<string, string>());
   const loadTicket = useRef(0);
   async function load() {
     const ticket = ++loadTicket.current;
@@ -161,15 +160,9 @@ export function KnowledgePanel({
     }
   }
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    void run(async () => {
-      if (anchor) {
-        const [kind, id] = anchor.split(":");
-        await send("suggest", { kind, id });
-      }
-    });
-  }, []); // One initial source; every further source is chosen by the reader.
+    if (tab !== "connections" && tab !== "research") return;
+    void load().catch((e) => setError(e.message));
+  }, [tab]);
   const title = (kind: string, id: string) =>
     nodes.find((n) => n.kind === kind && n.id === id)?.title ?? "자료";
   const localChoices = nodes.filter((n) =>
@@ -178,6 +171,15 @@ export function KnowledgePanel({
   const choices = library.catalog
     ? catalog.items
     : localChoices.slice(paging.offset, paging.offset + paging.size);
+  function chooseSource(value: string) {
+    setAnchor(value);
+    const node = nodes.find((n) => `${n.kind}:${n.id}` === value);
+    if (node)
+      setChosen((v) => [
+        ...v.filter((n) => `${n.kind}:${n.id}` !== value),
+        node,
+      ]);
+  }
   const links = state.connections.filter((c) => c.status === status);
   const selected =
     state.research.find((r) => r.id === researchId) ?? state.research[0];
@@ -247,10 +249,6 @@ export function KnowledgePanel({
         <>
           <div className="panel knowledge-controls">
             <h2>책에서 생각으로, 생각에서 새로운 질문으로</h2>
-            <p>
-              공통 표현을 바탕으로 관련 자료를 찾습니다. 자동 제안은 주제의
-              유사성만 뜻하며, 근거·반론 여부는 직접 판단해 주세요.
-            </p>
             <label>
               연결할 자료 찾기
               <input
@@ -269,6 +267,34 @@ export function KnowledgePanel({
               </p>
             )}
             <PageSizeSelect label="연결할 자료" paging={paging} />
+            {find.trim() &&
+              !catalog.loading &&
+              !catalog.error &&
+              (choices.length ? (
+                <fieldset
+                  className="connection-search-results"
+                  aria-label="연결할 자료 검색 결과"
+                >
+                  {choices.map((n) => (
+                    <button
+                      key={`${n.kind}:${n.id}`}
+                      type="button"
+                      aria-label={`${n.kind === "book" ? "책" : "메모"} · ${n.title}`}
+                      aria-pressed={anchor === `${n.kind}:${n.id}`}
+                      onClick={() => chooseSource(`${n.kind}:${n.id}`)}
+                    >
+                      <strong>
+                        {n.kind === "book" ? "책" : "메모"} · {n.title}
+                      </strong>
+                      {"text" in n && (
+                        <small>{String(n.text).slice(0, 100)}</small>
+                      )}
+                    </button>
+                  ))}
+                </fieldset>
+              ) : (
+                <p role="status">검색 결과가 없습니다.</p>
+              ))}
             <PageNavigation
               label="연결할 자료"
               paging={paging}
@@ -279,19 +305,7 @@ export function KnowledgePanel({
               출발 자료
               <select
                 value={anchor}
-                onChange={(e) => {
-                  setAnchor(e.target.value);
-                  const node = nodes.find(
-                    (n) => n.kind + ":" + n.id === e.target.value,
-                  );
-                  if (node)
-                    setChosen((v) => [
-                      ...v.filter(
-                        (n) => n.kind + ":" + n.id !== e.target.value,
-                      ),
-                      node,
-                    ]);
-                }}
+                onChange={(e) => chooseSource(e.target.value)}
               >
                 {anchor &&
                   !choices.some((n) => `${n.kind}:${n.id}` === anchor) && (

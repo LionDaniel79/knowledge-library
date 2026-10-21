@@ -4,6 +4,64 @@ import {
   registerLibraryRuntime,
 } from "../src/client/replica/request";
 import { resourceFixture } from "./helpers/replica-resources";
+import { syncKey } from "../src/lib/replica/entities";
+import { sha256Bytes } from "../src/lib/replica/codec";
+it("provides full note bodies to the map instead of relying on overview previews", async () => {
+  const f = await resourceFixture();
+  try {
+    const state: any = await f.repo.read("/api/thought-map");
+    expect(state.notes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: f.note,
+          content: "정보와 신뢰를 함께 생각한다",
+        }),
+      ]),
+    );
+  } finally {
+    f.repo.close();
+  }
+});
+it("reuses the map snapshot without rescanning tables and invalidates it after a topic change", async () => {
+  const f = await resourceFixture();
+  try {
+    await f.repo.read("/api/thought-map");
+    const scans = vi.spyOn(f.s, "readPage");
+    const before: any = await f.repo.read("/api/thought-map");
+    expect(before.topics).toHaveLength(1);
+    expect(scans).not.toHaveBeenCalled();
+    const cp = (await f.s.checkpoint())!;
+    const value = {
+      id: f.topic,
+      name: "신뢰",
+      aliases: [],
+      confirmed: true,
+      version: 2,
+      archived_at: "2026-10-21T00:00:00Z",
+    };
+    const inline = JSON.stringify(value),
+      bytes = new TextEncoder().encode(inline);
+    await f.s.stageRows(cp.generation, [
+      {
+        entity: "library_topics",
+        key: syncKey("library_topics", value),
+        revision: "2",
+        deleted: false,
+        inline,
+        bytes: bytes.length,
+        sha256: await sha256Bytes(bytes),
+      },
+    ]);
+    await f.s.setCheckpoint(cp.generation, {
+      entityRevisions: { ...cp.entityRevisions, library_topics: "2" },
+    });
+    const after: any = await f.repo.read("/api/thought-map");
+    expect(after.topics).toHaveLength(0);
+    expect(after.archivedTopics[0]).toMatchObject({ id: f.topic, version: 2 });
+  } finally {
+    f.repo.close();
+  }
+});
 it("loads the thought map in table pages without reading thousands of excluded books individually", async () => {
   const f = await resourceFixture();
   const reads = vi.spyOn(f.s, "readRow");

@@ -7,7 +7,9 @@ export function usePagedResource<T>(
   path: string,
   enabled = true,
   revision?: unknown,
+  options: { keepPreviousData?: boolean } = {},
 ) {
+  const keepPreviousData = options.keepPreviousData ?? false;
   const replica = useReplicaOptional();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{
@@ -21,7 +23,10 @@ export function usePagedResource<T>(
     const controller = new AbortController();
     setState((previous) => ({
       path,
-      data: isLocalReplicaReady() ? previous.data : null,
+      data:
+        isLocalReplicaReady() || (keepPreviousData && previous.path === path)
+          ? previous.data
+          : null,
       loading: true,
       error: "",
     }));
@@ -39,12 +44,15 @@ export function usePagedResource<T>(
           })
           .catch((error) => {
             if (!controller.signal.aborted)
-              setState({
+              setState((previous) => ({
                 path,
-                data: null,
+                data:
+                  keepPreviousData && previous.path === path
+                    ? previous.data
+                    : null,
                 loading: false,
                 error: error.message,
-              });
+              }));
           });
       },
       isLocalReplicaReady() ? 0 : 180,
@@ -53,7 +61,7 @@ export function usePagedResource<T>(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [path, enabled, revision, retry, replica?.revision]);
+  }, [path, enabled, revision, retry, replica?.revision, keepPreviousData]);
   return {
     ...(enabled && state.path === path
       ? state

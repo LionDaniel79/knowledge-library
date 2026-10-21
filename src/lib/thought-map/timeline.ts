@@ -6,7 +6,7 @@ export function confirmedChanges(
   topic: string,
 ) {
   const active = new Set(notes.map((n) => n.id));
-  if (topic && !state.topics.some((t) => t.id === topic && t.confirmed))
+  if (topic && !state.topics.some((t) => t.id === topic && !t.archivedAt))
     return [];
   // A source edit invalidates the evidence, not the existence of a past judgment.
   // Keep the historical topic association so the existing outdated warning is visible.
@@ -35,6 +35,7 @@ export function timelineEvents(
   state: ThoughtMapSnapshot,
   topic: string,
   voice: string,
+  order: "oldest" | "newest" = "oldest",
 ): ThoughtEvent[] {
   const versions = new Map(notes.map((n) => [n.id, String(n.version)]));
   const members = new Set(
@@ -43,26 +44,29 @@ export function timelineEvents(
         (m) =>
           m.topicId === topic &&
           m.sourceKind === "note" &&
-          m.status === "accepted" &&
+          m.status !== "rejected" &&
           m.sourceVersion === versions.get(m.sourceId),
       )
       .map((m) => m.sourceId),
   );
-  const confirmed =
-    !topic || state.topics.some((t) => t.id === topic && t.confirmed);
+  const active =
+    !topic || state.topics.some((t) => t.id === topic && !t.archivedAt);
   return state.events
     .filter(
       (e) =>
-        confirmed &&
+        active &&
         versions.has(e.noteId) &&
         (voice === "all" || voice === e.voice) &&
         (!topic || members.has(e.noteId)),
     )
-    .sort(
-      (a, b) =>
-        (a.occurredOn ?? "9999").localeCompare(b.occurredOn ?? "9999") ||
-        a.noteId.localeCompare(b.noteId),
-    );
+    .sort((a, b) => {
+      if (!a.occurredOn !== !b.occurredOn) return a.occurredOn ? -1 : 1;
+      const compared = (a.occurredOn ?? "").localeCompare(b.occurredOn ?? "");
+      return (
+        (order === "newest" ? -compared : compared) ||
+        a.noteId.localeCompare(b.noteId)
+      );
+    });
 }
 export function reviewedPassage(
   note: Note,

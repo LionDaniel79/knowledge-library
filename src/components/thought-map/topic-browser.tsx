@@ -16,20 +16,21 @@ export function TopicBrowser({
   state,
   send,
   busy,
+  error = "",
   onOpen,
 }: {
   library: Library;
   state: ThoughtMapSnapshot;
   send: ThoughtSend;
   busy: boolean;
+  error?: string;
   onOpen: (kind: string, id: string) => void;
 }) {
   const [selected, setSelected] = useState("all"),
-    [field, setField] = useState(""),
-    [query, setQuery] = useState("");
+    [field, setField] = useState("");
   const paging = useListPagination(
     "topic-materials",
-    JSON.stringify([selected, field, query]),
+    JSON.stringify([selected, field]),
   );
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<Topic | null>(null);
@@ -41,7 +42,6 @@ export function TopicBrowser({
   const catalog = useMaterialPage(
     !!library.catalog && paging.ready,
     {
-      q: query,
       category: field || "all",
       topic: selected,
       limit: paging.size,
@@ -85,12 +85,7 @@ export function TopicBrowser({
       (!field || m.category === field) &&
       (selected === "all" || selected === "unclassified"
         ? selected === "all" || assigned(m).length === 0
-        : assigned(m).some((a) => a.topicId === selected)) &&
-      (!query ||
-        [m.title, m.text]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(query.toLocaleLowerCase())),
+        : assigned(m).some((a) => a.topicId === selected)),
   );
   const total = library.catalog ? catalog.total : localShown.length;
   const shown = library.catalog
@@ -242,11 +237,20 @@ export function TopicBrowser({
           </Modal>
         )}
         {deleting && (
-          <section className="notice" aria-label="주제 삭제 확인">
+          <Modal
+            title="주제 삭제 확인"
+            onClose={() => setDeleting(null)}
+            canClose={!busy}
+          >
             <p>
               ‘{deleting.name}’ 주제를 목록에서 삭제할까요? 메모와 기존 판단은
               보존됩니다.
             </p>
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
             <button
               disabled={busy}
               onClick={async () => {
@@ -268,7 +272,7 @@ export function TopicBrowser({
               주제 삭제
             </button>
             <button onClick={() => setDeleting(null)}>취소</button>
-          </section>
+          </Modal>
         )}
         {!!state.archivedTopics?.length && (
           <details>
@@ -299,17 +303,6 @@ export function TopicBrowser({
             도서관 분야와 개인 주제는 별개입니다. 책의 내용에 관한 근거는
             원문이나 내 기록에서 확인합니다.
           </p>
-          <label>
-            자료 찾기
-            <input
-              value={query}
-              placeholder="책 제목·저자·기록 내용"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                paging.setPage(0);
-              }}
-            />
-          </label>
           <label>
             도서관 분야
             <select value={field} onChange={(e) => setField(e.target.value)}>

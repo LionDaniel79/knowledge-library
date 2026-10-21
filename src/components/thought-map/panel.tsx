@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useRef, useState } from "react";
+import { usePagedResource } from "../use-paged-resource";
 import type { Library } from "@/lib/domain";
 import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
 import { TopicBrowser } from "./topic-browser";
@@ -16,38 +17,19 @@ export function ThoughtMapPanel({
   library: Library;
   onOpen: (kind: string, id: string) => void;
 }) {
-  const [state, setState] = useState<ThoughtMapSnapshot | null>(null),
-    [error, setError] = useState(""),
+  const resource = usePagedResource<ThoughtMapSnapshot>(
+    "/api/thought-map",
+    true,
+    library.notes,
+    { keepPreviousData: true },
+  );
+  const state = resource.data;
+  const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   const requests = useRef(new Map<string, string>());
-  const loadTicket = useRef(0);
-  async function load() {
-    const ticket = ++loadTicket.current;
-    const r = await libraryRequest("/api/thought-map", { cache: "no-store" }),
-      data = await r.json();
-    if (!r.ok) throw Error(data.error ?? "사유의 지도를 불러오지 못했습니다.");
-    if (ticket === loadTicket.current) setState(data);
-  }
-  useEffect(() => {
-    const ticket = ++loadTicket.current;
-    let live = true;
-    void libraryRequest("/api/thought-map", { cache: "no-store" })
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw Error(data.error ?? "자료를 불러오지 못했습니다.");
-        if (live && ticket === loadTicket.current) setState(data);
-      })
-      .catch((e) => {
-        if (live) setError(e.message);
-      });
-    return () => {
-      live = false;
-    };
-  }, [library.notes]);
   async function send(type: string, payload: unknown) {
     if (busy) return false;
-    loadTicket.current++;
     setBusy(true);
     setError("");
     setMessage("");
@@ -66,7 +48,7 @@ export function ThoughtMapPanel({
         throw Error(data.error ?? "저장하지 못했습니다.");
       }
       requests.current.delete(key);
-      void load().catch((e) => setError(e.message));
+      resource.reload();
       setMessage("판단과 수정 이력을 저장했습니다.");
       return true;
     } catch (e) {
@@ -76,30 +58,21 @@ export function ThoughtMapPanel({
       setBusy(false);
     }
   }
-  const completed = useCallback(() => {
-    void load().catch((e) => setError(e.message));
-  }, []);
   return (
     <section className="thought-panel">
       <div className="thought-actions">
-        <button
-          disabled={busy}
-          onClick={() => void load().catch((e) => setError(e.message))}
-        >
+        <button disabled={busy} onClick={resource.reload}>
           지도 새로고침
         </button>
-        <span className="form-hint">
-          내 기록을 주제로 묶고, 생각이 달라진 이유를 직접 연결합니다.
-        </span>
       </div>
-      <AssistLauncher library={library} onAdopt={completed} />
-      {error && (
+      <AssistLauncher library={library} onAdopt={resource.reload} />
+      {(error || resource.error) && (
         <p className="error" role="alert">
-          {error} 입력 중인 내용은 유지됩니다.
+          {error || resource.error} 입력 중인 내용은 유지됩니다.
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {!state && !error && (
+      {!state && !error && !resource.error && (
         <p role="status">사유의 지도를 불러오는 중입니다…</p>
       )}
       {state &&
@@ -109,6 +82,7 @@ export function ThoughtMapPanel({
             state={state}
             send={send}
             busy={busy}
+            error={error}
             onOpen={onOpen}
           />
         ) : view === "timeline" ? (

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Note } from "../domain";
 // Includes inference settings so queued work cannot reuse an older runtime profile.
 export const THOUGHT_PROMPT_VERSION = "compare-v3-defined-relations";
 export const TEXT_COMPARISON_TAG = "knowledge-library-gemma4-text:e2b";
@@ -191,6 +192,7 @@ export interface TimelineFilter {
   includeUncertain: boolean;
 }
 export interface ThoughtMapSnapshot {
+  notes?: Note[];
   topics: Topic[];
   archivedTopics?: Topic[];
   memberships: Membership[];

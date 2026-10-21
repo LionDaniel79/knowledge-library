@@ -158,17 +158,18 @@ export function createThoughtMapStore(db: Database) {
       ) as ThoughtEvent[];
       const records = new Map<string, AnalysisRecord>(),
         events: ThoughtEvent[] = [];
-      for (const row of await read("library_active_notes")) {
-        const base = resolveThoughtRecord(noteFromRow(row)),
-          event = saved.find((e) => e.noteId === row.id) ?? {
-            id: row.id,
-            noteId: row.id,
+      const notes = (await read("library_active_notes")).map(noteFromRow);
+      for (const note of notes) {
+        const base = resolveThoughtRecord(note),
+          event = saved.find((e) => e.noteId === note.id) ?? {
+            id: note.id,
+            noteId: note.id,
             occurredOn: base.occurredOn,
             dateSource: base.dateSource,
             voice: base.voice,
             version: 0,
           };
-        records.set(row.id, withEvent(base, event));
+        records.set(note.id, withEvent(base, event));
         events.push(event);
       }
       const candidates = (await read("library_evolution_candidates"))
@@ -176,6 +177,7 @@ export function createThoughtMapStore(db: Database) {
           .map((r) => candidateDto(r, records)),
         feedback = (await read("library_analysis_feedback")).map(dto);
       return {
+        notes,
         topics,
         archivedTopics: allTopics.filter((t) => !!t.archivedAt),
         memberships: memberships.filter(

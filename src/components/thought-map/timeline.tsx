@@ -119,23 +119,32 @@ export function ThoughtTimeline({
   onOpen: (kind: string, id: string) => void;
 }) {
   const [topic, setTopic] = useState(""),
-    [voice, setVoice] = useState("all");
-  const events = timelineEvents(library.notes, state, topic, voice);
+    [voice, setVoice] = useState("all"),
+    [order, setOrder] = useState<"newest" | "oldest">("newest");
+  const notes = state.notes ?? library.notes;
+  const events = timelineEvents(notes, state, topic, voice, order);
   const paging = useListPagination(
     "thought-timeline",
-    JSON.stringify([topic, voice]),
+    JSON.stringify([topic, voice, order]),
   );
   const visibleEvents = events.slice(
     paging.offset,
     paging.offset + paging.size,
   );
-  const personal = timelineEvents(library.notes, state, topic, "self").filter(
-    (e) => !!e.occurredOn,
-  );
-  const confirmed = confirmedChanges(library.notes, state, topic);
+  const personal = timelineEvents(
+    notes,
+    {
+      ...state,
+      topics: state.topics.filter((t) => t.confirmed),
+      memberships: state.memberships.filter((m) => m.status === "accepted"),
+    },
+    topic,
+    "self",
+  ).filter((e) => !!e.occurredOn);
+  const confirmed = confirmedChanges(notes, state, topic);
   const cards = (list: ThoughtEvent[]) =>
     list.map((e) => {
-      const n = library.notes.find((n) => n.id === e.noteId);
+      const n = notes.find((n) => n.id === e.noteId);
       return n ? (
         <EventCard
           key={`${e.noteId}:${e.version}`}
@@ -152,21 +161,28 @@ export function ThoughtTimeline({
     <div className="thought-timeline">
       <div className="panel thought-filters">
         <h2>시간에 따라 달라진 나의 생각</h2>
-        <p>
-          기록의 문장을 고친 이력과 생각이 달라진 흐름을 구분합니다. 아래 연결은
-          내가 확인한 변화만 표시합니다.
-        </p>
         <label>
           주제별 흐름
           <select value={topic} onChange={(e) => setTopic(e.target.value)}>
             <option value="">모든 주제</option>
             {state.topics
-              .filter((t) => t.confirmed)
+              .filter((t) => !t.archivedAt)
               .map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
+                  {t.confirmed ? "" : " · 제안"}
                 </option>
               ))}
+          </select>
+        </label>
+        <label>
+          기록 정렬
+          <select
+            value={order}
+            onChange={(e) => setOrder(e.target.value as "newest" | "oldest")}
+          >
+            <option value="newest">최근 기록부터</option>
+            <option value="oldest">오래된 기록부터</option>
           </select>
         </label>
         <label>
@@ -222,7 +238,7 @@ export function ThoughtTimeline({
         )}
       </section>
       <ManualComparison
-        notes={library.notes}
+        notes={notes}
         events={personal}
         topicId={topic}
         send={send}
