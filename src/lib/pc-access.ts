@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pdfLibraryPath } from "./library-entry";
+import { pdfLibraryPath, pdfSearchPath } from "./library-entry";
 /** Configuration is a link only; no server proxy, network probing or credential forwarding. */
 export function privatePcOrigin(value: string | undefined): string | null {
   if (!value) return null;
@@ -41,4 +41,14 @@ export function pcLibraryUrl(origin: string, operations = false) {
   const safe = privatePcOrigin(origin);
   if (!safe) throw Error("인증된 PC 주소 설정이 필요합니다.");
   return new URL(pdfLibraryPath(operations), safe).href;
+}
+export function pcPdfSearchUrl(origin: string, q: string, id?: string) {
+  const safe = privatePcOrigin(origin);
+  if (!safe) throw Error("인증된 PC 주소 설정이 필요합니다.");
+  return new URL(pdfSearchPath(q, id), safe).href;
+}
+export function pcPdfFolderUrl(origin: string) {
+  const safe = privatePcOrigin(origin);
+  if (!safe) throw Error("인증된 PC 주소 설정이 필요합니다.");
+  return new URL("/?view=pdf&panel=folder", safe).href;
 }

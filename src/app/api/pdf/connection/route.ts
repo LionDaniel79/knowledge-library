@@ -2,6 +2,7 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
 import { validateWriteOrigin } from "@/server/access";
+import { privatePcOrigin } from "@/lib/pc-access";
 import {
   pdfConnectionState,
   previewPdfConnection,
@@ -18,10 +19,17 @@ export async function GET() {
         [owner],
       )
     ).rows.length;
+    const state = owned
+      ? await pdfConnectionState()
+      : { available: false, version: 0, connected: false };
     return Response.json(
-      owned
-        ? await pdfConnectionState()
-        : { available: false, version: 0, connected: false },
+      {
+        ...state,
+        pcOrigin:
+          process.env.LIBRARY_PC_PRIVATE_CONFIRMED === "true"
+            ? privatePcOrigin(process.env.LIBRARY_PC_ORIGIN)
+            : null,
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e) {

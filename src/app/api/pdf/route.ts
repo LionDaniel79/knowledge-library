@@ -8,6 +8,8 @@ import {
 } from "@/server/pdf-index";
 import { readVisiblePdfSummary } from "@/server/pdf-visible-summary";
 import { z } from "zod";
+import { existsSync } from "node:fs";
+import { pcPdfSearchUrl, privatePcOrigin } from "@/lib/pc-access";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -20,6 +22,23 @@ export async function GET(request: Request) {
     if (id) z.string().uuid().parse(id);
     let result: unknown;
     if (mode === "search") {
+      const pc =
+        process.env.LIBRARY_PC_PRIVATE_CONFIRMED === "true"
+          ? privatePcOrigin(process.env.LIBRARY_PC_ORIGIN)
+          : null;
+      if (
+        (!process.env.LIBRARY_PDF_INDEX ||
+          !existsSync(process.env.LIBRARY_PDF_INDEX)) &&
+        pc &&
+        new URL(request.url).origin !== pc
+      ) {
+        // The browser navigates in the same window. No public proxy or new
+        // access credential is introduced for the private PDF collection.
+        return Response.json(
+          { pcRedirect: pcPdfSearchUrl(pc, query, id ?? undefined) },
+          { headers: { "Cache-Control": "private, no-store" } },
+        );
+      }
       const hits = searchPdfPages(query, id ?? undefined);
       const owned = await database.query(
         'SELECT d.id,d.book_id AS "bookId",b.title,b.author FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=ANY($2::uuid[])',

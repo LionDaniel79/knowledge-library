@@ -985,7 +985,7 @@ progress::-moz-progress-bar {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   align-items: end;
-  gap: 10px;
+  gap: clamp(2px, 1vw, 10px);
   height: 220px;
   margin-bottom: 30px;
 }
@@ -1001,6 +1001,7 @@ progress::-moz-progress-bar {
   padding: 0;
 }
 .year-chart i {
+  flex-shrink: 0;
   width: 100%;
   max-width: 43px;
   border-radius: 4px 4px 0 0;
@@ -1011,8 +1012,16 @@ progress::-moz-progress-bar {
   background: var(--green);
 }
 .year-chart small {
-  font-size: 14px;
+  display: block;
+  flex-shrink: 0;
+  height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
+  font-size: clamp(10px, 2.7vw, 14px);
   color: var(--muted);
+}
+.pdf-folder-settings {
+  margin-block: 8px;
 }
 .section-space {
   margin: 32px 0 18px;

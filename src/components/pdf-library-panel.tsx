@@ -3,14 +3,14 @@ import { libraryRequest } from "@/client/replica/request";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { FileText, Search, RefreshCw, ExternalLink, Quote } from "lucide-react";
 import { PdfProgress } from "./pdf-progress";
-import { LibraryOperationsPanel } from "./library-operations";
 import { PdfConnection } from "./pdf-connection";
 import {
   useListPagination,
   PageSizeSelect,
   PageNavigation,
 } from "./list-pagination";
-import { PcAccess } from "./pc-access";
+import { readPdfSearchEntry, authReturnPath } from "@/lib/library-entry";
+import { privatePcOrigin } from "@/lib/pc-access";
 import type { PdfSummary } from "../lib/pdf-progress";
 type PdfDoc = {
   id: string;
@@ -49,13 +49,15 @@ const stateNames: Record<string, string> = {
 export function PdfLibraryPanel({
   onSaved,
   documentId,
-  initialOperationsOpen = false,
 }: {
   onSaved: () => Promise<void>;
   documentId?: string;
   initialOperationsOpen?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [entryReady, setEntryReady] = useState(false);
+  const [searchDocumentId, setSearchDocumentId] = useState<string>();
+  const scopeId = documentId ?? searchDocumentId;
   const [mode, setMode] = useState<"list" | "search">(
     documentId ? "search" : "list",
   );
@@ -81,6 +83,16 @@ export function PdfLibraryPanel({
   const [saving, setSaving] = useState<string | null>(null);
   const [ocrConfirmed, setOcrConfirmed] = useState<Record<string, boolean>>({});
   const savedRequests = useRef(new Map<string, string>());
+  useEffect(() => {
+    const seed = readPdfSearchEntry(window.location.search);
+    if (seed) {
+      setQuery(seed.q);
+      setMode("search");
+      setSubmitted({ q: seed.q, mode: "search", revision: 0 });
+      setSearchDocumentId(seed.id);
+    }
+    setEntryReady(true);
+  }, []);
   const load = useCallback(
     async (q: string, m: "list" | "search", p: number) => {
       request.current?.abort();
@@ -96,7 +108,7 @@ export function PdfLibraryPanel({
           page: String(p),
           limit: String(paging.size),
         });
-        if (documentId) params.set("id", documentId);
+        if (scopeId) params.set("id", scopeId);
         const response = await fetch("/api/pdf?" + params, {
           cache: "no-store",
           signal: controller.signal,
@@ -105,6 +117,17 @@ export function PdfLibraryPanel({
         if (!response.ok)
           throw Error(data.error ?? "PDF 서재를 읽지 못했습니다.");
         if (controller.signal.aborted) return;
+        if (data.pcRedirect) {
+          const target = new URL(data.pcRedirect);
+          if (
+            !privatePcOrigin(target.origin) ||
+            authReturnPath(target.pathname + target.search) === "/"
+          )
+            throw Error("PC 서재 연결 주소를 확인해 주세요.");
+          setMessage("PC 서재에 연결하는 중입니다…");
+          window.location.assign(target.href);
+          return;
+        }
         setSummary(data.summary);
         setDocs(data.documents ?? []);
         setHits(data.hits ?? []);
@@ -116,13 +139,13 @@ export function PdfLibraryPanel({
         if (!controller.signal.aborted) setBusy(false);
       }
     },
-    [documentId, paging.size],
+    [scopeId, paging.size],
   );
   useEffect(() => {
-    if (paging.ready && (!documentId || submitted.q))
+    if (entryReady && paging.ready && (!scopeId || submitted.q))
       void load(submitted.q, submitted.mode, page);
     return () => request.current?.abort();
-  }, [load, documentId, submitted, page, paging.ready]);
+  }, [load, scopeId, submitted, page, paging.ready, entryReady]);
   async function save(hit: Hit) {
     const key = hit.documentId + ":" + hit.pageNumber;
     setSaving(key);
@@ -159,7 +182,6 @@ export function PdfLibraryPanel({
   }
   return (
     <section className="pdf-library">
-      {!documentId && <PcAccess />}
       {!documentId && (
         <>
           <div className="section-heading">
@@ -177,14 +199,7 @@ export function PdfLibraryPanel({
             </button>
           </div>
           {summary && <PdfProgress summary={summary} />}
-          <details
-            className="pdf-maintenance"
-            open={initialOperationsOpen || undefined}
-          >
-            <summary>PDF 관리</summary>
-            <PdfConnection />
-            <LibraryOperationsPanel initiallyOpen={initialOperationsOpen} />
-          </details>
+          <PdfConnection />
         </>
       )}
       <form
@@ -214,7 +229,7 @@ export function PdfLibraryPanel({
             onChange={(e) => setMode(e.target.value as "list" | "search")}
           >
             <option value="list">제목·폴더</option>
-            <option value="search">원문 내용</option>
+            <option value="search">원문 검색</option>
           </select>
         )}
         <button className="primary" disabled={busy}>
@@ -222,6 +237,19 @@ export function PdfLibraryPanel({
           {busy ? "찾는 중…" : "검색"}
         </button>
       </form>
+      {!documentId && searchDocumentId && (
+        <p className="form-hint">
+          선택한 PDF 안에서 검색 중입니다.{" "}
+          <button
+            onClick={() => {
+              setSearchDocumentId(undefined);
+              setPage(0);
+            }}
+          >
+            전체 PDF에서 찾기
+          </button>
+        </p>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}

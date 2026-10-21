@@ -18,6 +18,13 @@ function getPool() {
       idleTimeoutMillis: 5000,
       connectionTimeoutMillis: 15000,
     });
+    // An idle connection can disappear when the remote database sleeps or
+    // restarts. pg removes that client; handling its event keeps the PC alive.
+    pool.on("error", (error: Error & { code?: string }) => {
+      console.warn("Library idle database connection closed", {
+        code: error.code ?? "unknown",
+      });
+    });
     attachDatabasePool(pool);
   }
   return pool;

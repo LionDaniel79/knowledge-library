@@ -445,7 +445,7 @@ test("cloud PDF reader offers the PC link without requesting unavailable origina
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(originalRequests).toBe(0);
 });
-test("the general PC link selects PDF search, and the destination opens processing details immediately", async ({
+test("legacy PC links select PDF search without restoring removed maintenance controls", async ({
   page,
 }) => {
   await page.route("https://library.test/api/pc-access", (r) =>
@@ -496,8 +496,12 @@ test("the general PC link selects PDF search, and the destination opens processi
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "PDF 문자 인식", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("PDF 관리", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "PDF 보관 폴더 설정", exact: true }),
   ).toBeVisible();
-  expect(readStatus).toBe(true);
+  expect(readStatus).toBe(false);
 });
 test("a disconnected PDF drive on the PC shows a connection message instead of linking back to itself", async ({
   page,

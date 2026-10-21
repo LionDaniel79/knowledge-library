@@ -1,17 +1,31 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Modal } from "./modal";
+import { pcPdfFolderUrl, privatePcOrigin } from "@/lib/pc-access";
 export function PdfConnection() {
   const [state, setState] = useState<any>(null),
     [root, setRoot] = useState(""),
     [preview, setPreview] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [saved, setSaved] = useState(false);
+    [saved, setSaved] = useState(false),
+    [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("panel") === "folder") {
+      setOpen(true);
+      void load();
+    }
+  }, []);
   async function load() {
     try {
       const r = await fetch("/api/pdf/connection", { cache: "no-store" }),
         j = await r.json();
       if (!r.ok) throw Error(j.error);
+      const origin = privatePcOrigin(j.pcOrigin);
+      if (!j.available && origin && origin !== location.origin) {
+        location.assign(pcPdfFolderUrl(origin));
+        return;
+      }
       setState(j);
       setRoot(j.root ?? "");
     } catch (e) {
@@ -46,51 +60,72 @@ export function PdfConnection() {
     }
   }
   return (
-    <details
-      onToggle={(e) => {
-        if (e.currentTarget.open && !state) void load();
-      }}
-    >
-      <summary>PDF 폴더 다시 연결</summary>
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-      {state?.available ? (
-        <>
-          <label>
-            외장하드의 PDF 폴더
-            <input
-              value={root}
-              placeholder="E:\전자도서관"
-              onChange={(e) => {
-                setRoot(e.target.value);
-                setPreview(null);
-                setSaved(false);
-              }}
-            />
-          </label>
-          <button disabled={busy || !root} onClick={() => void submit(false)}>
-            연결 검사
-          </button>
-          {preview && (
-            <>
-              <p>
-                연결 후보 {preview.found}개 · 미연결 {preview.missing}개 · 원본
-                대조 {preview.checked}개
-              </p>
-              <p>각 PDF를 열 때 원본 일치 여부를 추가 확인합니다.</p>
-              <button disabled={busy} onClick={() => void submit(true)}>
-                이 폴더로 연결
-              </button>
-            </>
+    <div className="pdf-folder-settings">
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          if (!state) void load();
+        }}
+      >
+        PDF 보관 폴더 설정
+      </button>
+      {open && (
+        <Modal
+          title="PDF 보관 폴더 설정"
+          onClose={() => setOpen(false)}
+          canClose={!busy}
+        >
+          {!state && !error && <p>연결 설정을 읽는 중입니다…</p>}
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
           )}
-          {saved && <p role="status">연결을 저장했습니다.</p>}
-        </>
-      ) : (
-        state && <p>내 PC의 서재에서 폴더를 연결해 주세요.</p>
+          {state?.available ? (
+            <>
+              <label>
+                외장하드의 PDF 폴더
+                <input
+                  value={root}
+                  placeholder="E:\전자도서관"
+                  onChange={(e) => {
+                    setRoot(e.target.value);
+                    setPreview(null);
+                    setSaved(false);
+                  }}
+                />
+              </label>
+              <button
+                disabled={busy || !root}
+                onClick={() => void submit(false)}
+              >
+                연결 검사
+              </button>
+              {preview && (
+                <>
+                  <p>
+                    찾은 PDF {preview.found}개 · 찾지 못한 PDF {preview.missing}
+                    개 · 원본 대조 {preview.checked}개
+                  </p>
+                  <p>각 PDF를 열 때 원본 일치 여부를 추가 확인합니다.</p>
+                  <button disabled={busy} onClick={() => void submit(true)}>
+                    이 위치로 저장
+                  </button>
+                </>
+              )}
+              {saved && <p role="status">연결을 저장했습니다.</p>}
+            </>
+          ) : (
+            state && (
+              <p>
+                PC의 PDF 보관 폴더 설정을 열 수 없습니다. PC 서재 연결을 확인해
+                주세요.
+              </p>
+            )
+          )}
+        </Modal>
       )}
-    </details>
+    </div>
   );
 }
