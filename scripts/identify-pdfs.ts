@@ -1,6 +1,7 @@
 /** Explicit development task; reads the live OCR index without taking its writer lock. */
 import { Pool } from "pg";
 import { DatabaseSync } from "node:sqlite";
+import { metadataPagesTable } from "../src/local/curation/pdf-metadata-pages";
 import { createHash, randomUUID } from "node:crypto";
 import { statSync, realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
@@ -116,7 +117,7 @@ async function cached(path: string): Promise<any | undefined> {
   }
 }
 const pagesQuery = local.prepare(
-  "SELECT page_number AS pageNumber,text,method FROM pages WHERE document_id=? AND page_number<=12 UNION ALL SELECT page_number AS pageNumber,text,method FROM pages WHERE document_id=? AND page_number>max(12,?) ORDER BY pageNumber",
+  `SELECT page_number AS pageNumber,text,method FROM ${metadataPagesTable(local)} WHERE document_id=? AND page_number<=12 UNION ALL SELECT page_number AS pageNumber,text,method FROM ${metadataPagesTable(local)} WHERE document_id=? AND page_number>max(12,?) ORDER BY pageNumber`,
 );
 function readEvidence(d: any, book: any): PdfIdentity {
   return extractPdfIdentity(

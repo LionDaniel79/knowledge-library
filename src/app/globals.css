@@ -1053,6 +1053,39 @@ progress::-moz-progress-bar {
 .pdf-import-issue button {
   margin: 4px 8px 4px 0;
 }
+.pdf-ocr-settings {
+  margin-top: 16px;
+}
+.pdf-ocr-settings .button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-block: 10px;
+  align-items: center;
+}
+.ocr-page-comparison {
+  border-top: 1px solid var(--border);
+  margin-block: 10px;
+  padding-block: 8px;
+}
+.ocr-comparison-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ocr-comparison-columns pre {
+  font-family: inherit;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+}
+@media (max-width: 600px) {
+  .ocr-comparison-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .section-space {
   margin: 32px 0 18px;
 }

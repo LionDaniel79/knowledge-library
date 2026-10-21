@@ -1,6 +1,7 @@
 /** Apply a reviewed frozen sample without touching the running discovery job or its cache. */
 import { Pool } from "pg";
 import { DatabaseSync } from "node:sqlite";
+import { metadataPagesTable } from "../src/local/curation/pdf-metadata-pages";
 import { readFile, writeFile } from "node:fs/promises";
 import { realpathSync, statSync } from "node:fs";
 import { relative, isAbsolute } from "node:path";
@@ -87,7 +88,7 @@ try {
           return false;
         const pages = local
           .prepare(
-            "SELECT page_number AS pageNumber,text,method FROM pages WHERE document_id=? AND (page_number<=12 OR page_number>max(12,?)) ORDER BY page_number",
+            `SELECT page_number AS pageNumber,text,method FROM ${metadataPagesTable(local)} WHERE document_id=? AND (page_number<=12 OR page_number>max(12,?)) ORDER BY page_number`,
           )
           .all(d.id, d.page_count - 8) as unknown as IdentityPage[];
         const fresh = extractPdfIdentity(

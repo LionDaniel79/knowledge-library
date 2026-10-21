@@ -1,6 +1,7 @@
 /** Re-runnable extraction of bounded contents-page excerpts. No PDF writes, OCR, or API calls. */
 import { Pool } from "pg";
 import { DatabaseSync } from "node:sqlite";
+import { metadataPagesTable } from "../src/local/curation/pdf-metadata-pages";
 import { realpathSync, statSync } from "node:fs";
 import { mkdir, writeFile, rename } from "node:fs/promises";
 import { resolve, relative, isAbsolute, join } from "node:path";
@@ -90,7 +91,7 @@ const query = index.prepare(
   "SELECT id,path,signature,page_count,processing_scope,status,toc FROM documents WHERE id=?",
 );
 const pageQuery = index.prepare(
-  "SELECT page_number AS pageNumber,text,method FROM pages WHERE document_id=? AND (page_number<=40 OR page_number>?) ORDER BY page_number",
+  `SELECT page_number AS pageNumber,text,method FROM ${metadataPagesTable(index)} WHERE document_id=? AND (page_number<=40 OR page_number>?) ORDER BY page_number`,
 );
 function pages(d: any): PrintedTocPage[] {
   return pageQuery.all(

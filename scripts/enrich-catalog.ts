@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import { createCurationStore } from "../src/server/curation-store";
 import type { Database } from "../src/server/library-store";
 import { DatabaseSync } from "node:sqlite";
+import { metadataPagesTable } from "../src/local/curation/pdf-metadata-pages";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -83,7 +84,7 @@ try {
       .map((d) => [String(d.id), d]),
   );
   const front = local.prepare(
-    "SELECT substr(text,1,14000) AS text FROM pages WHERE document_id=? AND page_number<=8 AND method='text' ORDER BY page_number",
+    `SELECT substr(text,1,14000) AS text FROM ${metadataPagesTable(local)} WHERE document_id=? AND page_number<=8 AND method='text' ORDER BY page_number`,
   );
   const patches: any[] = [];
   const queriedIsbns = new Map<string, string[]>();

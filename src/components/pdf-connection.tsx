@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "./modal";
 import { pcPdfFolderUrl, privatePcOrigin } from "@/lib/pc-access";
 import { PdfBulkImport } from "./pdf-bulk-import";
+import { PdfOcrSettings } from "./pdf-ocr-settings";
 export function PdfConnection({
   onImported,
 }: { onImported?: () => Promise<void> } = {}) {
@@ -130,6 +131,7 @@ export function PdfConnection({
                 </>
               )}
               {saved && <p role="status">연결을 저장했습니다.</p>}
+              <PdfOcrSettings />
             </>
           ) : (
             state && (

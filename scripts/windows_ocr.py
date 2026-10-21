@@ -35,7 +35,17 @@ async def run(language):
             bitmap=await decoder.get_software_bitmap_async()
             if max(bitmap.pixel_width,bitmap.pixel_height)>OcrEngine.max_image_dimension:raise ValueError('Image exceeds OCR dimension limit')
             result=await asyncio.wait_for(engine.recognize_async(bitmap),timeout=45)
-            print(json.dumps({'text':'\n'.join(line.text for line in result.lines),'engine':'Windows.Media.Ocr','language':language},ensure_ascii=False),flush=True)
+            lines=[]
+            for line in result.lines:
+                words=[]
+                for word in line.words:
+                    r=word.bounding_rect
+                    words.append({'text':word.text,'box':[r.x,r.y,r.width,r.height]})
+                if not words:continue
+                x=min(w['box'][0] for w in words);y=min(w['box'][1] for w in words)
+                right=max(w['box'][0]+w['box'][2] for w in words);bottom=max(w['box'][1]+w['box'][3] for w in words)
+                lines.append({'text':line.text,'box':[x,y,right-x,bottom-y],'words':words})
+            print(json.dumps({'text':'\n'.join(line.text for line in result.lines),'lines':lines,'textAngle':result.text_angle,'engine':'Windows.Media.Ocr','language':language},ensure_ascii=False),flush=True)
         except Exception as error:print(json.dumps({'error':str(error)}),flush=True)
         finally:
             if bitmap:bitmap.close()
