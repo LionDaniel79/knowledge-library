@@ -2,7 +2,8 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from pdf_ocr_quality import tile_boxes, merge_lines, filter_body, repeated_margins, reading_order, deskew, result_lines
+from pdf_ocr_quality import tile_boxes, merge_lines, filter_body, repeated_margins, reading_order, deskew, result_lines, recognize_body
+from unittest.mock import patch
 from PIL import Image, ImageDraw
 
 def line(text,x,y,w=300,h=25):
@@ -34,6 +35,53 @@ class QualityTests(unittest.TestCase):
         result=filter_body([line('신간 안내 구매 문의 www.example.com',30,200)],1000,1000,set())
         self.assertTrue(result['review'])
         self.assertTrue(result['lines'])
+
+    def test_same_words_in_larger_chapter_title_are_not_running_header(self):
+        header=line('Chapter One',400,20,200,12)
+        repeated=repeated_margins([[header],[line('Chapter One',402,22,201,13)],[header]],1000)
+        title=line('Chapter One',150,65,700,40)
+        body=filter_body([header,title],1000,1000,repeated)
+        self.assertEqual(body['lines'],[title])
+        self.assertEqual(body['removed'],[header])
+
+    def test_separate_footnote_number_beside_text_is_not_page_number(self):
+        marker=line('1',80,950,12,12)
+        text=line('Footnote text',100,950,600,12)
+        page_number=line('215',480,990,30,12)
+        body=filter_body([marker,text,page_number],1000,1000,set())
+        self.assertEqual(body['lines'],[marker,text])
+        self.assertEqual(body['removed'],[page_number])
+
+    def recognize_tiled(self,results):
+        image=Image.new('L',(2480,3508),255)
+        calls=iter([{'lines':[],'textAngle':0}]+results)
+        try:
+            with patch('pdf_ocr_quality.deskew',side_effect=lambda im:(im.copy(),0)):
+                return recognize_body(image,lambda _:next(calls))
+        finally:image.close()
+
+    def test_clipped_tile_footnote_keeps_complete_neighbor_once(self):
+        result=self.recognize_tiled([
+            {'lines':[line('footnote sentence',80,1804,600,30)]},
+            {'lines':[line('The complete footnote sentence',40,130,1000,30)]},
+        ])
+        self.assertEqual(result['text'],'The complete footnote sentence')
+        self.assertEqual(result['review'],[])
+
+    def test_conflicting_tile_recognition_requires_review(self):
+        result=self.recognize_tiled([
+            {'lines':[line('different footnote',80,1804,600,30)]},
+            {'lines':[line('The complete footnote sentence',40,130,1000,30)]},
+        ])
+        self.assertTrue(result['review'])
+
+    def test_rotation_in_final_tile_keeps_margin_and_requires_review(self):
+        result=self.recognize_tiled([
+            {'lines':[line('12',1200,5,30,20)],'textAngle':3},
+            {'lines':[],'textAngle':0},
+        ])
+        self.assertIn('12',result['text'])
+        self.assertTrue(result['review'])
 
     def test_columns_preserve_spanning_heading_and_bottom_footnote(self):
         lines=[line('장 제목',10,10,900),line('왼쪽 첫째',10,100,400),line('오른쪽 첫째',570,100,400),line('왼쪽 둘째',10,160,400),line('오른쪽 둘째',570,160,400),line('왼쪽 셋째',10,220,400),line('오른쪽 셋째',570,220,400),line('각주',10,800,900)]

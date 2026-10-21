@@ -4,7 +4,6 @@ import io
 import math
 import re
 import unicodedata
-from collections import Counter
 from PIL import Image, ImageOps
 
 PROFILE = 'body-footnotes-300dpi-v1'
@@ -25,21 +24,32 @@ def tile_boxes(width, height, limit=MAX_TILE, overlap=160):
     return [(x0,y0,x1,y1) for x0,x1 in ranges(width) for y0,y1 in ranges(height)]
 
 
-def merge_lines(lines):
+def merge_lines(lines,review=None):
     kept=[]
     for line in sorted(lines,key=lambda l:(l['box'][1],l['box'][0])):
         if not str(line.get('text','')).strip():continue
         x,y,w,h=line['box']
         if min(w,h)<=0:continue
         duplicate=False
-        for old in reversed(kept):
+        for i in range(len(kept)-1,-1,-1):
+            old=kept[i]
             ox,oy,ow,oh=old['box']
-            if y-oy>max(h,oh)*2:break
             intersect=max(0,min(x+w,ox+ow)-max(x,ox))*max(0,min(y+h,oy+oh)-max(y,oy))
-            if normalized(line['text'])==normalized(old['text']) and intersect/max(1,min(w*h,ow*oh))>.55:
-                duplicate=True;break
+            if intersect/max(1,min(w*h,ow*oh))<=.55:continue
+            same_text=normalized(line['text'])==normalized(old['text'])
+            cross_tile=line.get('_tile') is not None and old.get('_tile') is not None and line['_tile']!=old['_tile']
+            if same_text or cross_tile:
+                # Prefer the line furthest from a crop seam. A truncated edge
+                # fragment must not survive next to its complete recognition.
+                preferred=line if line.get('_clearance',0)>old.get('_clearance',0) else old
+                if cross_tile and not same_text:
+                    fragment=old if preferred is line else line
+                    safe_fragment=fragment.get('_clipped') and not preferred.get('_clipped') and normalized(fragment['text']) in normalized(preferred['text'])
+                    if not safe_fragment and review is not None:review.append('타일 경계 인식 불일치: 원문 확인')
+                kept[i]=preferred;duplicate=True;break
         if not duplicate:kept.append(line)
-    return kept
+    if review is not None and any(l.get('_clipped') for l in kept):review.append('타일 경계의 잘린 문장 확인')
+    return [{'text':l['text'],'box':l['box']} for l in kept]
 
 
 def margin_key(line,height):
@@ -47,6 +57,7 @@ def margin_key(line,height):
     x,y,w,h=line['box']
     if not text or len(text)>90:return None
     if re.match(r'^(?:각주|주[:：]|\d{1,3}[.)]|[*†‡])',text):return None
+    if re.fullmatch(r'[-–—·]*\d{1,5}[-–—·]*',text):return None
     edge='top' if y+h<height*.12 else 'bottom' if y>height*.91 else None
     if not edge:return None
     return (edge,text)
@@ -54,17 +65,36 @@ def margin_key(line,height):
 
 def repeated_margins(pages,height):
     if len(pages)<3:return set()
-    counts=Counter(key for lines in pages for key in set(filter(None,(margin_key(l,height) for l in lines))))
-    return {key for key,count in counts.items() if count>=max(3,math.ceil(len(pages)*.6))}
+    samples=[[(margin_key(l,height),tuple(v/height for v in l['box'])) for l in lines if margin_key(l,height)] for lines in pages]
+    repeated=set()
+    for page in samples:
+        for key,geometry in page:
+            count=sum(any(other_key==key and same_margin(geometry,other_geometry) for other_key,other_geometry in lines) for lines in samples)
+            if count>=max(3,math.ceil(len(pages)*.6)):repeated.add((*key,*geometry))
+    return repeated
 
 
-def filter_body(lines,width,height,repeated):
+def same_margin(a,b):
+    # Geometry is relative to page height, matching the document probes.
+    # Similar words in a larger or lower chapter title are never a header.
+    return abs(a[0]-b[0])<=.025 and abs(a[1]-b[1])<=.012 and abs(a[2]-b[2])<=max(.015,min(a[2],b[2])*.25) and abs(a[3]-b[3])<=max(.003,min(a[3],b[3])*.25)
+
+
+def filter_body(lines,width,height,repeated,remove_margins=True):
     kept=[];removed=[];review=[]
     for line in lines:
         text=str(line.get('text','')).strip();x,y,w,h=line['box']
         key=margin_key(line,height)
         page_number=bool(re.fullmatch(r'[-–—·\s]*\d{1,5}[-–—·\s]*',text)) and (y+h<height*.07 or y>height*.94)
-        if key in repeated or page_number:removed.append(line)
+        if page_number:
+            # Windows can split a superscript footnote marker into its own
+            # line. Adjacent text makes it unsafe to erase as a folio.
+            for other in lines:
+                ox,oy,ow,oh=other['box']
+                if other is not line and re.search(r'[^\d\W]',other.get('text',''),re.UNICODE) and abs((oy+oh/2)-(y+h/2))<=max(h,oh) and -max(h,oh)<ox-x-w<max(h,oh)*4:
+                    page_number=False;break
+        matching=key is not None and any(candidate[:2]==key and same_margin(tuple(v/height for v in line['box']),candidate[2:]) for candidate in repeated)
+        if remove_margins and (matching or page_number):removed.append(line)
         else:kept.append(line)
     text='\n'.join(l['text'] for l in kept)
     # Do not discard a page just because an author quotes an advertisement.
@@ -172,17 +202,30 @@ def recognize_body(image,recognize,repeated=None,old_text=''):
             review.append('넓은 페이지: 2단·펼친 책 읽기 순서 확인')
             ratio=MAX_TILE/prepared.width
             resized=prepared.resize((MAX_TILE,round(prepared.height*ratio)),Image.Resampling.LANCZOS);prepared.close();prepared=resized
+        reliable_geometry=True
         for x0,y0,x1,y1 in tile_boxes(prepared.width,prepared.height):
             crop=prepared.crop((x0,y0,x1,y1))
             try:
                 result=recognize(png_bytes(crop))
                 lines=result_lines(result,offset=(x0,y0))
+                if abs(float(result.get('textAngle') or 0))>1:
+                    reliable_geometry=False;review.append('인식 결과의 기울기 좌표 확인: 여백 제거 보류')
                 if not lines and result.get('text'):
                     # Old engines without coordinates cannot safely merge tiles.
                     raise ValueError('OCR 좌표 지원 버전이 필요합니다.')
+                for line in lines:
+                    x,y,w,h=line['box']
+                    distances=[]
+                    if x0>0:distances.append(x-x0)
+                    if x1<prepared.width:distances.append(x1-x-w)
+                    if y0>0:distances.append(y-y0)
+                    if y1<prepared.height:distances.append(y1-y-h)
+                    line['_tile']=(x0,y0,x1,y1)
+                    line['_clearance']=min(distances,default=float('inf'))
+                    line['_clipped']=bool(distances and min(distances)<=2)
                 all_lines.extend(lines)
             finally:crop.close()
-        final=filter_body(merge_lines(all_lines),prepared.width,prepared.height,repeated or set())
+        final=filter_body(merge_lines(all_lines,review),prepared.width,prepared.height,repeated or set(),remove_margins=reliable_geometry)
         review+=final['review'];ordered=reading_order(final['lines'],prepared.width)
         text='\n'.join(l['text'] for l in ordered).strip()
         if old_text.strip() and len(normalized(text))<len(normalized(old_text))*.55:
