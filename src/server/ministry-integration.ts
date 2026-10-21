@@ -6,6 +6,7 @@ import {
 } from "./library-store";
 import { noteInput } from "../lib/domain";
 import { readNoteDetail, readNotePage } from "./record-catalog";
+import { readMinistryBookCover } from "./ministry-book-cover";
 
 export const MINISTRY_ORIGIN = "https://ministry-manager-blush.vercel.app";
 export function authorizeMinistryClaims(
@@ -40,6 +41,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reading") }).strict(),
   z.object({ action: z.literal("book"), id, offset }).strict(),
   z.object({ action: z.literal("note"), id }).strict(),
+  z.object({ action: z.literal("cover"), id }).strict(),
   z
     .object({ action: z.literal("add-note"), requestId: id, note: noteInput })
     .strict(),
@@ -150,6 +152,16 @@ export function createMinistryEndpoint(options: {
         owner = options.ownerId;
       if (command.action === "status")
         return json({ configured: true, connected: true });
+      if (command.action === "cover") {
+        const image = await readMinistryBookCover(
+          options.db,
+          owner,
+          command.id,
+        );
+        return new Response(new Uint8Array(image.bytes), {
+          headers: { ...headers, "Content-Type": image.mime },
+        });
+      }
       if (command.action === "reading") {
         const rows = (
           await options.db.query(

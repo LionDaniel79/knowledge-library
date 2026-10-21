@@ -2,6 +2,8 @@ import { beforeAll, afterAll, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
+import { createCoverStore } from "../src/server/book-covers";
+import sharp from "sharp";
 import {
   createMinistryEndpoint,
   authorizeMinistryClaims,
@@ -106,6 +108,31 @@ it("reads only current reading and returns no raw import data", async () => {
   ).json();
   expect(book.book.title).toBe("가상 읽는 책");
   expect(book.notes.items).toEqual([]);
+});
+it("serves a book cover only after owner verification without publishing asset addresses", async () => {
+  const bytes = await sharp({
+    create: { width: 40, height: 60, channels: 3, background: "#587c65" },
+  })
+    .png()
+    .toBuffer();
+  const cover = await createCoverStore(fixture.db).upload(owner, bytes);
+  await fixture.db.query(
+    "UPDATE library_books SET cover_url=$3 WHERE owner_id=$1 AND id=$2",
+    [owner, bookId, cover.url],
+  );
+  const result = await endpoint()(request({ action: "cover", id: bookId }));
+  expect(result.status).toBe(200);
+  expect(result.headers.get("content-type")).toBe("image/webp");
+  expect(result.headers.get("cache-control")).toContain("no-store");
+  expect(
+    (await sharp(Buffer.from(await result.arrayBuffer())).metadata()).height,
+  ).toBe(60);
+  expect(
+    (await endpoint()(request({ action: "cover", id: randomUUID() }))).status,
+  ).toBe(404);
+  const list = await (await endpoint()(request({ action: "reading" }))).json();
+  expect(JSON.stringify(list)).not.toContain(cover.id);
+  expect(JSON.stringify(list)).not.toContain("sourceData");
 });
 it("saves title-free notes through the existing revisioned store and retries idempotently", async () => {
   const requestId = randomUUID(),
