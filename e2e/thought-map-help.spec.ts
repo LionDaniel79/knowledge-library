@@ -49,6 +49,10 @@ for (const width of [360, 1440]) {
     await page
       .getByRole("button", { name: "사유의 지도", exact: true })
       .click();
+    if (width <= 760)
+      await page
+        .getByRole("button", { name: "주제 관리", exact: true })
+        .click();
     await page.getByText("주제 만들기·수정", { exact: true }).click();
     const draft = page.getByLabel("주제 이름", { exact: true });
     await draft.fill("작성 중인 공감 주제");

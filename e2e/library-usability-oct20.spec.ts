@@ -204,6 +204,10 @@ for (const width of [390, 1440]) {
     await page
       .getByRole("button", { name: "사유의 지도", exact: true })
       .click();
+    if (width <= 760)
+      await page
+        .getByRole("button", { name: "주제 관리", exact: true })
+        .click();
     await page
       .getByRole("button", { name: "독서 주제 수정", exact: true })
       .click();
