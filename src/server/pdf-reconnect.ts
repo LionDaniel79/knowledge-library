@@ -118,6 +118,15 @@ export async function pdfConnectionState() {
     return { available: false, version: 0, connected: false };
   }
 }
+/** Only an owner-verified folder move can alias old relative paths during import. */
+export async function verifiedPdfRoot(owner: string): Promise<string | null> {
+  try {
+    const mapping = await config();
+    return mapping.version && mapping.owner === owner ? mapping.root : null;
+  } catch {
+    return null;
+  }
+}
 export async function previewPdfConnection(
   db: Executor,
   owner: string,

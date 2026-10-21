@@ -11,6 +11,7 @@ import {
 import {
   previewPdfConnection,
   applyPdfConnection,
+  verifiedPdfRoot,
 } from "../../server/pdf-reconnect";
 import { PdfImportJobs, type ImportItem } from "./jobs";
 import {
@@ -59,6 +60,7 @@ export async function runPdfImport(
   options: {
     existingHashes?: () => Map<string, string>;
     connectRoot?: (root: string) => Promise<void>;
+    connectedRoot?: () => Promise<string | null>;
     metadata?: (evidence: PdfIdentity) => Promise<CollectedBook[]>;
   } = {},
 ) {
@@ -77,6 +79,13 @@ export async function runPdfImport(
     if (job.phase === "scanning") {
       const current = await documents(db, owner),
         byPath = new Map(current.map((d) => [resolve(d.path), d]));
+      const connectedRoot = await (
+        options.connectedRoot ?? (() => verifiedPdfRoot(owner))
+      )();
+      if (connectedRoot && resolve(connectedRoot) === resolve(job.root)) {
+        for (const old of current)
+          byPath.set(resolve(job.root, old.relative_path), old);
+      }
       await rpc.call("inventory", {}, (doc) => {
         const old = byPath.get(resolve(doc.path));
         const kind =

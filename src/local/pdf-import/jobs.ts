@@ -279,6 +279,18 @@ export class PdfImportJobs {
       )
       .all(job.id, (page - 1) * 15)
       .map((r) => JSON.parse(String(r.data)) as ImportItem);
-    return { job, counts, total: Number(sums.total), issueCount, issues };
+    const history = this.db
+      .prepare(
+        "SELECT id,state,updated AS updatedAt FROM jobs WHERE owner=? ORDER BY updated DESC,rowid DESC",
+      )
+      .all(owner) as { id: string; state: string; updatedAt: number }[];
+    return {
+      job,
+      counts,
+      total: Number(sums.total),
+      issueCount,
+      issues,
+      history,
+    };
   }
 }

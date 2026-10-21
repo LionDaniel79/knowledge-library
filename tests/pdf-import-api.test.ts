@@ -52,6 +52,36 @@ it("enables empty first-use connection, rejects cloud execution, cross-origin an
     expect(response.status).toBe(202);
     const result = await response.json();
     expect(result.job.state).toBe("scanning");
+    const jobs = new PdfImportJobs(
+      process.env.LIBRARY_PDF_INDEX + ".imports.sqlite",
+    );
+    jobs.startupFailed(result.job.id);
+    jobs.discard(owner, result.job.id);
+    const later = jobs.create(owner, root);
+    jobs.close();
+    expect(
+      (
+        await (
+          await GET(
+            new Request(
+              `http://localhost:3000/api/pdf/import?id=${result.job.id}`,
+            ),
+          )
+        ).json()
+      ).job.id,
+    ).toBe(result.job.id);
+    expect(
+      (
+        await (
+          await GET(new Request("http://localhost:3000/api/pdf/import"))
+        ).json()
+      ).history,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: result.job.id }),
+        expect.objectContaining({ id: later.id }),
+      ]),
+    );
     owner = "outsider";
     expect((await post({ action: "pause", id: result.job.id })).status).toBe(
       404,

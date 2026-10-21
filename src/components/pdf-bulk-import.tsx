@@ -8,6 +8,7 @@ type Status = {
   total?: number;
   issueCount?: number;
   issues?: ImportItem[];
+  history?: { id: string; state: string; updatedAt: number }[];
 };
 const names: Record<string, string> = {
   scanning: "폴더 조사 중",
@@ -33,7 +34,8 @@ export function PdfBulkImport({
   const [status, setStatus] = useState<Status>({ job: null }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [page, setPage] = useState(1);
+    [page, setPage] = useState(1),
+    [selected, setSelected] = useState("");
   const replica = useReplicaOptional(),
     lastSynced = useRef(""),
     lastSyncTime = useRef(0);
@@ -47,10 +49,13 @@ export function PdfBulkImport({
     const controller = new AbortController();
     async function load() {
       try {
-        const r = await fetch(`/api/pdf/import?page=${page}`, {
-            cache: "no-store",
-            signal: controller.signal,
-          }),
+        const r = await fetch(
+            `/api/pdf/import?page=${page}${selected ? `&id=${encodeURIComponent(selected)}` : ""}`,
+            {
+              cache: "no-store",
+              signal: controller.signal,
+            },
+          ),
           j = await r.json();
         if (!r.ok) throw Error(j.error);
         if (!closed) {
@@ -71,7 +76,7 @@ export function PdfBulkImport({
       controller.abort();
       clearInterval(timer);
     };
-  }, [job?.id, job?.state, page, running]);
+  }, [job?.id, job?.state, page, running, selected]);
   useEffect(() => {
     const key = `${job?.id}:${counts.registered ?? 0}:${counts.enriched ?? 0}:${job?.state}`;
     if (
@@ -111,6 +116,7 @@ export function PdfBulkImport({
         j = await r.json();
       if (!r.ok) throw Error(j.error);
       setStatus(j);
+      if (action === "scan") setSelected("");
       setPage(1);
     } catch (e) {
       setError((e as Error).message);
@@ -125,7 +131,12 @@ export function PdfBulkImport({
         <button
           type="button"
           className="primary"
-          disabled={disabled || busy || (!!job && job.state !== "complete")}
+          disabled={
+            disabled ||
+            busy ||
+            (!!job && job.state !== "complete") ||
+            status.history?.some((j) => j.state !== "complete")
+          }
           onClick={() => void command("scan", { root })}
         >
           PDF 일괄 등록
@@ -138,6 +149,26 @@ export function PdfBulkImport({
       )}
       {job && (
         <section className="pdf-import-status" aria-label="PDF 일괄 등록 현황">
+          {(status.history?.length ?? 0) > 1 && (
+            <label>
+              등록 작업
+              <select
+                value={job.id}
+                onChange={(e) => {
+                  setSelected(e.target.value);
+                  setPage(1);
+                }}
+              >
+                {status.history!.map((j, i) => (
+                  <option key={j.id} value={j.id}>
+                    {new Date(j.updatedAt).toLocaleString("ko-KR")} ·{" "}
+                    {names[j.state]}
+                    {i === 0 ? " (최근)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <strong role="status">{names[job.state]}</strong>
           <p>
             조사 {status.total ?? 0}개 · 신규 후보 {counts.new ?? 0}개 · 기존{" "}

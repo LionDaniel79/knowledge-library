@@ -23,9 +23,18 @@ export async function GET(r: Request) {
           .min(1)
           .max(100000)
           .parse(params.get("page") ?? 1);
-      return Response.json(jobs.summary(owner, undefined, page), {
-        headers: { "Cache-Control": "private, no-store" },
-      });
+      return Response.json(
+        jobs.summary(
+          owner,
+          params.has("id")
+            ? z.string().uuid().parse(params.get("id"))
+            : undefined,
+          page,
+        ),
+        {
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
     } finally {
       jobs.close();
     }

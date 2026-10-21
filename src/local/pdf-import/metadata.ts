@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { compactTitle } from "../../lib/bibliography";
 import { withSyncWrite } from "../../server/sync/write";
 import { lookupLibraryTitle } from "../../server/catalog-provider";
@@ -124,6 +124,22 @@ export async function applyImportMetadata(
   // Download outside the transaction. A failed image must not roll back basic registration.
   if (record.facts.coverUrl)
     await mirrorCover(db, owner, record.facts.coverUrl);
+  // Stable operation ID spans the online commit / local checkpoint boundary.
+  // A different edition, file version, or starting book version gets a new ID.
+  const hash = createHash("sha256")
+    .update(
+      JSON.stringify([
+        "pdf-bulk-metadata/v1",
+        owner,
+        item.document.id,
+        item.hash,
+        item.bookId,
+        item.bookVersion,
+        record,
+      ]),
+    )
+    .digest("hex");
+  const operation = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   return withSyncWrite(db, owner, async (tx) => {
     const book = (
       await tx.query(
@@ -131,6 +147,15 @@ export async function applyImportMetadata(
         [owner, item.bookId],
       )
     ).rows[0];
+    const committed = (
+      await tx.query(
+        "SELECT id FROM library_revisions WHERE owner_id=$1 AND entity_id=$2 AND id=$3 AND action='identifyPdfEdition'",
+        [owner, item.bookId, operation],
+      )
+    ).rows.length;
+    // Returning current version only acknowledges our earlier commit; no field
+    // writes occur here, including when the reader has since edited the book.
+    if (book && committed) return Number(book.version);
     if (!book || Number(book.version) !== item.bookVersion)
       throw new LibraryError(
         409,
@@ -166,7 +191,7 @@ export async function applyImportMetadata(
       throw new LibraryError(409, "기존 출판사와 다른 판본입니다.");
     const next = (
       await tx.query(
-        "UPDATE library_books SET title=$3,author=$4,publisher=$5,isbn=$6,version=version+1,updated_at=now() WHERE owner_id=$1 AND id=$2 RETURNING *",
+        "UPDATE library_books SET title=$3,author=$4,publisher=$5,isbn=$6,version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
         [
           owner,
           item.bookId,
@@ -180,7 +205,7 @@ export async function applyImportMetadata(
     await tx.query(
       "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'identifyPdfEdition',$4,$5)",
       [
-        randomUUID(),
+        operation,
         owner,
         item.bookId,
         JSON.stringify(book),
