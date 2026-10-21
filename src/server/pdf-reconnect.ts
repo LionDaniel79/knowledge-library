@@ -136,7 +136,17 @@ export async function previewPdfConnection(
       [owner],
     )
   ).rows;
-  if (!rows.length) throw new LibraryError(404, "연결할 PDF가 없습니다.");
+  if (!rows.length)
+    return {
+      root,
+      found: 0,
+      missing: 0,
+      checked: 0,
+      digest: createHash("sha256")
+        .update(JSON.stringify([owner, root, "empty"]))
+        .digest("hex"),
+      version: (await config()).version,
+    };
   const hashes = withPdfIndex((index) => {
     const s = index.prepare(
       "SELECT sha256,signature FROM documents WHERE id=?",

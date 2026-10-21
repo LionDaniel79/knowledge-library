@@ -2,7 +2,10 @@
 import { useEffect, useState } from "react";
 import { Modal } from "./modal";
 import { pcPdfFolderUrl, privatePcOrigin } from "@/lib/pc-access";
-export function PdfConnection() {
+import { PdfBulkImport } from "./pdf-bulk-import";
+export function PdfConnection({
+  onImported,
+}: { onImported?: () => Promise<void> } = {}) {
   const [state, setState] = useState<any>(null),
     [root, setRoot] = useState(""),
     [preview, setPreview] = useState<any>(null),
@@ -96,20 +99,32 @@ export function PdfConnection() {
                   }}
                 />
               </label>
-              <button
+              <PdfBulkImport
+                root={root}
                 disabled={busy || !root}
-                onClick={() => void submit(false)}
-              >
-                연결 검사
-              </button>
+                onImported={onImported}
+                connection={
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy || !root}
+                    onClick={() => void submit(false)}
+                  >
+                    연결 검사
+                  </button>
+                }
+              />
               {preview && (
                 <>
                   <p>
                     찾은 PDF {preview.found}개 · 찾지 못한 PDF {preview.missing}
                     개 · 원본 대조 {preview.checked}개
                   </p>
-                  <p>각 PDF를 열 때 원본 일치 여부를 추가 확인합니다.</p>
-                  <button disabled={busy} onClick={() => void submit(true)}>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void submit(true)}
+                  >
                     이 위치로 저장
                   </button>
                 </>

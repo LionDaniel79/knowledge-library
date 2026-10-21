@@ -12,16 +12,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
-    const owner = await requireOwner();
-    const owned = (
-      await database.query(
-        "SELECT id FROM library_documents WHERE owner_id=$1 LIMIT 1",
-        [owner],
-      )
-    ).rows.length;
-    const state = owned
-      ? await pdfConnectionState()
-      : { available: false, version: 0, connected: false };
+    await requireOwner();
+    const state = await pdfConnectionState();
     return Response.json(
       {
         ...state,

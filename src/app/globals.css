@@ -1023,6 +1023,36 @@ progress::-moz-progress-bar {
 .pdf-folder-settings {
   margin-block: 8px;
 }
+.pdf-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+}
+.pdf-import-status {
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.pdf-import-status p,
+.pdf-import-help p {
+  margin-block: 8px;
+}
+.pdf-import-status .button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pdf-import-issue {
+  padding-block: 12px;
+  border-top: 1px solid var(--border);
+}
+.pdf-import-issue button {
+  margin: 4px 8px 4px 0;
+}
 .section-space {
   margin: 32px 0 18px;
 }

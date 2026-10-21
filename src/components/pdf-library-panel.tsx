@@ -199,7 +199,7 @@ export function PdfLibraryPanel({
             </button>
           </div>
           {summary && <PdfProgress summary={summary} />}
-          <PdfConnection />
+          <PdfConnection onImported={onSaved} />
         </>
       )}
       <form
