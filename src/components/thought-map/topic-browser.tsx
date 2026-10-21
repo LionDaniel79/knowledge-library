@@ -27,10 +27,12 @@ export function TopicBrowser({
   onOpen: (kind: string, id: string) => void;
 }) {
   const [selected, setSelected] = useState("all"),
-    [field, setField] = useState("");
+    [field, setField] = useState("all"),
+    [kind, setKind] = useState("note"),
+    [managing, setManaging] = useState(false);
   const paging = useListPagination(
     "topic-materials",
-    JSON.stringify([selected, field]),
+    JSON.stringify([selected, field, kind]),
   );
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<Topic | null>(null);
@@ -42,7 +44,8 @@ export function TopicBrowser({
   const catalog = useMaterialPage(
     !!library.catalog && paging.ready,
     {
-      category: field || "all",
+      category: field,
+      kind,
       topic: selected,
       limit: paging.size,
       offset: paging.offset,
@@ -50,7 +53,7 @@ export function TopicBrowser({
     state,
   );
   const materials = [
-    ...library.notes.map((n) => ({
+    ...(state.notes ?? library.notes).map((n) => ({
       id: n.id,
       kind: "note" as const,
       title: n.title,
@@ -82,7 +85,8 @@ export function TopicBrowser({
     );
   const localShown = materials.filter(
     (m) =>
-      (!field || m.category === field) &&
+      (kind === "all" || m.kind === kind) &&
+      (field === "all" || m.category === field) &&
       (selected === "all" || selected === "unclassified"
         ? selected === "all" || assigned(m).length === 0
         : assigned(m).some((a) => a.topicId === selected)),
@@ -102,57 +106,114 @@ export function TopicBrowser({
   return (
     <div className="thought-layout">
       <aside className="panel thought-topics">
-        <h2>나의 주제</h2>
-        <button disabled={busy} onClick={() => void send("proposeTopics", {})}>
-          기존 태그로 주제 제안
-        </button>
-        <button
-          aria-pressed={selected === "all"}
-          onClick={() => {
-            setSelected("all");
-            paging.setPage(0);
-          }}
+        <div className="topic-heading">
+          <h2>나의 주제</h2>
+          <button
+            className="topic-mobile-control"
+            aria-expanded={managing}
+            aria-controls="topic-manager"
+            onClick={() => setManaging(!managing)}
+          >
+            주제 관리
+          </button>
+        </div>
+        <select
+          className="topic-mobile-control"
+          aria-label="나의 주제 선택"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
         >
-          전체 자료
-        </button>
-        <button
-          aria-pressed={selected === "unclassified"}
-          onClick={() => {
-            setSelected("unclassified");
-            paging.setPage(0);
-          }}
-        >
-          미분류
-          {!library.catalog
-            ? " " + materials.filter((m) => assigned(m).length === 0).length
-            : ""}
-        </button>
-        {state.topics.map((t) => (
-          <div key={t.id} className="topic-row">
-            <button
-              aria-pressed={selected === t.id}
-              onClick={() => {
-                setSelected(t.id);
-                paging.setPage(0);
-              }}
-            >
-              {t.parentId ? "↳ " : ""}
+          <option value="all">전체 주제</option>
+          <option value="unclassified">미분류</option>
+          {state.topics.map((t) => (
+            <option key={t.id} value={t.id}>
               {t.name}
               {!t.confirmed ? " · 제안" : ""}
-            </button>
-            <button aria-label={`${t.name} 주제 수정`} onClick={() => edit(t)}>
-              수정
-            </button>
-            <button
-              disabled={busy}
-              aria-label={`${t.name} 주제 삭제`}
-              onClick={() => setDeleting(t)}
-            >
-              삭제
-            </button>
-          </div>
-        ))}
-        <button onClick={() => setFormOpen(true)}>주제 만들기·수정</button>
+            </option>
+          ))}
+        </select>
+        <div
+          id="topic-manager"
+          className={`topic-manager${managing ? " is-open" : ""}`}
+        >
+          <button
+            disabled={busy}
+            onClick={() => void send("proposeTopics", {})}
+          >
+            기존 태그로 주제 제안
+          </button>
+          <button
+            aria-pressed={selected === "all"}
+            onClick={() => {
+              setSelected("all");
+              paging.setPage(0);
+            }}
+          >
+            전체 주제
+          </button>
+          <button
+            aria-pressed={selected === "unclassified"}
+            onClick={() => {
+              setSelected("unclassified");
+              paging.setPage(0);
+            }}
+          >
+            미분류
+            {!library.catalog
+              ? " " + materials.filter((m) => assigned(m).length === 0).length
+              : ""}
+          </button>
+          {state.topics.map((t) => (
+            <div key={t.id} className="topic-row">
+              <button
+                aria-pressed={selected === t.id}
+                onClick={() => {
+                  setSelected(t.id);
+                  paging.setPage(0);
+                }}
+              >
+                {t.parentId ? "↳ " : ""}
+                {t.name}
+                {!t.confirmed ? " · 제안" : ""}
+              </button>
+              <button
+                aria-label={`${t.name} 주제 수정`}
+                onClick={() => edit(t)}
+              >
+                수정
+              </button>
+              <button
+                disabled={busy}
+                aria-label={`${t.name} 주제 삭제`}
+                onClick={() => setDeleting(t)}
+              >
+                삭제
+              </button>
+            </div>
+          ))}
+          <button onClick={() => setFormOpen(true)}>주제 만들기·수정</button>
+          {!!state.archivedTopics?.length && (
+            <details>
+              <summary>삭제한 주제 · {state.archivedTopics.length}개</summary>
+              {state.archivedTopics.map((t) => (
+                <div key={t.id}>
+                  {t.name}
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void send("restoreTopic", {
+                        id: t.id,
+                        expectedVersion: t.version,
+                      })
+                    }
+                  >
+                    복원
+                  </button>
+                </div>
+              ))}
+            </details>
+          )}
+        </div>
         {formOpen && (
           <Modal
             title={editing ? "주제 수정" : "주제 만들기"}
@@ -274,39 +335,21 @@ export function TopicBrowser({
             <button onClick={() => setDeleting(null)}>취소</button>
           </Modal>
         )}
-        {!!state.archivedTopics?.length && (
-          <details>
-            <summary>삭제한 주제 · {state.archivedTopics.length}개</summary>
-            {state.archivedTopics.map((t) => (
-              <div key={t.id}>
-                {t.name}
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void send("restoreTopic", {
-                      id: t.id,
-                      expectedVersion: t.version,
-                    })
-                  }
-                >
-                  복원
-                </button>
-              </div>
-            ))}
-          </details>
-        )}
       </aside>
       <div className="thought-materials">
-        <div className="panel thought-filters">
-          <strong>서지·내 기록 기반</strong>
-          <p>
-            도서관 분야와 개인 주제는 별개입니다. 책의 내용에 관한 근거는
-            원문이나 내 기록에서 확인합니다.
-          </p>
+        <div className="panel thought-filters topic-material-filters">
           <label>
-            도서관 분야
+            자료 종류
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="note">내 기록</option>
+              <option value="book">책</option>
+              <option value="all">책과 내 기록</option>
+            </select>
+          </label>
+          <label>
+            도서 분야
             <select value={field} onChange={(e) => setField(e.target.value)}>
-              <option value="">모든 분야</option>
+              <option value="all">모든 분야</option>
               {categories.map(([c, n]) => (
                 <option key={c} value={c}>
                   {n}
@@ -314,8 +357,16 @@ export function TopicBrowser({
               ))}
             </select>
           </label>
-          <p>{total}개 자료</p>
           <PageSizeSelect label="주제별 자료" paging={paging} />
+          <p className="topic-material-count" aria-live="polite">
+            {kind === "note"
+              ? "내 기록"
+              : kind === "book"
+                ? "책"
+                : "책과 내 기록"}{" "}
+            {total.toLocaleString()}
+            {kind === "book" ? "권" : "개"}
+          </p>
           {catalog.loading && <p role="status">자료를 불러오고 있습니다…</p>}
           {catalog.error && (
             <p role="alert">
@@ -328,7 +379,7 @@ export function TopicBrowser({
           {shown.map((m) => (
             <article className="panel thought-card" key={m.kind + m.id}>
               <small>
-                {m.kind === "book" ? "소장 도서 · 서지 정보" : "내 기록"} ·{" "}
+                {m.kind === "book" ? "소장 도서" : "내 기록"} ·{" "}
                 {categoryName(m.category)}
               </small>
               <button

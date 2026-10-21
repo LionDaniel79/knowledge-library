@@ -86,6 +86,9 @@ test("topic browsing retrieves matching books outside the initial page", async (
   );
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
+  await page
+    .getByRole("combobox", { name: "자료 종류", exact: true })
+    .selectOption("book");
   await page.getByRole("button", { name: "정서", exact: true }).click();
   await page
     .getByRole("button", { name: "주제로 찾은 책", exact: true })

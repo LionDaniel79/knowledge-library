@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { materialPageQuery } from "@/lib/material-query";
 import type { Executor } from "./library-store";
 import { readNotePage } from "./record-catalog";
 import { readBookPage } from "./book-catalog";
@@ -7,27 +7,21 @@ export async function readMaterialPage(
   owner: string,
   raw: unknown,
 ) {
-  const p = z
-    .object({
-      q: z.string().trim().max(200).default(""),
-      category: z
-        .string()
-        .regex(/^all$|^\d00$/)
-        .default("all"),
-      topic: z
-        .union([z.enum(["all", "unclassified"]), z.string().uuid()])
-        .default("all"),
-      offset: z.coerce.number().int().min(0).max(1000000).default(0),
-      limit: z.coerce.number().int().min(1).max(50).default(30),
-    })
-    .parse(raw);
-  const notes = await readNotePage(db, owner, p);
-  const books = await readBookPage(db, owner, {
-    ...p,
-    sort: "title",
-    offset: Math.max(0, p.offset - notes.total),
-    limit: Math.max(1, p.limit - notes.items.length),
-  });
+  // Material kind is separate from the note's own kind (thought, quote, etc.).
+  const { kind, ...p } = materialPageQuery.parse(raw);
+  const notes =
+    kind === "book"
+      ? { items: [], total: 0 }
+      : await readNotePage(db, owner, p);
+  const books =
+    kind === "note"
+      ? { items: [], total: 0 }
+      : await readBookPage(db, owner, {
+          ...p,
+          sort: "title",
+          offset: Math.max(0, p.offset - notes.total),
+          limit: Math.max(1, p.limit - notes.items.length),
+        });
   return {
     total: notes.total + books.total,
     items: [

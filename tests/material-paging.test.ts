@@ -67,6 +67,35 @@ it("pages across notes and books without accumulating or skipping the boundary",
   });
 });
 
+it("filters the material kind before counting and paging, while retaining the category and topic", async () => {
+  const notes = await readMaterialPage(f.db, owner, {
+    kind: "note",
+    category: "100",
+    topic,
+    limit: 10,
+    offset: 10,
+  });
+  expect(notes.total).toBe(12);
+  expect(notes.items).toHaveLength(2);
+  expect(notes.items.every((m) => m.kind === "note")).toBe(true);
+  const books = await readMaterialPage(f.db, owner, {
+    kind: "book",
+    category: "100",
+    limit: 10,
+    offset: 60,
+  });
+  expect(books.total).toBe(65);
+  expect(books.items).toHaveLength(5);
+  expect(books.items.every((m) => m.kind === "book")).toBe(true);
+  expect(await readMaterialPage(f.db, owner, { kind: "book", topic })).toEqual({
+    total: 0,
+    items: [],
+  });
+  await expect(
+    readMaterialPage(f.db, owner, { kind: "invalid" }),
+  ).rejects.toThrow();
+});
+
 it("uses the requested size for reading history and exact search totals, even past the last page", async () => {
   const a = await readCyclePage(f.db, owner, { limit: 15 });
   const b = await readCyclePage(f.db, owner, { limit: 15, offset: 15 });

@@ -67,9 +67,17 @@ export function ThoughtMapHelp({ onClose }: { onClose: () => void }) {
         </details>
         <details>
           <summary>2. 분야·주제·태그는 어떻게 다른가요?</summary>
+          <p>
+            주제별 자료는 기본으로 <strong>내 기록</strong>을 표시합니다. 자료
+            종류를 바꾸면 책도 함께 분류할 수 있습니다. 나의 주제에서 관심사를
+            선택하고, 자료의 <strong>주제 분류</strong>에서 연결하세요. 휴대폰의
+            수정·삭제·새 주제 작성은 <strong>주제 관리</strong>에 있습니다.
+          </p>
           <ul>
             <li>
-              <strong>분야:</strong> 신학·상담·철학 등 책의 서지 분류입니다.
+              <strong>도서 분야:</strong> 신학·상담·철학 등 책의 서지
+              분류입니다. 내 기록을 볼 때는 연결한 책의 분야로 거릅니다. 책과
+              연결하지 않은 기록은 ‘모든 분야’에서 볼 수 있습니다.
             </li>
             <li>
               <strong>주제:</strong> ‘고통을 어떻게 이해할까’처럼 여러 책과 내

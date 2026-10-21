@@ -86,8 +86,12 @@ for (const width of [390, 1440])
       .getByRole("button", { name: "주제별 자료", exact: true })
       .click();
     await expect(
-      page.getByText("서지·내 기록 기반", { exact: true }),
-    ).toBeVisible();
+      page.getByRole("combobox", { name: "자료 종류", exact: true }),
+    ).toHaveValue("note");
+    if (width === 390)
+      await page
+        .getByRole("button", { name: "주제 관리", exact: true })
+        .click();
     await expect(page.getByRole("button", { name: /^미분류/ })).toBeVisible();
     await page.getByText("주제 만들기·수정", { exact: true }).click();
     await page.getByLabel("주제 이름", { exact: true }).fill("내 정서 주제");

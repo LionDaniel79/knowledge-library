@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defaultShelves } from "../../lib/catalog";
+import { materialPageQuery } from "../../lib/material-query";
 import type { Book, BookPage, Library, Note, Revision } from "../../lib/domain";
 import { isbn13 } from "../../lib/bibliography";
 import {
@@ -675,16 +676,21 @@ export function createLocalReplicaRepository(
         path = url.pathname;
       if (path === "/api/library") return repository.overview();
       if (path === "/api/library-materials") {
-        const q = Object.fromEntries(p),
-          offset = Number(p.get("offset") ?? 0),
-          limit = Number(p.get("limit") ?? 30);
-        const notes = await repository.notes(q),
-          books = await repository.books({
-            ...q,
-            sort: "title",
-            offset: Math.max(0, offset - notes.total),
-            limit: Math.max(1, limit - notes.items.length),
-          });
+        const { kind, ...q } = materialPageQuery.parse(Object.fromEntries(p)),
+          { offset, limit } = q;
+        const notes =
+            kind === "book"
+              ? { items: [], total: 0 }
+              : await repository.notes(q),
+          books =
+            kind === "note"
+              ? { items: [], total: 0 }
+              : await repository.books({
+                  ...q,
+                  sort: "title",
+                  offset: Math.max(0, offset - notes.total),
+                  limit: Math.max(1, limit - notes.items.length),
+                });
         return {
           total: notes.total + books.total,
           items: [

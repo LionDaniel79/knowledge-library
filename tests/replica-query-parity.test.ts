@@ -261,6 +261,32 @@ it("matches server contracts for review detail, sources, thought events, researc
     clean(await readCatalogReviews(f.db, owner, { id })),
   );
 });
+it("separates books and notes in the device material catalog with the same filtered pages as SQL", async () => {
+  const queries: Record<string, string>[] = [
+    { kind: "note" },
+    { kind: "note", offset: "1" },
+    { kind: "note", category: "100" },
+    { kind: "note", category: "200" },
+    { kind: "book", category: "100" },
+    { kind: "book", offset: "2", limit: "10" },
+    { kind: "all", offset: "1", limit: "10" },
+  ];
+  for (const query of queries) {
+    const local = (await repo.read(
+      "/api/library-materials?" + new URLSearchParams(query),
+    )) as Awaited<ReturnType<typeof readMaterialPage>>;
+    if (query.kind !== "all")
+      expect(local.items.every((m) => m.kind === query.kind)).toBe(true);
+    expect(json(local)).toEqual(
+      json(await readMaterialPage(f.db, owner, query)),
+    );
+  }
+  expect(await repo.read("/api/library-materials?kind=note&offset=1")).toEqual({
+    items: [],
+    total: 1,
+  });
+});
+
 it("matches SQL book pages, categories, formats, shelves, whitespace search and deterministic sorting", async () => {
   for (const query of [
     {},
