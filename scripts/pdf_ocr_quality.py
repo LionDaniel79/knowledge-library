@@ -6,7 +6,7 @@ import re
 import unicodedata
 from PIL import Image, ImageOps
 
-PROFILE = 'body-footnotes-300dpi-v1'
+PROFILE = 'body-footnotes-300dpi-v2'
 MAX_TILE = 2500
 
 
@@ -53,13 +53,21 @@ def merge_lines(lines,review=None):
 
 
 def margin_key(line,height):
-    text=normalized(line.get('text',''))
+    original=str(line.get('text','')).strip()
+    text=normalized(original)
     x,y,w,h=line['box']
     if not text or len(text)>90:return None
-    if re.match(r'^(?:각주|주[:：]|\d{1,3}[.)]|[*†‡])',text):return None
+    running_folio=bool(re.search(r'[|ⅠlI1]\s+\d{1,5}$',original))
+    if re.match(r'^(?:각주|주[:：]|\d{1,3}[.)]|[*†‡])',text) and not running_folio:return None
     if re.fullmatch(r'[-–—·]*\d{1,5}[-–—·]*',text):return None
-    edge='top' if y+h<height*.12 else 'bottom' if y>height*.91 else None
+    edge='top' if y+h<height*.12 else 'bottom' if y>height*.88 else None
     if not edge:return None
+    # Folios often share one OCR line with the running title. Strip only a
+    # separate outer token; chapter numbers inside a title remain significant.
+    original=re.sub(r'^\d{1,5}(?:\s+[|ⅠlI1])?\s+','',original)
+    original=re.sub(r'\s+(?:[|ⅠlI1]\s*)?\d{1,5}$','',original)
+    text=normalized(original)
+    if len(text)<4:return None
     return (edge,text)
 
 
@@ -70,7 +78,9 @@ def repeated_margins(pages,height):
     for page in samples:
         for key,geometry in page:
             count=sum(any(other_key==key and same_margin(geometry,other_geometry) for other_key,other_geometry in lines) for lines in samples)
-            if count>=max(3,math.ceil(len(pages)*.6)):repeated.add((*key,*geometry))
+            # Odd/even pages may use different titles. Require at least three
+            # distant matches, with the same geometry, for either title.
+            if count>=max(3,math.ceil(len(pages)*.3)):repeated.add((*key,*geometry))
     return repeated
 
 
@@ -128,7 +138,7 @@ def png_bytes(image):
 
 
 def result_lines(result,offset=(0,0),scale=1):
-    lines=[]
+    lines=[];records=[]
     for line in result.get('lines',[]):
         box=line.get('box')
         if not isinstance(box,list) or len(box)!=4:continue
@@ -143,10 +153,20 @@ def result_lines(result,offset=(0,0),scale=1):
                 if gap>max(old[3],wb[3])*4:groups.append([])
             else:groups.append([])
             groups[-1].append(word)
+        records.append((line,groups))
+    def gaps(groups):
+        return [(a[-1]['box'][0]+a[-1]['box'][2],b[0]['box'][0]) for a,b in zip(groups,groups[1:])]
+    for line,groups in records:
+        # One large space in a citation is not evidence of columns. Require
+        # the same gutter on three distinct OCR rows before splitting lines.
+        split=False
+        for lo,hi in gaps(groups):
+            support=sum(any(min(hi,b)-max(lo,a)>.5*min(hi-lo,b-a) for a,b in gaps(other_groups)) for _,other_groups in records)
+            if support>=3:split=True;break
         fragments=[]
-        if len(groups)>1:
+        if split:
             for group in groups:
-                x=min(w['box'][0] for w in group);y=min(w['box'][1] for w in group)
+                x=min(w['box'][0] for w in group);y=line['box'][1]
                 right=max(w['box'][0]+w['box'][2] for w in group);bottom=max(w['box'][1]+w['box'][3] for w in group)
                 fragments.append({'text':' '.join(str(w.get('text','')) for w in group),'box':[x,y,right-x,bottom-y]})
         else:fragments=[line]
@@ -228,6 +248,10 @@ def recognize_body(image,recognize,repeated=None,old_text=''):
         final=filter_body(merge_lines(all_lines,review),prepared.width,prepared.height,repeated or set(),remove_margins=reliable_geometry)
         review+=final['review'];ordered=reading_order(final['lines'],prepared.width)
         text='\n'.join(l['text'] for l in ordered).strip()
+        for previous_line in old_text.splitlines():
+            heading=normalized(previous_line)
+            if re.fullmatch(r'[ivxlcdm]{1,8}',heading) and heading not in normalized(text):
+                review.append('기존 로마숫자 절 제목 누락 가능성: 원문 확인');break
         if old_text.strip() and len(normalized(text))<len(normalized(old_text))*.55:
             review.append('기존보다 인식 분량 감소: 누락 확인')
         if not text:review.append('본문 인식 결과 없음')

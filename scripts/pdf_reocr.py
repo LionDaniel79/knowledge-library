@@ -70,7 +70,10 @@ def run_batch(index,owner,job,recognize,renderer=None,min_free_bytes=2*1024**3):
                     if row['document_id'] not in margins:
                         probes=[]
                         # Broadly separated probes prevent deleting a one-off title.
-                        positions=sorted(set([min(20,row['page_count']),max(1,row['page_count']//2),max(1,row['page_count']-10)]))
+                        # Avoid covers/prefaces/end advertisements, which do
+                        # not describe the body's odd/even running titles.
+                        anchors=[max(1,row['page_count']//4),max(1,row['page_count']//2),max(1,3*row['page_count']//4)]
+                        positions=sorted({min(row['page_count'],n+delta) for n in anchors for delta in (0,1)})
                         for n in positions:
                             if store.required(owner,job)['pause']:break
                             image=renderer.render(row,n)

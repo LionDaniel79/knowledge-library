@@ -44,6 +44,30 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(body['lines'],[title])
         self.assertEqual(body['removed'],[header])
 
+    def test_folios_joined_to_alternating_headers_are_removed_by_geometry(self):
+        pages=[]
+        for n in range(20,26):
+            text=f'{n} 어떻게 기도할까?' if n%2==0 else f'{n} How To Pray'
+            pages.append([line(text,80,25,500,20),line(f'{n} | 기도의 능력',80,950,320,20)])
+        repeated=repeated_margins(pages,1000)
+        title=line('어떻게 기도할까?',80,75,750,40)
+        footnote=line('1. 기도의 근거를 설명하는 각주',80,930,600,20)
+        result=filter_body(pages[0]+[title,footnote],1000,1000,repeated)
+        self.assertEqual(result['lines'],[title,footnote])
+        self.assertEqual(result['removed'],pages[0])
+
+    def test_chapter_numbers_are_not_generalized_into_same_running_title(self):
+        pages=[[line(f'제{n}장 인간 이해',80,30,400,25)] for n in range(1,7)]
+        repeated=repeated_margins(pages,1000)
+        self.assertFalse(repeated)
+
+    def test_bottom_running_title_with_chapter_number_and_folio_is_not_a_footnote(self):
+        pages=[[line(f'7. 새벽의 기도 | {n}',300,905,250,16)] for n in (77,79,81)]
+        repeated=repeated_margins(pages,1000)
+        note=line('7. 각주의 출처와 설명',80,905,500,16)
+        result=filter_body(pages[0]+[note],1000,1000,repeated)
+        self.assertEqual(result['lines'],[note])
+
     def test_separate_footnote_number_beside_text_is_not_page_number(self):
         marker=line('1',80,950,12,12)
         text=line('Footnote text',100,950,600,12)
@@ -83,6 +107,14 @@ class QualityTests(unittest.TestCase):
         self.assertIn('12',result['text'])
         self.assertTrue(result['review'])
 
+    def test_lost_roman_section_heading_requires_review_even_when_text_length_is_similar(self):
+        image=Image.new('L',(1000,1000),255)
+        try:
+            with patch('pdf_ocr_quality.deskew',side_effect=lambda im:(im.copy(),0)):
+                result=recognize_body(image,lambda _:{'lines':[line('본문 문장과 각주 내용',80,200)]},old_text='본문 문장과\nⅦ\n각주 내용')
+            self.assertTrue(result['review'])
+        finally:image.close()
+
     def test_columns_preserve_spanning_heading_and_bottom_footnote(self):
         lines=[line('장 제목',10,10,900),line('왼쪽 첫째',10,100,400),line('오른쪽 첫째',570,100,400),line('왼쪽 둘째',10,160,400),line('오른쪽 둘째',570,160,400),line('왼쪽 셋째',10,220,400),line('오른쪽 셋째',570,220,400),line('각주',10,800,900)]
         self.assertEqual([l['text'] for l in reading_order(lines,1000)],['장 제목','왼쪽 첫째','왼쪽 둘째','왼쪽 셋째','오른쪽 첫째','오른쪽 둘째','오른쪽 셋째','각주'])
@@ -97,7 +129,11 @@ class QualityTests(unittest.TestCase):
         result.close();tilted.close();image.close()
 
     def test_joined_columns_split_at_word_gutter_without_losing_words(self):
-        result={'lines':[{'text':'왼쪽 본문 오른쪽 본문','box':[20,100,900,25],'words':[{'text':'왼쪽','box':[20,100,100,25]},{'text':'본문','box':[130,100,100,25]},{'text':'오른쪽','box':[600,100,100,25]},{'text':'본문','box':[710,100,100,25]}]}]}
-        self.assertEqual([l['text'] for l in result_lines(result)],['왼쪽 본문','오른쪽 본문'])
+        result={'lines':[{'text':'왼쪽 본문 오른쪽 본문','box':[20,y,900,25],'words':[{'text':'왼쪽','box':[20,y,100,25]},{'text':'본문','box':[130,y,100,25]},{'text':'오른쪽','box':[600,y,100,25]},{'text':'본문','box':[710,y,100,25]}]} for y in (100,160,220)]}
+        self.assertEqual([l['text'] for l in result_lines(result)],['왼쪽 본문','오른쪽 본문']*3)
+
+    def test_bibliographic_gap_is_not_treated_as_a_two_column_gutter(self):
+        result={'lines':[{'text':'55. Author H. (ed.) Title','box':[203,1763,676,23],'words':[{'text':'55.','box':[203,1765,48,19]},{'text':'Author','box':[257,1766,80,20]},{'text':'H.','box':[365,1766,18,18]},{'text':'(ed.)','box':[482,1763,41,22]},{'text':'Title','box':[531,1766,53,19]}]}]}
+        self.assertEqual([l['text'] for l in result_lines(result)],['55. Author H. (ed.) Title'])
 
 if __name__=='__main__':unittest.main()

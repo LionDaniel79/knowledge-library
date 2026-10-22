@@ -21,6 +21,10 @@ PDF 원문 검색 → PDF 보관 폴더 설정 → **OCR 품질·다시 인식**
 
 원본 PDF, 원래 문자형 PDF의 추출문, 독서 메모는 변경하지 않습니다. 별도 로컬 LLM을 설치하거나 유료 OCR/GPT API를 자동 호출하지 않습니다. 실제 소장본의 정확도 개선은 원본 연결 후 표본으로 확인해야 합니다.
 
+2026-10-22 실제 소장본 검수에서는 개선과 새 오인식이 함께 나왔습니다. 반복 쪽번호·머리말의 결합, 각주 참고문헌 공백의 잘못된 2단 분리, 로마숫자 절 제목 누락을 보완했습니다. 다만 현재 PC에는 한국어 OCR만 설치되어 있어 영문과 영문 인용은 별도 검토가 필요합니다. 300dpi·400dpi·배경 보정 중 어느 하나가 모든 표본에 우세하지 않았으므로, 전체 결과를 일괄 덮어쓰지 않고 후보로 보관합니다.
+
+영어 OCR을 추가하려면 Windows 설정 → 시간 및 언어 → 언어 및 지역 → English (United States)에서 광학 문자 인식 기능을 설치합니다. 표시 언어를 바꿀 필요는 없습니다. 명령으로 설치할 경우 관리자 PowerShell에서 `Add-WindowsCapability -Online -Name Language.OCR~~~en-US~0.0.1.0`을 사용합니다. [언어 기능 안내](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/features-on-demand-language-fod?view=windows-11), [설치 명령 안내](https://learn.microsoft.com/en-us/powershell/module/dism/add-windowscapability)
+
 ## Neon 한도를 소진했을 때
 
 OCR 본문과 후보·이력은 **PC의 로컬 SQLite 색인**에 저장됩니다. OCR 처리기는 Neon에 접속하지 않습니다. 따라서 OCR 때문에 웹 업로드 한도를 기다릴 필요는 없습니다. 웹 동기화·로그인·현재 PDF 검색 API의 도서 소유권 조회는 별개로 Neon 가용성에 영향을 받습니다.
