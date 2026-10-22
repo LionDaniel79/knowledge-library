@@ -255,21 +255,25 @@ export function LibraryForm({
               않습니다.
             </div>
           )}
-          {editor.kind === "book" && !book && (
+          {editor.kind === "book" && (
             <BookLookup
               preview={preview}
+              initialQuery={book?.isbn || book?.title || ""}
               onSelect={(candidate) => {
-                setIsbn(candidate.isbn);
+                if (candidate.isbn) setIsbn(candidate.isbn);
                 setTitle(candidate.title);
-                setCoverUrl(candidate.coverUrl);
+                if (candidate.coverUrl) setCoverUrl(candidate.coverUrl);
                 setSelectedCatalog(candidate);
                 for (const [name, value] of Object.entries({
                   title: candidate.title,
                   author: candidate.author,
                   publisher: candidate.publisher,
-                  totalPages: candidate.totalPages ?? "",
-                  category: candidate.category ?? "",
+                  totalPages: candidate.totalPages,
+                  category: categories.some(([id]) => id === candidate.category)
+                    ? candidate.category
+                    : undefined,
                 })) {
+                  if (value === "" || value == null) continue;
                   const field = formRef.current?.elements.namedItem(name);
                   if (
                     field instanceof HTMLInputElement ||

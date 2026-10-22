@@ -5,11 +5,13 @@ import { type BookCandidate, catalogProviderNames } from "@/lib/book-lookup";
 export function BookLookup({
   onSelect,
   preview,
+  initialQuery = "",
 }: {
   onSelect: (book: BookCandidate) => void;
   preview: boolean;
+  initialQuery?: string;
 }) {
-  const [q, setQ] = useState(""),
+  const [q, setQ] = useState(initialQuery),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [items, setItems] = useState<BookCandidate[]>([]),
@@ -146,7 +148,7 @@ export function BookLookup({
           disabled={busy || q.trim().length < 2}
           onClick={() => void search()}
         >
-          {busy ? "검색 중…" : "책 검색"}
+          {busy ? "검색 중…" : "제목 검색"}
         </button>
         <button
           type="button"
@@ -166,7 +168,7 @@ export function BookLookup({
         </div>
       )}
       <label className="barcode-photo">
-        바코드 사진 선택
+        바코드 이미지 등록
         <input
           type="file"
           accept="image/*"
