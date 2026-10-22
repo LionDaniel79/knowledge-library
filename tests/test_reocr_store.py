@@ -37,6 +37,14 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.apply('owner',another),0)
         self.assertEqual(self.store.summary('owner',another)['counts']['stale'],1)
 
+    def test_empty_candidate_keeps_previous_text_without_requesting_human_review(self):
+        job=self.store.create('owner','all');row=self.store.next_page('owner',job)
+        self.store.save_candidate('owner',job,row,{'text':'','review':['본문 인식 결과 없음'],'profile':'v','lines':[]})
+        self.assertEqual(self.store.summary('owner',job)['counts'].get('review',0),0)
+        self.assertEqual(self.store.summary('owner',job)['counts']['rejected'],1)
+        self.assertEqual(self.store.apply('owner',job,include_review=True),0)
+        self.assertEqual(self.store.db.execute('SELECT text FROM pages WHERE id=?',(row['page_id'],)).fetchone()[0],'old OCR')
+
     def test_resume_returns_only_unfinished_pages_and_source_change_is_rejected(self):
         job=self.store.create('owner','all');row=self.store.next_page('owner',job)
         self.store.save_candidate('owner',job,row,{'text':'candidate','review':['needs check'],'profile':'v','lines':[]})

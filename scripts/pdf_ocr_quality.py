@@ -6,7 +6,7 @@ import re
 import unicodedata
 from PIL import Image, ImageOps
 
-PROFILE = 'body-footnotes-300dpi-v4'
+PROFILE = 'body-footnotes-300dpi-v5'
 MAX_TILE = 2500
 
 
@@ -117,7 +117,7 @@ def filter_body(lines,width,height,repeated,remove_margins=True):
         else:kept.append(line)
     text='\n'.join(l['text'] for l in kept)
     # Do not discard a page just because an author quotes an advertisement.
-    if re.search(r'신간\s*(안내|소개)|구매\s*문의|도서\s*주문|정가\s*[:：]|발행인\s*[:：]|ISBN\s*[:：]?|차\s*례|목\s*차',text,re.I):
+    if re.search(r'신간\s*(안내|소개)|구매\s*문의|도서\s*주문|정가\s*[:：]|발행인\s*[:：]|ISBN\s*[:：]?',text,re.I) or any(re.fullmatch(r'\s*(?:차\s*례|목\s*차)\s*',line.get('text','')) for line in kept):
         review.append('광고·표지·목차·판권 가능성: 본문 여부 확인')
     if '\ufffd' in text:review.append('문자 깨짐 확인')
     return {'lines':kept,'removed':removed,'review':review}

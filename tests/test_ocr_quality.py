@@ -45,6 +45,15 @@ class QualityTests(unittest.TestCase):
         self.assertTrue(result['review'])
         self.assertTrue(result['lines'])
 
+    def test_normal_prose_mentioning_sequence_is_not_misclassified_as_contents(self):
+        for text in ('이들은 차례로 일어나 이렇게 말했습니다.', '두 차례의 세계대전', '차례대로 써 보내는 것이 좋은 줄 알았노니', '목차를 살펴보면 이 주장을 이해할 수 있다.'):
+            with self.subTest(text=text):
+                result=filter_body([line(text,30,200)],1000,1000,set())
+                self.assertEqual(result['review'],[])
+                self.assertEqual(result['lines'][0]['text'],text)
+        for text in ('차례','목 차','차 례'):
+            self.assertTrue(filter_body([line(text,30,200)],1000,1000,set())['review'])
+
     def test_same_words_in_larger_chapter_title_are_not_running_header(self):
         header=line('Chapter One',400,20,200,12)
         repeated=repeated_margins([[header],[line('Chapter One',402,22,201,13)],[header]],1000)

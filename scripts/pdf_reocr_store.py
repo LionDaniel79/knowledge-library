@@ -105,7 +105,9 @@ class ReocrStore:
         if not self.source_current(row):self.mark(owner,job,row,'stale','원본·기존 내용이 변경됨');return False
         text=str(result.get('text','')).replace('\x00','').strip()
         if len(text)>100000:raise ValueError('OCR 결과가 너무 큽니다.')
-        state='review' if result.get('review') or not text else 'ready'
+        # Empty output cannot improve the index. Keep the active text rather
+        # than asking the reader to approve a result that cannot be applied.
+        state='rejected' if not text else 'review' if result.get('review') else 'ready'
         self.db.execute('UPDATE reocr_pages SET new_text=?,result=?,state=?,error=\'\' WHERE job=? AND document_id=? AND page_number=? AND state=\'pending\'',(text,json.dumps(result,ensure_ascii=False),state,job,row['document_id'],row['page_number']))
         self.heartbeat(owner,job);return True
 
