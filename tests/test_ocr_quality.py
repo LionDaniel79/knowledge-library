@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from pdf_ocr_quality import tile_boxes, merge_lines, filter_body, repeated_margins, reading_order, deskew, result_lines, recognize_body
+from pdf_ocr_quality import tile_boxes, merge_lines, filter_body, repeated_margins, reading_order, deskew, result_lines, recognize_body, header_probe_pages
 from unittest.mock import patch
 from PIL import Image, ImageDraw
 
@@ -10,6 +10,15 @@ def line(text,x,y,w=300,h=25):
     return {'text':text,'box':[x,y,w,h]}
 
 class QualityTests(unittest.TestCase):
+    def test_header_samples_stay_in_the_current_section_and_include_both_page_parities(self):
+        self.assertEqual(header_probe_pages(174,30),[8,9,16,17,24,25])
+        self.assertEqual(header_probe_pages(174,100),[104,105,112,113,120,121])
+        self.assertEqual(header_probe_pages(3,2),[1,2,3])
+
+    def test_slash_folios_in_anthology_headers_are_removed_without_stripping_chapter_numbers(self):
+        pages=[[line(f'Author · 제2장 사회법 / {n}',80,30,500,20)]for n in (81,82,83)]
+        result=filter_body(pages[0],1000,1000,repeated_margins(pages,1000))
+        self.assertEqual(result['lines'],[])
     def test_tiles_cover_large_pages_without_downscaling_and_have_bounded_overlap(self):
         boxes=tile_boxes(2480,3508,2400,160)
         self.assertTrue(all(x1-x0<=2400 and y1-y0<=2400 for x0,y0,x1,y1 in boxes))
@@ -113,6 +122,14 @@ class QualityTests(unittest.TestCase):
             with patch('pdf_ocr_quality.deskew',side_effect=lambda im:(im.copy(),0)):
                 result=recognize_body(image,lambda _:{'lines':[line('본문 문장과 각주 내용',80,200)]},old_text='본문 문장과\nⅦ\n각주 내용')
             self.assertTrue(result['review'])
+        finally:image.close()
+
+    def test_installed_language_and_region_review_propagate_to_page_evidence(self):
+        image=Image.new('L',(1000,1000),255)
+        try:
+            result=recognize_body(image,lambda _:{'lines':[line('본문과 English reference',80,200)],'language':'ko+en-US','review':['영문 인용 검수'],'languageEdits':[{'original':'old','recognized':'new','language':'en-US','box':[1,2,3,4]}]})
+            self.assertEqual(result['language'],'ko+en-US');self.assertIn('영문 인용 검수',result['review'])
+            self.assertNotIn('box',result['languageEdits'][0]);self.assertIn('stage',result['languageEdits'][0])
         finally:image.close()
 
     def test_columns_preserve_spanning_heading_and_bottom_footnote(self):

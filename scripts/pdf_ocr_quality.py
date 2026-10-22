@@ -6,12 +6,20 @@ import re
 import unicodedata
 from PIL import Image, ImageOps
 
-PROFILE = 'body-footnotes-300dpi-v2'
+PROFILE = 'body-footnotes-300dpi-v4'
 MAX_TILE = 2500
 
 
 def normalized(text):
     return re.sub(r'\s+', '', unicodedata.normalize('NFKC', str(text))).casefold()
+
+
+def header_probe_pages(count,page=None):
+    if count<1 or (page is not None and not 1<=page<=count):raise ValueError('Invalid PDF page')
+    start=1 if page is None else ((page-1)//32)*32+1
+    end=count if page is None else min(count,start+31);span=end-start+1
+    anchors=[start-1+math.ceil(span*n/4) for n in (1,2,3)]
+    return sorted({min(end,n+delta) for n in anchors for delta in (0,1)})
 
 
 def tile_boxes(width, height, limit=MAX_TILE, overlap=160):
@@ -66,6 +74,7 @@ def margin_key(line,height):
     # separate outer token; chapter numbers inside a title remain significant.
     original=re.sub(r'^\d{1,5}(?:\s+[|ⅠlI1])?\s+','',original)
     original=re.sub(r'\s+(?:[|ⅠlI1]\s*)?\d{1,5}$','',original)
+    original=re.sub(r'\s*/\s*\d{1,5}$','',original)
     text=normalized(original)
     if len(text)<4:return None
     return (edge,text)
@@ -203,9 +212,17 @@ def reading_order(lines,width):
 
 
 def recognize_body(image,recognize,repeated=None,old_text=''):
-    prepared,angle=deskew(image);review=[];all_lines=[];removed=[]
+    prepared,angle=deskew(image);review=[];all_lines=[];removed=[];languages=[];language_edits=[]
+    def provenance(result,stage):
+        review.extend(result.get('review',[]))
+        # Recognizer crop/probe boxes are not PDF-page coordinates. Keep text
+        # audit evidence without presenting those boxes as page locations.
+        language_edits.extend({**{key:edit.get(key) for key in ('original','recognized','language')},'stage':stage} for edit in result.get('languageEdits',[]))
+        for language in str(result.get('language','ko')).split('+'):
+            if language not in languages:languages.append(language)
     try:
         initial,meta=probe(prepared,recognize)
+        provenance(meta,'probe')
         body=filter_body(initial,prepared.width,prepared.height,repeated or set())
         review+=body['review'];removed=body['removed']
         # Only known repeated edge text is masked; unknown ink (tiny footnotes)
@@ -227,6 +244,7 @@ def recognize_body(image,recognize,repeated=None,old_text=''):
             crop=prepared.crop((x0,y0,x1,y1))
             try:
                 result=recognize(png_bytes(crop))
+                provenance(result,'tile')
                 lines=result_lines(result,offset=(x0,y0))
                 if abs(float(result.get('textAngle') or 0))>1:
                     reliable_geometry=False;review.append('인식 결과의 기울기 좌표 확인: 여백 제거 보류')
@@ -255,5 +273,5 @@ def recognize_body(image,recognize,repeated=None,old_text=''):
         if old_text.strip() and len(normalized(text))<len(normalized(old_text))*.55:
             review.append('기존보다 인식 분량 감소: 누락 확인')
         if not text:review.append('본문 인식 결과 없음')
-        return {'text':text,'lines':ordered,'removed':removed+final['removed'],'review':list(dict.fromkeys(review)),'profile':PROFILE,'dpi':300,'deskewAngle':angle,'width':prepared.width,'height':prepared.height,'engine':'Windows.Media.Ocr','language':'ko','image_hash':hashlib.sha256(png_bytes(prepared)).hexdigest()}
+        return {'text':text,'lines':ordered,'removed':removed+final['removed'],'review':list(dict.fromkeys(review)),'profile':PROFILE,'dpi':300,'deskewAngle':angle,'width':prepared.width,'height':prepared.height,'engine':'Windows.Media.Ocr','language':'+'.join(languages),'languageEdits':language_edits,'image_hash':hashlib.sha256(png_bytes(prepared)).hexdigest()}
     finally:prepared.close()

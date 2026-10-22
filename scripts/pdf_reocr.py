@@ -12,9 +12,10 @@ import threading
 from contextlib import contextmanager
 import pypdfium2 as pdfium
 from pdf_job_state import processing_lock, resolved_index
-from pdf_ocr import WindowsOcr, OcrEngineError
+from pdf_ocr import OcrEngineError
+from pdf_ocr_languages import AdaptiveWindowsOcr
 from pdf_ocr_store import is_resource_error
-from pdf_ocr_quality import recognize_body, repeated_margins, probe, deskew
+from pdf_ocr_quality import recognize_body, repeated_margins, probe, deskew, header_probe_pages
 from pdf_reocr_store import ReocrStore
 
 
@@ -53,6 +54,18 @@ class QualityRenderer:
 
 def run_batch(index,owner,job,recognize,renderer=None,min_free_bytes=2*1024**3):
     store=ReocrStore(index);renderer=renderer or QualityRenderer();margins={};last_beat=0;acquired=False
+    def inspect_headers(row,positions):
+        probes=[]
+        for n in positions:
+            if store.required(owner,job)['pause']:break
+            image=renderer.render(row,n)
+            prepared,angle=deskew(image);image.close()
+            try:
+                lines,meta=probe(prepared,recognize)
+                if abs(float(meta.get('textAngle') or 0))<=1:
+                    probes.append([{**line,'box':[x*1000/prepared.height for x in line['box']]} for line in lines])
+            finally:prepared.close()
+        return repeated_margins(probes,1000)
     try:
         with processing_lock(index,'ocr'),heartbeat(index,owner,job):
             acquired=True
@@ -67,27 +80,22 @@ def run_batch(index,owner,job,recognize,renderer=None,min_free_bytes=2*1024**3):
                 if row.get('stale_selection'):continue
                 if not store.source_current(row):store.mark(owner,job,row,'stale','원본 변경·분리');continue
                 try:
-                    if row['document_id'] not in margins:
-                        probes=[]
-                        # Broadly separated probes prevent deleting a one-off title.
-                        # Avoid covers/prefaces/end advertisements, which do
-                        # not describe the body's odd/even running titles.
-                        anchors=[max(1,row['page_count']//4),max(1,row['page_count']//2),max(1,3*row['page_count']//4)]
-                        positions=sorted({min(row['page_count'],n+delta) for n in anchors for delta in (0,1)})
-                        for n in positions:
-                            if store.required(owner,job)['pause']:break
-                            image=renderer.render(row,n)
-                            prepared,angle=deskew(image);image.close()
-                            try:
-                                lines,meta=probe(prepared,recognize)
-                                if abs(float(meta.get('textAngle') or 0))<=1:
-                                    probes.append([{**line,'box':[x*1000/prepared.height for x in line['box']]} for line in lines])
-                            finally:prepared.close()
-                        margins[row['document_id']]=repeated_margins(probes,1000)
+                    margin_group=(row['document_id'],(row['page_number']-1)//32)
+                    if margin_group not in margins:
+                        # A chapter or a bilingual section can change its running
+                        # title. Cache evidence locally instead of across the
+                        # entire book; retain book-wide evidence for stable
+                        # footers when nearby chapter-opening pages lack them.
+                        global_group=(row['document_id'],'global')
+                        global_positions=header_probe_pages(row['page_count'])
+                        if global_group not in margins:margins[global_group]=inspect_headers(row,global_positions)
+                        positions=header_probe_pages(row['page_count'],row['page_number'])
+                        local=margins[global_group] if positions==global_positions else inspect_headers(row,positions)
+                        margins[margin_group]=local|margins[global_group]
                     if store.required(owner,job)['pause']:
                         store.finish(owner,job,'paused');break
                     image=renderer.render(row)
-                    try:result=recognize_body(image,recognize,margins[row['document_id']],row['old_text'])
+                    try:result=recognize_body(image,recognize,margins[margin_group],row['old_text'])
                     finally:image.close()
                     # The atomic store checks source, active text and method again.
                     store.save_candidate(owner,job,row,result)
@@ -165,7 +173,7 @@ if __name__=='__main__':
         if args.action=='control':
             request=json.loads(sys.stdin.readline());print(json.dumps(control(args.index,args.owner,request),ensure_ascii=False),flush=True)
         elif args.action=='work':
-            engine=WindowsOcr('ko')
+            engine=AdaptiveWindowsOcr()
             try:run_batch(args.index,args.owner,args.job,engine.recognize_png)
             finally:engine.close()
         else:run_application(args.index,args.owner,args.job,'applying' if args.action=='apply' else 'restoring')

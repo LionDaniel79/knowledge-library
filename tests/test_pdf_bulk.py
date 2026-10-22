@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,6 +61,10 @@ class BulkTests(unittest.TestCase):
             a, b = list(pdf_bulk.inventory(root))
             self.assertEqual(pdf_bulk.file_hash(root, a), pdf_bulk.file_hash(root, b))
             (root / 'a.pdf').write_bytes(b'changed!')
+            # Equal-size writes can share a timestamp on a fast Windows run.
+            # Verify the stale-stat guard without assuming clock resolution.
+            changed = (root / 'a.pdf').stat()
+            os.utime(root / 'a.pdf', ns=(changed.st_atime_ns, int(a['mtime_ns']) + 1_000_000_000))
             with self.assertRaises(ValueError):
                 pdf_bulk.file_hash(root, a)
             outside = Path(tmp) / 'outside.pdf'
