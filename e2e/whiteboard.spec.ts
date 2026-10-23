@@ -216,6 +216,99 @@ test("searchable multi-facets apply only on search and search the complete note 
     .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
     .toBeGreaterThan(0);
 });
+test("pending facet choices survive a background board refresh until explicit search", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  await choose(page, "주제", "정서");
+  await choose(page, "태그", "상담");
+  await choose(page, "태그", "철학");
+  await choose(page, "분야", "철학·심리학");
+  await choose(page, "도서", "상담 도서 · 상담 저자");
+  await page
+    .getByRole("textbox", { name: "메모 제목·내용 검색", exact: true })
+    .fill("수용");
+  f.state.board = {
+    id: "00000000-0000-4000-8000-000000000001",
+    version: 1,
+    data: {
+      schema: 1,
+      filter: { topics: [], tags: [], categories: [], books: [], q: "" },
+      positions: {},
+      groupPositions: {},
+      groups: [],
+      collapsed: [],
+      links: [],
+    },
+  };
+  await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/whiteboard",
+    ),
+    page.evaluate(() => (window as any).refreshBoard()),
+  ]);
+  await page.waitForTimeout(100);
+  await expect(
+    page.getByRole("button", { name: "주제 선택", exact: true }),
+  ).toContainText("정서");
+  await expect(
+    page.getByRole("button", { name: "태그 선택", exact: true }),
+  ).toContainText("2개 선택");
+  await expect(
+    page.getByRole("button", { name: "분야 선택", exact: true }),
+  ).toContainText("철학·심리학");
+  await expect(
+    page.getByRole("button", { name: "도서 선택", exact: true }),
+  ).toContainText("상담 도서");
+  await expect(
+    page.getByRole("textbox", { name: "메모 제목·내용 검색", exact: true }),
+  ).toHaveValue("수용");
+  await page.getByRole("button", { name: "태그 선택", exact: true }).click();
+  await page.getByRole("textbox", { name: "태그 검색", exact: true }).fill("");
+  await expect(
+    page.getByRole("option", { name: "상담", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("option", { name: "철학", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("1개 메모", { exact: true })).toBeVisible();
+});
+test("touch facet selections stay checked after reopening and apply together on search", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  try {
+    await mount(page);
+    await page.getByRole("button", { name: "주제 선택", exact: true }).tap();
+    await page.getByRole("option", { name: "정서", exact: true }).tap();
+    await page.getByRole("button", { name: "태그 선택", exact: true }).tap();
+    await page.getByRole("option", { name: "상담", exact: true }).tap();
+    await page.getByRole("option", { name: "철학", exact: true }).tap();
+    await page.getByRole("button", { name: "태그 선택", exact: true }).tap();
+    await page.getByRole("button", { name: "태그 선택", exact: true }).tap();
+    await expect(
+      page.getByRole("option", { name: "상담", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByRole("option", { name: "철학", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "검색", exact: true }).tap();
+    await expect(page.getByText("2개 메모", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "주제 선택", exact: true }),
+    ).toContainText("정서");
+  } finally {
+    await context.close();
+  }
+});
 test("drag overlap links real note IDs and supports folding, group links, open and undo", async ({
   page,
 }) => {

@@ -78,6 +78,7 @@ export function WhiteboardPanel({
     observedResolution = useRef(""),
     acknowledged = useRef(new Set<string>()),
     needsChoice = useRef(false),
+    criteriaEdited = useRef(false),
     dirty = useRef(false),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     alive = useRef(true),
@@ -240,7 +241,7 @@ export function WhiteboardPanel({
         version.current = v;
         current.current = value;
         setBoard(value);
-        setFilter(value.filter);
+        if (!criteriaEdited.current) setFilter(value.filter);
         remember(value, false);
       }
     }
@@ -381,6 +382,7 @@ export function WhiteboardPanel({
           patchConnection({ ...c, status: l.status, version: result.version });
       }
       update(undo.board);
+      criteriaEdited.current = false;
       setFilter(undo.board.filter);
       setUndo(null);
     } catch (e) {
@@ -468,6 +470,7 @@ export function WhiteboardPanel({
         onSubmit={(e) => {
           e.preventDefault();
           const before = current.current;
+          criteriaEdited.current = false;
           update(seedBoard(source, { ...before, filter }), before);
           setSelectedGroup(null);
           setSelectedNote(null);
@@ -486,7 +489,10 @@ export function WhiteboardPanel({
             label={label}
             options={facets[field]}
             values={filter[field]}
-            onChange={(values) => setFilter((f) => ({ ...f, [field]: values }))}
+            onChange={(values) => {
+              criteriaEdited.current = true;
+              setFilter((f) => ({ ...f, [field]: values }));
+            }}
           />
         ))}
         <input
@@ -495,7 +501,10 @@ export function WhiteboardPanel({
           placeholder="메모 제목·내용"
           value={filter.q}
           maxLength={500}
-          onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
+          onChange={(e) => {
+            criteriaEdited.current = true;
+            setFilter((f) => ({ ...f, q: e.target.value }));
+          }}
         />
         <button className="primary" disabled={linkBusy}>
           검색
@@ -619,6 +628,7 @@ export function WhiteboardPanel({
               version.current = source.board?.version ?? 0;
               current.current = next;
               setBoard(next);
+              criteriaEdited.current = false;
               setFilter(next.filter);
               pending.current = null;
               dirty.current = false;
