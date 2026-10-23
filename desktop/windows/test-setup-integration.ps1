@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory=$true)][string]$TestRoot,[Parameter(Mandatory=$true)][string]$NodePath)
+﻿param([Parameter(Mandatory=$true)][string]$TestRoot,[Parameter(Mandatory=$true)][string]$NodePath,[Parameter(Mandatory=$true)][string]$BuildDirectory)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'setup-worker.ps1') -NoRun
 Add-Type -AssemblyName System.Security
@@ -17,6 +17,7 @@ $checkFile=Join-Path $root 'check-dpapi.mjs';[IO.File]::WriteAllText($checkFile,
 & $NodePath $checkFile $module $profileFile
 Check ($LASTEXITCODE -eq 0) 'real Windows DPAPI bridge'
 $wrapper=Join-Path $root 'start-private-pc.ps1';Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-private-pc.ps1') -Destination $wrapper
+Copy-Item -LiteralPath (Join-Path $BuildDirectory 'KnowledgeLibraryHost.exe') -Destination $root
 $entry=Join-Path $root 'start-private-pc.mjs'
 [IO.File]::WriteAllText($entry,'import{appendFileSync}from"node:fs";appendFileSync(new URL("./starts.txt",import.meta.url),"start\n");setTimeout(()=>{},2500);')
 Write-SetupJson (Join-Path $root 'pc-runtime.json') @{node=$NodePath}

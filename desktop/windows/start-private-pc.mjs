@@ -125,7 +125,7 @@ export async function runServer(configPath) {
     throw Error("Library runtime is not ready.");
   if (await portOpen())
     throw Error("Port 3001 is already occupied; no process was changed.");
-  // start-private-pc.ps1 holds an OS mutex for this installation.
+  // The native windowless host holds an OS mutex for this installation.
   // Windows releases it on process exit/reboot; no stale PID file is used.
   const env = runtimeEnvironment(c, unlockProfile(c));
   const child = spawn(c.node, serverArguments(c), {

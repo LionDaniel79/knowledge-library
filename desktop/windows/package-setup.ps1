@@ -12,7 +12,7 @@ try {
  New-Item -ItemType Directory -Path $package -Force | Out-Null
  & (Join-Path $PSScriptRoot 'build-setup.ps1') -OutputDirectory $package
  & (Join-Path $PSScriptRoot 'build.ps1') -OutputDirectory (Join-Path $output 'tray-build')
- foreach($name in @('KnowledgeLibraryServer.exe','library.ico')){Copy-Item -LiteralPath (Join-Path (Join-Path $output 'tray-build') $name) -Destination $package}
+ foreach($name in @('KnowledgeLibraryServer.exe','KnowledgeLibraryHost.exe','library.ico')){Copy-Item -LiteralPath (Join-Path (Join-Path $output 'tray-build') $name) -Destination $package}
  $source=Join-Path $package 'library-source.zip'
  & git archive --format=zip ("--output="+$source) $commit
  if($LASTEXITCODE -ne 0){throw '소스 꾸러미 생성에 실패했습니다.'}

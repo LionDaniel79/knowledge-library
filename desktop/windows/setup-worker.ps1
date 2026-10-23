@@ -24,8 +24,8 @@ function Expand-SetupZip([string]$Archive,[string]$Destination) {
  [IO.Compression.ZipFile]::ExtractToDirectory($Archive,$Destination)
 }
 function Get-SetupTaskSpec([string]$Install) {
- $exe=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
- $taskArguments='-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File {0} -LauncherPath {1}' -f (Quote-SetupArgument (Join-Path $Install 'start-private-pc.ps1')),(Quote-SetupArgument (Join-Path $Install 'start-private-pc.mjs'))
+ $exe=Join-Path $Install 'KnowledgeLibraryHost.exe'
+ $taskArguments='--launcher {0}' -f (Quote-SetupArgument (Join-Path $Install 'start-private-pc.mjs'))
  return @{Execute=$exe;Arguments=$taskArguments}
 }
 function Assert-SetupTask($Task,[string]$Executable,[string]$Arguments) {
@@ -182,6 +182,7 @@ function Start-PcSetup([string]$File) {
   Write-SetupJson (Join-Path $install 'pc-runtime.json') $config
   Copy-Item -LiteralPath (Join-Path $package 'start-private-pc.mjs') -Destination $launcher -Force
   Copy-Item -LiteralPath (Join-Path $package 'start-private-pc.ps1') -Destination (Join-Path $install 'start-private-pc.ps1') -Force
+  Copy-Item -LiteralPath (Join-Path $package 'KnowledgeLibraryHost.exe') -Destination (Join-Path $install 'KnowledgeLibraryHost.exe') -Force
   Write-Output 'STEP|트레이·자동 실행 등록'
   $taskAction=New-ScheduledTaskAction -Execute $taskSpec.Execute -Argument $taskSpec.Arguments -WorkingDirectory $install
   $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name

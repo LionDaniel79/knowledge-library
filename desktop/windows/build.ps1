@@ -8,6 +8,9 @@ $source = Join-Path $PSScriptRoot 'KnowledgeLibraryTray.cs'
 $tests = Join-Path $PSScriptRoot 'TrayTests.cs'
 $references = @('/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Management.dll','/r:System.Web.Extensions.dll','/r:Microsoft.CSharp.dll')
 $common = @('/nologo','/codepage:65001','/platform:x64','/optimize+') + $references
+$hostExe = Join-Path $output 'KnowledgeLibraryHost.exe'
+& $compiler @common '/r:System.Security.dll' '/target:winexe' '/main:KnowledgeLibrary.HeadlessHost' ("/out:$hostExe") (Join-Path $PSScriptRoot 'HeadlessHost.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Windowless server host did not compile.' }
 $testExe = Join-Path $output 'TrayTests.exe'
 & $compiler @common '/target:exe' '/main:TrayTests' ("/out:$testExe") $source $tests
 if ($LASTEXITCODE -ne 0) { throw 'Native tray tests did not compile.' }
