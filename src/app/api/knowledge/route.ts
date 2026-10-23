@@ -20,13 +20,19 @@ export async function POST(request: Request) {
     validateWriteOrigin(request, process.env.APP_ORIGIN ?? "");
     const owner = await requireOwner();
     const body = await request.text();
-    if (body.length > 20000) throw new LibraryError(413, "요청이 너무 큽니다.");
+    if (Buffer.byteLength(body, "utf8") > 450 * 1024)
+      throw new LibraryError(413, "요청이 너무 큽니다.");
     let value: unknown;
     try {
       value = JSON.parse(body);
     } catch {
       throw new LibraryError(400, "요청 내용을 읽을 수 없습니다.");
     }
+    if (
+      (value as { type?: string })?.type !== "saveWhiteboard" &&
+      body.length > 20000
+    )
+      throw new LibraryError(413, "요청이 너무 큽니다.");
     return Response.json(
       await createKnowledgeStore(database).mutate(owner, value),
       { headers: { "Cache-Control": "private, no-store" } },

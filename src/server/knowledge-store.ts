@@ -7,6 +7,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import { proposeConnections, type KnowledgeNode } from "../lib/knowledge";
+import {
+  boardNoteLinkSchema,
+  publicBoardConnection as publicConnection,
+  type BoardConnection,
+} from "../lib/whiteboard";
+import { saveWhiteboard } from "./whiteboard-store";
 
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
@@ -22,6 +28,8 @@ const command = z.object({
     "createResearch",
     "addResearchNote",
     "placeResearchItem",
+    "saveWhiteboard",
+    "connectWhiteboardNotes",
   ]),
   payload: z.unknown(),
 });
@@ -139,7 +147,9 @@ export function createKnowledgeStore(db: Database) {
           await tx.query(
             "INSERT INTO library_connections(id,owner_id,source_kind,source_id,target_kind,target_id,relation,status,reason,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(owner_id,source_kind,source_id,target_kind,target_id) DO NOTHING RETURNING *",
             [
-              (c.type === "connect" ? c.entityId : undefined) ?? randomUUID(),
+              (["connect", "connectWhiteboardNotes"].includes(c.type)
+                ? c.entityId
+                : undefined) ?? randomUUID(),
               owner,
               p.sourceKind,
               p.sourceId,
@@ -155,8 +165,68 @@ export function createKnowledgeStore(db: Database) {
         if (row) await revise(row.id, "connectKnowledge", null, row);
         return row;
       };
-      let result: { id?: string; version?: number; count?: number } = {};
-      if (c.type === "suggest") {
+      let result: {
+        id?: string;
+        version?: number;
+        count?: number;
+        connection?: BoardConnection;
+        changed?: boolean;
+        previousStatus?: string;
+      } = {};
+      if (c.type === "saveWhiteboard") {
+        result = await saveWhiteboard(tx, owner, c.payload);
+      } else if (c.type === "connectWhiteboardNotes") {
+        const p = boardNoteLinkSchema.parse(c.payload),
+          [sourceId, targetId] = [p.sourceId, p.targetId].sort();
+        await own("note", sourceId);
+        await own("note", targetId);
+        const old = (
+          await tx.query(
+            "SELECT * FROM library_connections WHERE owner_id=$1 AND source_kind='note' AND target_kind='note' AND ((source_id=$2 AND target_id=$3) OR (source_id=$3 AND target_id=$2)) ORDER BY (status='accepted') DESC,id LIMIT 1 FOR UPDATE",
+            [owner, sourceId, targetId],
+          )
+        ).rows[0];
+        if (old) {
+          const after =
+            old.status === "accepted"
+              ? old
+              : (
+                  await tx.query(
+                    "UPDATE library_connections SET status='accepted',method='manual',version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
+                    [owner, old.id],
+                  )
+                ).rows[0];
+          if (old.status !== "accepted")
+            await revise(old.id, "connectWhiteboardNotes", old, after);
+          result = {
+            id: after.id,
+            version: after.version,
+            changed: old.status !== "accepted",
+            previousStatus: old.status,
+            connection: publicConnection(after),
+          };
+        } else {
+          const row = await insertConnection(
+            {
+              sourceKind: "note",
+              sourceId,
+              targetKind: "note",
+              targetId,
+              relation: "related",
+              reason: "화이트보드에서 직접 연결",
+            },
+            "accepted",
+            "manual",
+          );
+          result = {
+            id: row.id,
+            version: row.version,
+            changed: true,
+            previousStatus: "rejected",
+            connection: publicConnection(row),
+          };
+        }
+      } else if (c.type === "suggest") {
         const p = z.object({ kind, id: uuid }).parse(c.payload);
         await own(p.kind, p.id);
         const books = (

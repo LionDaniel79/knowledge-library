@@ -1,6 +1,7 @@
 import { syncEntities, type SyncEntity } from "../../lib/replica/entities";
 import type { Database } from "../library-store";
-import { syncHead, syncRead, syncSql } from "./registry";
+import { syncHead, syncRead, syncSql, syncEntityAvailable } from "./registry";
+import { createHash } from "node:crypto";
 export interface SyncCoverage {
   epoch: string;
   head: string;
@@ -14,6 +15,13 @@ export async function readSyncCoverage(
     const head = await syncHead(tx, owner);
     const entities = {} as SyncCoverage["entities"];
     for (const name of Object.keys(syncEntities)) {
+      if (!(await syncEntityAvailable(tx, name as SyncEntity))) {
+        entities[name as SyncEntity] = {
+          rows: 0,
+          sha256: createHash("sha256").update("").digest("hex"),
+        };
+        continue;
+      }
       const sql = syncSql(name as SyncEntity);
       const query = `SELECT count(*)::int AS rows,
     encode(sha256(convert_to(coalesce(string_agg(record_key||E'\\t'||value_hash||E'\\n','' ORDER BY record_key COLLATE "C"),''),'UTF8')),'hex') AS sha256

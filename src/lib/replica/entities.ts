@@ -1,5 +1,10 @@
 // Explicit application-data schema. Review new columns before changing this allowlist.
 export const syncEntities = {
+  library_whiteboards: {
+    columns: ["id", "data", "version", "updated_at"],
+    keys: ["id"],
+    privateColumns: ["owner_id"],
+  },
   library_ai_policy: {
     columns: [
       "runtime_mode",

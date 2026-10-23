@@ -9,7 +9,13 @@ import {
   type SyncRow,
 } from "../../lib/replica/contracts";
 import { LibraryError, type Database } from "../library-store";
-import { syncHead, syncInput, syncRead, syncSql } from "./registry";
+import {
+  syncHead,
+  syncInput,
+  syncRead,
+  syncSql,
+  syncEntityAvailable,
+} from "./registry";
 import { assertSyncResponse, selectSyncRows, tombstone } from "./values";
 const count = z.number().int().min(1).max(200).default(50);
 const scanInput = z
@@ -43,6 +49,10 @@ export async function readSyncMeta(
     const entities: Record<string, { rows: number; bytes: number }> = {};
     if (inventory) {
       for (const name of Object.keys(syncEntities)) {
+        if (!(await syncEntityAvailable(tx, name as SyncEntity))) {
+          entities[name] = { rows: 0, bytes: 0 };
+          continue;
+        }
         const sql = syncSql(name as SyncEntity);
         const r = (
           await tx.query(
@@ -76,6 +86,20 @@ export async function scanSyncRows(
       (position.entity !== v.entity || position.key === undefined)
     )
       throw new LibraryError(400, "자료의 이어받기 위치가 다릅니다.");
+    if (!(await syncEntityAvailable(tx, v.entity)))
+      return {
+        epoch: head.epoch,
+        head: head.head,
+        cursor: createSyncCursor({
+          owner,
+          epoch: head.epoch,
+          after: position?.after ?? head.head,
+          entity: v.entity,
+          key: position?.key,
+        }),
+        rows: [],
+        hasMore: false,
+      };
     const rows = await selectSyncRows(tx, owner, v.entity, {
       after: position?.key,
       limit: v.limit,

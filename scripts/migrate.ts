@@ -41,7 +41,11 @@ try {
   await client.query(await readFile("db/025_book_exclusions.sql", "utf8"));
   await client.query(await readFile("db/026_device_sync.sql", "utf8"));
   await client.query(await readFile("db/027_library_archives.sql", "utf8"));
+  await client.query(await readFile("db/028_whiteboard.sql", "utf8"));
   if (role) {
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_whiteboards TO "' + role + '"',
+    );
     await client.query(
       'GRANT SELECT ON library_sync_heads,library_sync_changes,library_sync_row_versions TO "' +
         role +

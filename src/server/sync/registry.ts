@@ -13,6 +13,16 @@ export function syncOwner(owner: string) {
   if (!owner || owner.length > 128)
     throw new LibraryError(401, "로그인이 필요합니다.");
 }
+// The whiteboard UI can ship while the user has deferred the new table migration.
+// Existing library replication must remain usable during that interval.
+export async function syncEntityAvailable(tx: Executor, entity: SyncEntity) {
+  if (entity !== "library_whiteboards") return true;
+  return !!(
+    await tx.query(
+      "SELECT to_regclass('public.library_whiteboards')::text AS name",
+    )
+  ).rows[0]?.name;
+}
 const identifier = (name: string) => '"' + name + '"';
 export function syncSql(entity: SyncEntity) {
   syncInput(syncEntity, entity);

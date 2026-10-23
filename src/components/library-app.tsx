@@ -1462,6 +1462,7 @@ export function LibraryApp({
                   <p>내 서재에서 책과 생각을 연결해 보세요.</p>
                 ) : (
                   <KnowledgePanel
+                    ownerId={ownerId}
                     library={data}
                     onOpen={(kind, id) => {
                       if (kind === "book") setDetail(id);

@@ -13,6 +13,7 @@ import { defaultAiPolicy } from "../../lib/library-ai-policy";
 import { resolveThoughtRecord, withEvent } from "../../lib/thought-map/records";
 import { ReplicaQueryError } from "./queries";
 import type { LocalIndex } from "./queries";
+import { createWhiteboardReader } from "./whiteboard-reader";
 type Reader = {
   raw(e: SyncEntity, id: string, g?: string): Promise<RawRecord | undefined>;
   records(e: SyncEntity, g: string): AsyncGenerator<RawRecord>;
@@ -38,6 +39,10 @@ const camel = (row: RawRecord) =>
 const fields = (row: RawRecord, keys: string[]) =>
   Object.fromEntries(keys.map((k) => [k, row[k] ?? null]));
 export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
+  const readWhiteboard = createWhiteboardReader(storage, {
+    raw: reader.raw,
+    all: (e) => all(e),
+  });
   // Only compact lookup fields are indexed; large review originals are read on demand.
   async function selected(
     e: SyncEntity,
@@ -446,7 +451,9 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
       p: URLSearchParams,
     ): Promise<{ handled: true; value: unknown } | { handled: false }> {
       let value: unknown;
-      if (path === "/api/knowledge") {
+      if (path === "/api/whiteboard") {
+        value = await readWhiteboard();
+      } else if (path === "/api/knowledge") {
         const notes = new Set((await all("library_notes")).map((n) => n.id)),
           books = new Set((await all("library_books")).map((b) => b.id));
         for (const t of await all("library_note_trash"))

@@ -31,6 +31,13 @@ import {
 import type { OutboxEntry } from "../../lib/replica/contracts";
 import { editableFields } from "../../lib/replica/command-envelope";
 import { researchSource } from "../../lib/replica/research-source";
+import {
+  WHITEBOARD_ID,
+  boardSaveSchema,
+  boardNoteLinkSchema,
+  connectionForPair,
+  publicBoardConnection,
+} from "../../lib/whiteboard";
 export interface OptimisticEffect {
   entity: SyncEntity;
   key: string;
@@ -267,7 +274,56 @@ export async function prepareOptimistic(
   } else if (path === "/api/knowledge") {
     const p = body.payload;
     body.entityId = id;
-    if (body.type === "createResearch") {
+    if (body.type === "saveWhiteboard") {
+      const v = boardSaveSchema.parse(p),
+        old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
+      check(old, v.expectedVersion);
+      base = old;
+      entityId = WHITEBOARD_ID;
+      body.entityId = WHITEBOARD_ID;
+      put("library_whiteboards", {
+        id: WHITEBOARD_ID,
+        data: v.data,
+        version: (old?.version ?? 0) + 1,
+        updated_at: at,
+      });
+      result = { id: WHITEBOARD_ID, version: (old?.version ?? 0) + 1 };
+    } else if (body.type === "connectWhiteboardNotes") {
+      const v = boardNoteLinkSchema.parse(p);
+      await note(v.sourceId);
+      await note(v.targetId);
+      const old = connectionForPair(
+        (await repository.all("library_connections")) as any,
+        v.sourceId,
+        v.targetId,
+      );
+      if (old) {
+        base = old;
+        entityId = old.id;
+        body.entityId = old.id;
+        if (old.status !== "accepted")
+          edit("library_connections", old, {
+            status: "accepted",
+            method: "manual",
+          });
+        else result = { id: old.id, version: old.version };
+      } else {
+        const [sourceId, targetId] = [v.sourceId, v.targetId].sort();
+        put("library_connections", {
+          id,
+          source_kind: "note",
+          source_id: sourceId,
+          target_kind: "note",
+          target_id: targetId,
+          relation: "related",
+          reason: "화이트보드에서 직접 연결",
+          status: "accepted",
+          method: "manual",
+          version: 1,
+          created_at: at,
+        });
+      }
+    } else if (body.type === "createResearch") {
       put("library_research", {
         id,
         title: z.string().trim().min(1).max(300).parse(p.title),
@@ -669,6 +725,17 @@ export async function prepareOptimistic(
     });
     result = { id: entityId, version: (old?.version ?? 0) + 1 };
   } else throw new ReplicaQueryError(400, "허용하지 않은 변경입니다.");
+  if (body.type === "connectWhiteboardNotes") {
+    const changed = effects.find((e) => e.entity === "library_connections");
+    const row =
+      changed?.after ?? (await repository.raw("library_connections", entityId));
+    result = {
+      ...result,
+      connection: publicBoardConnection(row!),
+      changed: !!changed,
+      previousStatus: base?.status ?? "rejected",
+    };
+  }
   const primary = effects.find((e) => e.after?.id === entityId);
   if (primary)
     put("library_revisions", {

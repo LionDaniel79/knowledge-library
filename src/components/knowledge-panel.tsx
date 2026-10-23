@@ -4,7 +4,7 @@ import { ResearchBoard } from "./research-board";
 import { exportResearchMarkdown, type ResearchPlacement } from "@/lib/research";
 import { ThoughtMapPanel } from "./thought-map/panel";
 import { ThoughtMapHelp } from "./thought-map/help";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useMaterialPage } from "./use-material-page";
 import {
   useListPagination,
@@ -13,6 +13,9 @@ import {
 } from "./list-pagination";
 import type { Library, Revision } from "@/lib/domain";
 import { relationNames, type Relation } from "@/lib/knowledge";
+const WhiteboardPanel = lazy(() =>
+  import("./whiteboard/panel").then((m) => ({ default: m.WhiteboardPanel })),
+);
 type Connection = {
   id: string;
   source_kind: string;
@@ -60,9 +63,11 @@ type State = {
 export function KnowledgePanel({
   library,
   onOpen,
+  ownerId = "",
 }: {
   library: Library;
   onOpen: (kind: string, id: string) => void;
+  ownerId?: string;
 }) {
   const [find, setFind] = useState("");
   const [tab, setTab] = useState("topics");
@@ -200,6 +205,7 @@ export function KnowledgePanel({
     <section className="knowledge-panel">
       <div className="knowledge-tabs">
         {[
+          ["whiteboard", "화이트보드"],
           ["topics", "주제별 자료"],
           ["timeline", "생각의 흐름"],
           ["review", "검토할 후보"],
@@ -243,7 +249,16 @@ export function KnowledgePanel({
       )}
       {message && <p role="status">{message}</p>}
       {busy && <p role="status">자료를 연결하고 있습니다…</p>}
-      {["topics", "timeline", "review"].includes(tab) ? (
+      {tab === "whiteboard" ? (
+        <Suspense fallback={<p role="status">화이트보드를 여는 중…</p>}>
+          <WhiteboardPanel
+            key={ownerId}
+            library={library}
+            onOpen={onOpen}
+            ownerId={ownerId}
+          />
+        </Suspense>
+      ) : ["topics", "timeline", "review"].includes(tab) ? (
         <ThoughtMapPanel view={tab} library={library} onOpen={onOpen} />
       ) : tab === "connections" ? (
         <>

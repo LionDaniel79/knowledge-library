@@ -2,9 +2,11 @@ import { withSyncWrite } from "./sync/write";
 import { createHash } from "node:crypto";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import { invalidBackupJsonField } from "./backup-json";
+import { boardSchema, WHITEBOARD_ID } from "../lib/whiteboard";
 
 // Dependency order. Never accept table names, SQL, or credentials from a backup.
 const optionalTables = [
+  "library_whiteboards",
   "library_cover_assets",
   "library_cover_mirrors",
   "library_note_trash",
@@ -79,6 +81,7 @@ async function schema(tx: Executor, included: readonly string[] = tables) {
   if (
     tables.some(
       (table) =>
+        table !== "library_whiteboards" &&
         !rows.some(
           (r: any) => r.table_name === table && r.column_name === "owner_id",
         ),
@@ -159,6 +162,14 @@ function validateEnvelope(input: unknown): LibraryBackup {
   return b;
 }
 function validateReferences(b: LibraryBackup) {
+  for (const row of b.tables.library_whiteboards ?? [])
+    if (
+      row.id !== WHITEBOARD_ID ||
+      !boardSchema.safeParse(row.data).success ||
+      !Number.isInteger(row.version) ||
+      row.version < 1
+    )
+      invalid("화이트보드의 배치 형식이 잘못되었습니다.");
   const coverIds = new Set(
     (b.tables.library_cover_assets ?? []).map((r) => String(r.id)),
   );
@@ -279,6 +290,7 @@ async function inspect(tx: Executor, owner: string, b: LibraryBackup) {
   const existing = (
     await tx.query(
       tables
+        .filter((t) => current.columns[t].length)
         .map((t) => `SELECT count(*)::int AS n FROM ${t} WHERE owner_id=$1`)
         .join(" UNION ALL "),
       [owner],
@@ -306,6 +318,8 @@ export async function createLibraryBackup(
     const current = await schema(tx);
     const rows = {} as LibraryBackup["tables"];
     for (const table of tables) {
+      if (table === "library_whiteboards" && !current.columns[table].length)
+        continue;
       const order = table === "library_annual_metrics" ? "year" : "id";
       rows[table] = (
         await tx.query(
@@ -346,8 +360,10 @@ export async function restoreLibraryBackup(
   try {
     return await withSyncWrite(db, owner, async (tx) => {
       // Hold writes while checking emptiness; a preview never grants later overwrite permission.
+      const current = await schema(tx, Object.keys(b.tables));
+      const available = tables.filter((t) => current.columns[t].length);
       await tx.query(
-        `LOCK TABLE ${tables.join(",")} IN SHARE ROW EXCLUSIVE MODE`,
+        `LOCK TABLE ${available.join(",")} IN SHARE ROW EXCLUSIVE MODE`,
       );
       const preview = await inspect(tx, owner, b);
       if (!preview.canRestore)
