@@ -4,7 +4,7 @@ import { buildMemoBox } from "@/lib/memo-box";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import type { Library } from "@/lib/domain";
 import type { NewNoteContext, NoteTopicSnapshot } from "@/lib/note-context";
-import { relationNames, type Relation } from "@/lib/knowledge";
+import { type Relation } from "@/lib/knowledge";
 import { usePagedResource } from "../use-paged-resource";
 import { useLibraryCommand } from "../use-library-command";
 import {
@@ -13,6 +13,7 @@ import {
   PageSizeSelect,
 } from "../list-pagination";
 import { TopicEditor } from "./topic-editor";
+import { ConnectionEditor } from "./connection-editor";
 import { WritingWorkbench } from "./writing-workbench";
 export function MemoBox({
   library,
@@ -169,10 +170,7 @@ export function MemoBox({
                       c.source_id === active.id ? c.target_id : c.source_id,
                     )!;
                     return (
-                      <article
-                        className="memo-box-edge"
-                        key={c.id + ":" + c.version}
-                      >
+                      <article className="memo-box-edge" key={c.id}>
                         <button
                           className="thought-title"
                           onClick={() => setSelected(other.id)}
@@ -184,43 +182,13 @@ export function MemoBox({
                           {model.notes.get(c.source_id)?.title || "메모"} →{" "}
                           {model.notes.get(c.target_id)?.title || "메모"}
                         </small>
-                        <form
-                          onSubmit={async (e) => {
-                            e.preventDefault();
-                            const f = new FormData(e.currentTarget);
-                            await command.send("editConnection", {
-                              id: c.id,
-                              expectedVersion: c.version,
-                              relation: f.get("relation"),
-                              reason: f.get("reason"),
-                              status: "accepted",
-                            });
-                          }}
-                        >
-                          <label>
-                            관계
-                            <select name="relation" defaultValue={c.relation}>
-                              {Object.entries(relationNames).map(
-                                ([id, name]) => (
-                                  <option value={id} key={id}>
-                                    {name}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-                          </label>
-                          <label>
-                            연결 이유
-                            <textarea
-                              name="reason"
-                              defaultValue={c.reason}
-                              maxLength={2000}
-                            />
-                          </label>
-                          <button disabled={command.busy}>
-                            연결 수정 저장
-                          </button>
-                        </form>
+                        <ConnectionEditor
+                          connection={c}
+                          busy={command.busy}
+                          onSave={(payload) =>
+                            command.send("editConnection", payload)
+                          }
+                        />
                         <button
                           disabled={command.busy}
                           onClick={() =>

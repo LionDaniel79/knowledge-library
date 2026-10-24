@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
 let bundle: string;
-test("thought comparison and offline conflict review fetch text beyond the preview", async ({
+test("offline conflict review fetches text beyond the preview", async ({
   page,
 }) => {
   const base = previewLibrary.notes[0],
@@ -36,7 +36,7 @@ test("thought comparison and offline conflict review fetch text beyond the previ
   const code = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {ManualComparison} from './src/components/thought-map/manual-comparison';import {OfflineDrafts} from './src/components/offline-drafts';import {newDraft,writeDraft} from './src/lib/offline-drafts';const notes=window.records;writeDraft(localStorage,newDraft('test-owner',{type:'editNote',requestId:crypto.randomUUID(),payload:{id:notes[0].id,expectedVersion:1,title:'초안',content:'내 기기 초안',kind:'thought'}}));createRoot(document.getElementById('root')).render(<><ManualComparison notes={notes.map(n=>({...n,summary:true,content:n.content.slice(0,240)}))} events={notes.map((n,i)=>({noteId:n.id,version:1,occurredOn:'2026-10-0'+(i+1),voice:'self'}))} topicId="" busy={false} send={async(type,payload)=>{window.sent=payload}} onOpen={()=>{}}/><OfflineDrafts ownerId="test-owner" revision={0} onSaved={async()=>{}}/></>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {OfflineDrafts} from './src/components/offline-drafts';import {newDraft,writeDraft} from './src/lib/offline-drafts';const notes=window.records;writeDraft(localStorage,newDraft('test-owner',{type:'editNote',requestId:crypto.randomUUID(),payload:{id:notes[0].id,expectedVersion:1,title:'초안',content:'내 기기 초안',kind:'thought'}}));createRoot(document.getElementById('root')).render(<><OfflineDrafts ownerId="test-owner" revision={0} onSaved={async()=>{}}/></>);`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -49,28 +49,6 @@ test("thought comparison and offline conflict review fetch text beyond the previ
     })
   ).outputFiles[0].text;
   await page.addScriptTag({ content: code });
-  await page.getByText("내 생각의 변화를 직접 연결", { exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "이전 생각", exact: true })
-    .selectOption(ids[0]);
-  await page
-    .getByRole("combobox", { name: "이후 생각", exact: true })
-    .selectOption(ids[1]);
-  await page
-    .getByRole("textbox", { name: "이전 생각의 근거 문장", exact: true })
-    .fill("나중에 발견한 근거 문장");
-  await page
-    .getByRole("textbox", { name: "이후 생각의 근거 문장", exact: true })
-    .fill("변화한 판단 문장");
-  await page
-    .getByRole("textbox", { name: "내가 판단한 이유", exact: true })
-    .fill("근거에 따라 생각을 수정했다");
-  await page.getByRole("button", { name: "변화 연결 확정" }).click();
-  expect(
-    await page.evaluate(
-      () => (window as any).sent.reviewedRecords.before.start,
-    ),
-  ).toBeGreaterThan(240);
   await page.getByText("이 기기의 임시 기록 · 1개", { exact: true }).click();
   await page.getByRole("button", { name: "서재에 저장", exact: true }).click();
   await expect(

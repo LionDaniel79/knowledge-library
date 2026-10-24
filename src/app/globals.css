@@ -4368,10 +4368,9 @@ textarea {
 
 /* Reading notes, connections and writing materials. */
 .topic-material-layout .topic-material-filters {
-  grid-template-columns: minmax(100px, 0.75fr) minmax(110px, 0.8fr) minmax(
-      110px,
-      0.8fr
-    ) minmax(100px, 0.7fr) minmax(180px, 1.8fr) minmax(90px, 0.6fr);
+  grid-template-columns:
+    minmax(100px, 0.75fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr)
+    minmax(100px, 0.7fr) minmax(180px, 1.8fr) minmax(90px, 0.6fr);
 }
 .topic-material-layout .topic-material-search input {
   height: 44px;
@@ -4538,4 +4537,11 @@ textarea {
   .memo-box-detail {
     padding: 12px;
   }
+}
+
+.placement-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: contents;
 }

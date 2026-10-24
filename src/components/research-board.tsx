@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
 import { useState } from "react";
+import { ResearchPlacementEditor } from "./research-placement-editor";
 import {
   researchRoles,
   sortResearchItems,
@@ -21,7 +22,7 @@ export function ResearchBoard({
   items: ResearchItem[];
   placements: ResearchPlacement[];
   busy: boolean;
-  onSave: (payload: unknown) => void;
+  onSave: (payload: unknown) => Promise<unknown> | void;
   onOpen: (kind: string, id: string) => void;
   sections?: string[];
   onMove?: (id: string, direction: -1 | 1) => void;
@@ -52,7 +53,7 @@ export function ResearchBoard({
           source = n.sourceData,
           historyKey = `${i.id}:${p?.version ?? 0}`;
         return (
-          <article className="panel" key={`${i.id}:${p?.version ?? 0}`}>
+          <article className="panel" key={i.id}>
             <small>
               {p?.state === "removed" ? "묶음에서 뺀 자료 · " : ""}
               {p?.section ? `${p.section} · ` : ""}
@@ -119,74 +120,14 @@ export function ResearchBoard({
             </details>
             <details>
               <summary>역할·순서·내 해석 수정</summary>
-              <form
-                className="knowledge-controls"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const d = new FormData(e.currentTarget);
-                  onSave({
-                    itemId: i.id,
-                    expectedVersion: p?.version ?? 0,
-                    role: d.get("role"),
-                    section: d.get("section"),
-                    position: Number(d.get("position")),
-                    comment: d.get("comment"),
-                    state: d.get("state"),
-                  });
-                }}
-              >
-                <label>
-                  자료 역할
-                  <select name="role" defaultValue={p?.role ?? "background"}>
-                    {Object.entries(researchRoles).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  장·절 또는 묶음 제목
-                  <input
-                    name="section"
-                    list={`writing-sections-${i.id}`}
-                    maxLength={300}
-                    defaultValue={p?.section ?? ""}
-                  />
-                  <datalist id={`writing-sections-${i.id}`}>
-                    {sections.map((s) => (
-                      <option key={s} value={s} />
-                    ))}
-                  </datalist>
-                </label>
-                <label>
-                  배치 순서
-                  <input
-                    name="position"
-                    type="number"
-                    min={1}
-                    max={100000}
-                    required
-                    defaultValue={p?.position ?? shown.indexOf(i) + 1}
-                  />
-                </label>
-                <label>
-                  이 자료에 대한 나의 해석
-                  <textarea
-                    name="comment"
-                    maxLength={10000}
-                    defaultValue={p?.comment ?? ""}
-                  />
-                </label>
-                <label>
-                  자료 상태
-                  <select name="state" defaultValue={p?.state ?? "active"}>
-                    <option value="active">묶음에 포함</option>
-                    <option value="removed">묶음에서 빼기 · 원문 보존</option>
-                  </select>
-                </label>
-                <button disabled={busy}>배치·해석 저장</button>
-              </form>
+              <ResearchPlacementEditor
+                id={i.id}
+                placement={p}
+                index={shown.indexOf(i)}
+                sections={sections}
+                busy={busy}
+                onSave={onSave}
+              />
             </details>
             <details
               onToggle={(e) => {

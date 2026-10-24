@@ -115,7 +115,8 @@ async function mount(page: Page) {
       p = c.payload;
     commands.push(c);
     let id = p.id ?? crypto.randomUUID();
-    if (c.type === "createResearch") state.research.push({ ...p, id });
+    if (c.type === "createResearch")
+      state.research.push({ ...p, question: p.question.trim(), id });
     if (c.type === "updateResearch")
       Object.assign(
         state.research.find((x: any) => x.id === p.id),
@@ -131,6 +132,9 @@ async function mount(page: Page) {
       const n = notes.find((n) => n.id === p.noteId)!;
       state.items.push({
         id,
+        created_at: new Date(
+          Date.UTC(2026, 9, 25, 0, 0, state.items.length),
+        ).toISOString(),
         research_id: p.researchId,
         snapshot: { note: n, book: null },
       });
@@ -154,7 +158,23 @@ async function mount(page: Page) {
             version: 1,
           });
       }
-    return r.fulfill({ json: { id } });
+    if (c.type === "placeResearchItem") {
+      id = p.itemId;
+      let old = state.placements.find((x: any) => x.id === p.itemId);
+      if (old) Object.assign(old, p, { version: old.version + 1 });
+      else state.placements.push({ ...p, id: p.itemId, version: 1 });
+    }
+    return r.fulfill({
+      json: {
+        id,
+        version:
+          c.type === "editConnection"
+            ? source.connections.find((x: any) => x.id === id)?.version
+            : c.type === "placeResearchItem"
+              ? state.placements.find((x: any) => x.id === id)?.version
+              : undefined,
+      },
+    });
   });
   await page.route("https://library.test/", (r) =>
     r.fulfill({
@@ -171,7 +191,7 @@ async function mount(page: Page) {
   );
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
-  return { topics, notes, commands, state };
+  return { topics, notes, commands, state, source };
 }
 for (const width of [390, 1280])
   test(`connected notes, topic presets and record form fit at ${width}px`, async ({
@@ -282,12 +302,38 @@ test("outline, ordered sources and text export work without changing the origina
       f.notes.indexOf(n) + 1,
     );
   }
+  const firstCard = page.locator(".research-board article").filter({
+    has: page.getByRole("heading", { name: "처음 생각", exact: true }),
+  });
+  await firstCard.getByText("역할·순서·내 해석 수정", { exact: true }).click();
+  await firstCard
+    .getByRole("textbox", { name: "이 자료에 대한 나의 해석", exact: true })
+    .fill("아직 저장하지 않은 해석");
   await page
     .getByRole("button", { name: "지금 생각 위로", exact: true })
     .click();
   await expect(page.locator(".research-board article h3").first()).toHaveText(
     "지금 생각",
   );
+  await expect(
+    firstCard.getByRole("textbox", {
+      name: "이 자료에 대한 나의 해석",
+      exact: true,
+    }),
+  ).toHaveValue("아직 저장하지 않은 해석");
+  await firstCard
+    .getByRole("button", { name: "배치·해석 저장", exact: true })
+    .click();
+  await expect
+    .poll(() => f.commands.filter((c) => c.type === "placeResearchItem").length)
+    .toBe(1);
+  expect(
+    f.commands.find((c) => c.type === "placeResearchItem").payload,
+  ).toMatchObject({
+    expectedVersion: 1,
+    comment: "아직 저장하지 않은 해석",
+    position: 2,
+  });
   await page
     .getByRole("button", { name: "제목·목차 수정", exact: true })
     .click();
@@ -309,8 +355,67 @@ test("outline, ordered sources and text export work without changing the origina
   const text = await readFile((await file.path())!, "utf8");
   expect(text).toContain("공감과 경계");
   expect(text).toContain("출처: 나의 생각");
+  expect(text).toContain("나의 해석: 아직 저장하지 않은 해석");
   expect(text.indexOf("지금 생각에 관한")).toBeLessThan(
     text.indexOf("처음 생각에 관한"),
   );
   expect(f.notes[0].content).toBe("처음 생각에 관한 나의 문장 0");
+});
+test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
+  page,
+}) => {
+  const code = (
+    await build({
+      stdin: {
+        contents: `import {createRoot} from 'react-dom/client';import {useState} from 'react';import {TopicEditor} from './src/components/memo-box/topic-editor';function App(){const[t,setT]=useState({id:'00000000-0000-4000-8000-000000000012',name:'공감',description:'처음 설명',version:1,aliases:[],kdcCodes:[],parentId:null,confirmed:true});window.refreshTopic=()=>setT({...t,version:2,description:'다른 곳의 설명'});return <TopicEditor topic={t} topics={[t]} busy={false} error='' onClose={()=>{}} onSave={async p=>{window.topicSaved=p}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+        resolveDir: process.cwd(),
+        loader: "tsx",
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      platform: "browser",
+      jsx: "automatic",
+      define: { "process.env.NODE_ENV": '"production"' },
+    })
+  ).outputFiles[0].text;
+  await page.route("https://library.test/", (r) =>
+    r.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
+  );
+  await page.goto("https://library.test/");
+  await page.addScriptTag({ content: code });
+  await page
+    .getByRole("textbox", { name: "주제 설명", exact: true })
+    .fill("내 설명 초안");
+  await page.evaluate(() => (window as any).refreshTopic());
+  await page.getByRole("button", { name: "주제 저장", exact: true }).click();
+  const saved = await page.evaluate(() => (window as any).topicSaved);
+  expect(saved.expectedVersion).toBe(1);
+  expect(saved.description).toBe("내 설명 초안");
+});
+test("refresh keeps an unfinished connection reason and its original version", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.locator(".memo-box-list > button").first().click();
+  const detail = page.locator(".memo-box-detail");
+  await detail.getByLabel("연결 이유").fill("연결에 관한 내 초안");
+  f.source.connections[0].version = 2;
+  f.source.connections[0].reason = "다른 곳의 연결 이유";
+  f.source.notes[1].title = "갱신된 도착 메모";
+  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(
+    detail.getByRole("button", { name: "갱신된 도착 메모", exact: true }),
+  ).toBeVisible();
+  await expect(detail.getByLabel("연결 이유")).toHaveValue(
+    "연결에 관한 내 초안",
+  );
+  await detail.getByRole("button", { name: "연결 수정 저장" }).click();
+  await expect
+    .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
+    .toBe(1);
+  expect(
+    f.commands.find((c) => c.type === "editConnection").payload.expectedVersion,
+  ).toBe(1);
 });

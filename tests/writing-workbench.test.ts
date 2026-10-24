@@ -22,6 +22,10 @@ const cmd = (type: string, payload: unknown) => ({
 });
 it("round-trips a readable outline and exports plain text with its source", () => {
   const question = packOutline("왜 변했나?", ["첫 생각", "새 근거"]);
+  expect(unpackOutline(packOutline("", ["질문 없는 첫 장"]).trim())).toEqual({
+    question: "",
+    outline: ["질문 없는 첫 장"],
+  });
   expect(unpackOutline(question)).toEqual({
     question: "왜 변했나?",
     outline: ["첫 생각", "새 근거"],
@@ -86,6 +90,38 @@ it("updates project metadata with compare-and-swap and preserves concurrent edit
     ),
   ).rejects.toMatchObject({ status: 409 });
   expect((await s.snapshot(owner)).research[0].title).toBe("새 제목");
+});
+it("reloads an outline from the actual store when the optional research question is empty", async () => {
+  const owner = randomUUID(),
+    s = createKnowledgeStore(f.db);
+  const created = await s.mutate(
+    owner,
+    cmd("createResearch", {
+      title: "질문 없는 목차",
+      kind: "thesis",
+      question: packOutline("", ["첫 장", "둘째 장"]),
+    }),
+  );
+  const saved = (await s.snapshot(owner)).research.find(
+    (r) => r.id === created.id,
+  )!;
+  expect(unpackOutline(saved.question)).toEqual({
+    question: "",
+    outline: ["첫 장", "둘째 장"],
+  });
+  await s.mutate(
+    owner,
+    cmd("updateResearch", {
+      id: created.id,
+      title: saved.title,
+      expectedTitle: saved.title,
+      expectedQuestion: saved.question,
+      question: packOutline("", ["새 목차"]),
+    }),
+  );
+  expect(
+    unpackOutline((await s.snapshot(owner)).research[0].question).outline,
+  ).toEqual(["새 목차"]);
 });
 it("swaps two placements atomically and rolls both back on stale or foreign peer", async () => {
   const owner = randomUUID(),

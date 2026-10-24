@@ -15,13 +15,14 @@ export function packOutline(question: string, outline: string[]) {
   );
 }
 export function unpackOutline(value: string) {
-  const i = value.lastIndexOf("\n\n## 목차\n");
+  const source = value.startsWith("## 목차\n") ? "\n\n" + value : value;
+  const i = source.lastIndexOf("\n\n## 목차\n");
   if (i < 0) return { question: value, outline: [] as string[] };
-  const lines = value.slice(i + "\n\n## 목차\n".length).split("\n");
+  const lines = source.slice(i + "\n\n## 목차\n".length).split("\n");
   if (!lines.length || lines.some((v) => !/^\d+\. .+/.test(v)))
     return { question: value, outline: [] as string[] };
   return {
-    question: value.slice(0, i),
+    question: source.slice(0, i),
     outline: lines.map((v) => v.replace(/^\d+\. /, "")),
   };
 }

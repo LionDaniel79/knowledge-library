@@ -243,7 +243,7 @@ export function WritingWorkbench({
             placements={placements}
             busy={command.busy}
             onOpen={onOpen}
-            onSave={(p) => void command.send("placeResearchItem", p)}
+            onSave={(p) => command.send("placeResearchItem", p)}
             sections={unpackOutline(project.question).outline}
             onMove={(id, d) => void move(id, d)}
           />
