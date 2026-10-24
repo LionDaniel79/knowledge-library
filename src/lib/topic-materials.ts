@@ -1,5 +1,6 @@
 import type { Book, Note } from "./domain";
 import { materialPageQuery } from "./material-query";
+import { categories } from "./catalog";
 export interface TopicMaterial {
   id: string;
   kind: "note" | "book";
@@ -139,7 +140,13 @@ export function buildTopicMaterials({
 }
 export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
   const p = materialPageQuery.parse(raw),
-    needle = p.q.toLowerCase();
+    needle = p.q.toLowerCase(),
+    compact = needle.replace(/\s+/g, ""),
+    categoryIds = new Set<string>(
+      categories
+        .filter(([, name]) => name.toLowerCase().includes(needle))
+        .map(([id]) => id),
+    );
   const rows = materials.filter(
     (m) =>
       (p.kind === "all" || m.kind === p.kind) &&
@@ -152,7 +159,14 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
       (!needle ||
         (m.searchText ?? [m.title, m.text, m.bookTitle].join(" "))
           .toLowerCase()
-          .includes(needle)),
+          .includes(needle) ||
+        (m.kind === "book" &&
+          (categoryIds.has(m.category) ||
+            [m.title, m.text]
+              .join(" ")
+              .replace(/\s+/g, "")
+              .toLowerCase()
+              .includes(compact)))),
   );
   const date = (value: string) =>
     Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : "";

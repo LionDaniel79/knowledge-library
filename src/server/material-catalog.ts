@@ -1,4 +1,5 @@
 import { materialPageQuery } from "@/lib/material-query";
+import { categories } from "@/lib/catalog";
 import type { TopicMaterial } from "@/lib/topic-materials";
 import { LibraryError, type Executor } from "./library-store";
 
@@ -30,7 +31,9 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
 ), filtered AS (
   SELECT * FROM normalized WHERE ($2='all' OR kind=$2) AND ($3='all' OR category=CASE WHEN $3='unclassified' THEN '' ELSE $3 END)
     AND ($4='all' OR ($4='unclassified' AND cardinality(topic_ids)=0) OR $4=ANY(topic_ids))
-    AND ($5='' OR strpos(lower(search_text),lower($5))>0)
+    AND ($5='' OR strpos(lower(search_text),lower($5))>0 OR (kind='book' AND (
+      category=ANY($6::text[]) OR strpos(regexp_replace(lower(title||' '||text),'[[:space:]　 ]+','','g'),regexp_replace(lower($5),'[[:space:]　 ]+','','g'))>0
+    )))
 )`;
 const orders = {
   default: `CASE WHEN kind='note' THEN 0 ELSE 1 END,CASE WHEN kind='note' THEN updated_at END DESC,CASE WHEN kind='book' THEN title END COLLATE "C",id COLLATE "C"`,
@@ -47,7 +50,16 @@ export async function readMaterialPage(
 ): Promise<{ total: number; items: TopicMaterial[] }> {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const p = materialPageQuery.parse(raw),
-    args = [owner, p.kind, p.category, p.topic, p.q];
+    args = [
+      owner,
+      p.kind,
+      p.category,
+      p.topic,
+      p.q,
+      categories
+        .filter(([, name]) => name.toLowerCase().includes(p.q.toLowerCase()))
+        .map(([id]) => id),
+    ];
   const total = Number(
     (
       await db.query(
@@ -60,7 +72,7 @@ export async function readMaterialPage(
   const rows = (
     await db.query(
       sourceSql +
-        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames" FROM filtered ORDER BY ${orders[p.sort]} LIMIT $7 OFFSET $6`,
+        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames" FROM filtered ORDER BY ${orders[p.sort]} LIMIT $8 OFFSET $7`,
       [...args, p.offset, p.limit],
     )
   ).rows;

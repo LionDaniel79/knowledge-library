@@ -220,3 +220,16 @@ it("isolates owners, validates sorting, and handles empty or beyond-end pages", 
     readMaterialPage(f.db, owner, { sort: "injected sort" }),
   ).rejects.toThrow();
 });
+
+it("preserves compact book-title and category-name search used by other material menus", async () => {
+  for (const q of ["정서와작업하기", "철학"]) {
+    expect(
+      (await readMaterialPage(f.db, owner, { kind: "book", q })).items.map(
+        (m) => m.id,
+      ),
+    ).toEqual([books[0].id]);
+    expect(local({ kind: "book", q }).items.map((m) => m.id)).toEqual([
+      books[0].id,
+    ]);
+  }
+});
