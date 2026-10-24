@@ -126,6 +126,7 @@ export interface WhiteboardSnapshot {
     status: string;
   }[];
   connections: BoardConnection[];
+  topicLinks?: {id:string;sourceTopicId:string;targetTopicId:string;status:string}[];
 }
 // JSONB may reorder object keys; known own saves must match their later reads.
 export function boardStamp(row: WhiteboardSnapshot["board"]): string {

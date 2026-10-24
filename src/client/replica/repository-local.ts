@@ -706,6 +706,50 @@ export function createLocalReplicaRepository(
         p = url.searchParams,
         path = url.pathname;
       if (path === "/api/library") return repository.overview();
+      if (path === "/api/note-topics") {
+        const id = p.has("noteId")
+            ? z.string().uuid().parse(p.get("noteId"))
+            : undefined,
+          data = await catalogIndex();
+        if (id && !activeNotes(data).some((n) => n.id === id))
+          throw new ReplicaQueryError(404, "기록을 찾을 수 없습니다.");
+        const topics = data.topics
+            .filter((t) => !t.archived_at)
+            .map((t) => ({
+              id: t.id,
+              name: t.name,
+              parentId: t.parent_id ?? null,
+              aliases: t.aliases ?? [],
+              description: t.description ?? "",
+              kdcCodes: t.kdc_codes ?? [],
+              confirmed: t.confirmed,
+              version: t.version,
+            })),
+          ids = new Set(topics.map((t) => t.id));
+        return {
+          topics,
+          memberships: id
+            ? data.memberships
+                .filter(
+                  (m) =>
+                    m.source_kind === "note" &&
+                    m.source_id === id &&
+                    ids.has(m.topic_id),
+                )
+                .map((m) => ({
+                  id: m.id,
+                  topicId: m.topic_id,
+                  sourceKind: m.source_kind,
+                  sourceId: m.source_id,
+                  sourceVersion: m.source_version,
+                  status: m.status,
+                  method: m.method,
+                  evidence: m.evidence,
+                  version: m.version,
+                }))
+            : [],
+        };
+      }
       if (path === "/api/library-materials") {
         return query(
           "materials",

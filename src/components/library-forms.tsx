@@ -12,9 +12,11 @@ import { BookPicker } from "./book-picker";
 import { useBookCatalog } from "./use-book-catalog";
 import { AssistLauncher } from "./assist-panel";
 import { formEditBase } from "@/lib/replica/command-envelope";
+import type { NewNoteContext } from "@/lib/note-context";
+import { NoteTopicField, type NoteTopicHandle } from "./note-topic-field";
 export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
-  | { kind: "note"; note?: Note; bookId?: string }
+  | ({ kind: "note"; note?: Note } & NewNoteContext)
   | { kind: "start"; book: Book }
   | { kind: "progress" | "complete" | "date"; cycle: ReadingCycle };
 export function LibraryForm({
@@ -53,6 +55,7 @@ export function LibraryForm({
   const [isbn, setIsbn] = useState(book?.isbn ?? "");
   const [title, setTitle] = useState(book?.title ?? "");
   const formRef = useRef<HTMLFormElement>(null);
+  const topicRef = useRef<NoteTopicHandle>(null);
   const [selectedCatalog, setSelectedCatalog] = useState<BookCandidate | null>(
     null,
   );
@@ -159,6 +162,8 @@ export function LibraryForm({
         kind: text("kind"),
         page: number("page"),
         tags: parseTags(text("tags")),
+        topicChanges: topicRef.current?.changes(),
+        relatedNotes: editor.relatedNotes?.map((n) => ({ noteId: n.id })),
         ...(editor.note
           ? {
               id: editor.note.id,
@@ -543,6 +548,17 @@ export function LibraryForm({
                     ))}
                   </select>
                 </label>
+              )}
+              <NoteTopicField
+                ref={topicRef}
+                noteId={editor.note?.id}
+                initial={editor.topicIds}
+              />
+              {!!editor.relatedNotes?.length && (
+                <small>
+                  연결할 기록:{" "}
+                  {editor.relatedNotes.map((n) => n.title || "메모").join(", ")}
+                </small>
               )}
               <label>
                 태그

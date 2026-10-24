@@ -1,28 +1,32 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { usePagedResource } from "../use-paged-resource";
 import type { Library } from "@/lib/domain";
 import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
 import { TopicBrowser } from "./topic-browser";
-import { ThoughtTimeline } from "./timeline";
-import { CandidateReview } from "./candidate-review";
 import { AssistLauncher } from "../assist-panel";
 export function ThoughtMapPanel({
   view,
   library,
   onOpen,
   ownerId = "",
+  revision = 0,
 }: {
   view: string;
   library: Library;
   onOpen: (kind: string, id: string) => void;
   ownerId?: string;
+  revision?: number;
 }) {
+  const refresh = useMemo(
+    () => ({ notes: library.notes, revision }),
+    [library.notes, revision],
+  );
   const resource = usePagedResource<ThoughtMapSnapshot>(
     "/api/thought-map",
     true,
-    library.notes,
+    refresh,
     { keepPreviousData: true },
   );
   const state = resource.data;
@@ -77,34 +81,17 @@ export function ThoughtMapPanel({
       {!state && !error && !resource.error && (
         <p role="status">사유의 지도를 불러오는 중입니다…</p>
       )}
-      {state &&
-        (view === "topics" ? (
-          <TopicBrowser
-            ownerId={ownerId}
-            library={library}
-            state={state}
-            send={send}
-            busy={busy}
-            error={error}
-            onOpen={onOpen}
-          />
-        ) : view === "timeline" ? (
-          <ThoughtTimeline
-            library={library}
-            state={state}
-            send={send}
-            busy={busy}
-            onOpen={onOpen}
-          />
-        ) : (
-          <CandidateReview
-            candidates={state.candidates}
-            feedback={state.feedback}
-            send={send}
-            busy={busy}
-            onOpen={onOpen}
-          />
-        ))}
+      {state && (
+        <TopicBrowser
+          ownerId={ownerId}
+          library={library}
+          state={state}
+          send={send}
+          busy={busy}
+          error={error}
+          onOpen={onOpen}
+        />
+      )}
     </section>
   );
 }

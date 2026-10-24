@@ -34,6 +34,7 @@ export function TopicBrowser({
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState("all"),
     [kind, setKind] = useState("note"),
+    [search, setSearch] = useState(""),
     [sort, setSort] = useState("newest");
   const replica = useReplicaOptional();
   const { topics: orderedTopics, move: moveTopic } = useTopicOrder(
@@ -42,18 +43,19 @@ export function TopicBrowser({
   );
   const paging = useListPagination(
     "topic-materials",
-    JSON.stringify([selected, field, kind, sort]),
+    JSON.stringify([selected, field, kind, sort, search]),
   );
   const query = useMemo(
     () => ({
       category: field,
+      q: search,
       kind,
       topic: selected,
       sort,
       limit: paging.size,
       offset: paging.offset,
     }),
-    [field, kind, selected, sort, paging.size, paging.offset],
+    [field, kind, selected, sort, search, paging.size, paging.offset],
   );
   const catalog = useMaterialPage(
     !!library.catalog && paging.ready,
@@ -151,6 +153,15 @@ export function TopicBrowser({
               <option value="topic">주제별</option>
               <option value="book">책별</option>
             </select>
+          </label>
+          <label className="topic-material-search">
+            검색
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="제목·내용 검색"
+            />
           </label>
           <PageSizeSelect label="주제별 자료" paging={paging} />
           <p className="topic-material-count" aria-live="polite">

@@ -26,6 +26,8 @@ const command = z.object({
     "connect",
     "editConnection",
     "createResearch",
+    "updateResearch",
+    "moveResearchItems",
     "addResearchNote",
     "placeResearchItem",
     "saveWhiteboard",
@@ -333,6 +335,91 @@ export function createKnowledgeStore(db: Database) {
         ).rows[0];
         await revise(id, c.type, null, after);
         result = { id };
+      } else if (c.type === "updateResearch") {
+        const p = z
+          .object({
+            id: uuid,
+            title: z.string().trim().min(1).max(300),
+            question: z.string().trim().max(2000),
+            expectedTitle: z.string(),
+            expectedQuestion: z.string(),
+          })
+          .parse(c.payload);
+        const before = (
+          await tx.query(
+            "SELECT * FROM library_research WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+            [owner, p.id],
+          )
+        ).rows[0];
+        if (!before)
+          throw new LibraryError(404, "글감 묶음을 찾을 수 없습니다.");
+        if (
+          before.title !== p.expectedTitle ||
+          before.question !== p.expectedQuestion
+        )
+          throw new LibraryError(
+            409,
+            "목차나 제목이 다른 곳에서 변경됐습니다. 입력을 보관한 뒤 최신 내용과 비교해 주세요.",
+          );
+        const after = (
+          await tx.query(
+            "UPDATE library_research SET title=$3,question=$4 WHERE owner_id=$1 AND id=$2 RETURNING *",
+            [owner, p.id, p.title, p.question],
+          )
+        ).rows[0];
+        await revise(p.id, c.type, before, after);
+        result = { id: p.id };
+      } else if (c.type === "moveResearchItems") {
+        const p = z
+          .object({
+            items: z
+              .array(
+                z.object({
+                  itemId: uuid,
+                  expectedVersion: z.number().int().nonnegative(),
+                  position: z.number().int().min(1).max(100000),
+                }),
+              )
+              .min(2)
+              .max(2000),
+          })
+          .parse(c.payload);
+        if (new Set(p.items.map((i) => i.itemId)).size !== p.items.length)
+          throw new LibraryError(400, "서로 다른 두 자료를 선택해 주세요.");
+        const locked = (
+          await tx.query(
+            "SELECT * FROM library_research_items WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+            [owner, p.items.map((i) => i.itemId)],
+          )
+        ).rows;
+        if (locked.length !== p.items.length)
+          throw new LibraryError(404, "글감을 찾을 수 없습니다.");
+        if (locked.some((r) => r.research_id !== locked[0].research_id))
+          throw new LibraryError(
+            400,
+            "같은 글감 묶음 안에서만 순서를 바꿀 수 있습니다.",
+          );
+        for (const item of p.items) {
+          const before = (
+            await tx.query(
+              "SELECT * FROM library_research_placements WHERE owner_id=$1 AND id=$2",
+              [owner, item.itemId],
+            )
+          ).rows[0];
+          if ((before?.version ?? 0) !== item.expectedVersion)
+            throw new LibraryError(
+              409,
+              "글감 순서가 다른 곳에서 변경됐습니다. 새로고침 후 다시 시도해 주세요.",
+            );
+          const after = (
+            await tx.query(
+              "INSERT INTO library_research_placements(id,owner_id,role,section,position,comment,state) VALUES($1,$2,'background','',$3,'','active') ON CONFLICT(id) DO UPDATE SET position=excluded.position,version=library_research_placements.version+1,updated_at=now() RETURNING *",
+              [item.itemId, owner, item.position],
+            )
+          ).rows[0];
+          await revise(item.itemId, c.type, before ?? null, after);
+        }
+        result = { id: p.items[0].itemId };
       } else if (c.type === "placeResearchItem") {
         const p = z
           .object({

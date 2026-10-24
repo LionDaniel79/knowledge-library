@@ -65,7 +65,7 @@ export async function readWhiteboard(db: Database, owner: string) {
     ).rows.map((r) => projectNote(r));
     const books = (
       await tx.query(
-        "SELECT id,title,author,category FROM library_active_books WHERE owner_id=$1 ORDER BY title,id",
+        "SELECT id,title,author,category,publisher,isbn,version FROM library_active_books WHERE owner_id=$1 ORDER BY title,id",
         [owner],
       )
     ).rows;
@@ -111,6 +111,17 @@ export async function readWhiteboard(db: Database, owner: string) {
       topics,
       memberships,
       connections,
+      topicLinks: (
+        await tx.query(
+          "SELECT id,source_topic_id,target_topic_id,status FROM library_topic_links WHERE owner_id=$1 AND status='accepted'",
+          [owner],
+        )
+      ).rows.map((r) => ({
+        id: r.id,
+        sourceTopicId: r.source_topic_id,
+        targetTopicId: r.target_topic_id,
+        status: r.status,
+      })),
     };
   });
 }

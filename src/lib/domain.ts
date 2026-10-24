@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { catalogSelection } from "./catalog-selection";
+import { noteContextFields } from "./note-context";
 export type Format = "paper" | "pdf" | "ebook" | "unknown";
 export const formatNames: Record<Format, string> = {
   paper: "종이책",
@@ -216,6 +217,7 @@ export const bookInput = z.object({
 });
 export const noteInput = z
   .object({
+    ...noteContextFields,
     bookId: z.string().uuid().nullable().default(null),
     title: short.default("").transform((v) => v || "미분류 메모"),
     content: z.string().trim().min(1, "내용을 입력해 주세요.").max(50000),

@@ -43,17 +43,23 @@ export function WhiteboardPanel({
   library,
   onOpen,
   ownerId,
+  revision = 0,
 }: {
   library: Library;
   onOpen: (kind: string, id: string) => void;
   ownerId: string;
+  revision?: number;
 }) {
   const replica = useReplicaOptional(),
     runtime = replica?.runtime;
+  const refresh = useMemo(
+    () => ({ notes: library.notes, revision }),
+    [library.notes, revision],
+  );
   const resource = usePagedResource<WhiteboardSnapshot>(
     "/api/whiteboard",
     true,
-    library.notes,
+    refresh,
     { keepPreviousData: true },
   );
   const [board, setBoard] = useState<Board>(emptyBoard),

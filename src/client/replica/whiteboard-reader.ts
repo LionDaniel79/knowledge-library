@@ -11,6 +11,7 @@ const sources: SyncEntity[] = [
   "library_topics",
   "library_topic_memberships",
   "library_connections",
+  "library_topic_links",
 ];
 export function createWhiteboardReader(
   storage: ReplicaStorage,
@@ -59,6 +60,9 @@ export function createWhiteboardReader(
                 title: b.title,
                 author: b.author,
                 category: b.category,
+                publisher: b.publisher,
+                isbn: b.isbn,
+                version: b.version,
               })),
             topics: (await reader.all("library_topics"))
               .filter((t) => !t.archived_at)
@@ -78,6 +82,14 @@ export function createWhiteboardReader(
                 ids.has(c.source_id) &&
                 ids.has(c.target_id),
             ) as WhiteboardSnapshot["connections"],
+            topicLinks: (await reader.all("library_topic_links"))
+              .filter((l) => l.status === "accepted")
+              .map((l) => ({
+                id: l.id,
+                sourceTopicId: l.source_topic_id,
+                targetTopicId: l.target_topic_id,
+                status: l.status,
+              })),
           },
         };
       }

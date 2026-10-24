@@ -139,6 +139,26 @@ test("topic materials start with my notes and reset the page when switching kind
     "책과 내 기록 53개",
   );
 });
+test("new search narrows the full note list and resets its page while preserving other filters", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  await page.getByRole("button", { name: "2페이지", exact: true }).click();
+  await page
+    .getByPlaceholder("제목·내용 검색", { exact: true })
+    .fill("내 생각 1");
+  await expect(page.locator(".thought-card")).toHaveCount(10);
+  expect(f.requests.at(-1)?.get("offset")).toBe("0");
+  expect(f.requests.at(-1)?.get("q")).toBe("내 생각 1");
+  await page.getByRole("combobox", { name:"정렬", exact: true }).selectOption("oldest");
+  await expect(page.locator(".thought-card").first()).toContainText(
+    "내 생각 1",
+  );
+  await page
+    .getByPlaceholder("제목·내용 검색", { exact: true })
+    .fill("전혀없는검색어");
+  await expect(page.locator(".thought-card")).toHaveCount(0);
+});
 
 test("topic filter and five global sort options apply with kind and category", async ({
   page,
@@ -226,8 +246,11 @@ for (const width of [390, 1440])
     );
     expect(Math.abs(boxes[1].y - boxes[2].y)).toBeLessThanOrEqual(1);
     expect(boxes[1].x).toBeLessThan(boxes[2].x);
-    expect(Math.abs(boxes[3].y - boxes[4].y)).toBeLessThanOrEqual(1);
-    expect(boxes[3].x).toBeLessThan(boxes[4].x);
+    const searchBox = (await page
+      .getByPlaceholder("제목·내용 검색", { exact: true })
+      .boundingBox())!;
+    expect(Math.abs(searchBox.y - boxes[4].y)).toBeLessThanOrEqual(1);
+    expect(searchBox.x).toBeLessThan(boxes[4].x);
     expect(
       await page.locator("body").evaluate((e) => e.scrollWidth),
     ).toBeLessThanOrEqual(width);

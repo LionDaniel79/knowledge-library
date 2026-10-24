@@ -1463,6 +1463,9 @@ export function LibraryApp({
                 ) : (
                   <KnowledgePanel
                     ownerId={ownerId}
+                    onNewNote={(context) =>
+                      setEditor({ kind: "note", ...context })
+                    }
                     library={data}
                     onOpen={(kind, id) => {
                       if (kind === "book") setDetail(id);

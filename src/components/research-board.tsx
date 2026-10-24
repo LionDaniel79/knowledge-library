@@ -15,18 +15,23 @@ export function ResearchBoard({
   busy,
   onSave,
   onOpen,
+  sections = [],
+  onMove,
 }: {
   items: ResearchItem[];
   placements: ResearchPlacement[];
   busy: boolean;
   onSave: (payload: unknown) => void;
   onOpen: (kind: string, id: string) => void;
+  sections?: string[];
+  onMove?: (id: string, direction: -1 | 1) => void;
 }) {
   const [removed, setRemoved] = useState(false),
     [history, setHistory] = useState<Record<string, Revision[]>>({}),
     [error, setError] = useState("");
   const map = new Map(placements.map((p) => [p.id, p]));
   const shown = sortResearchItems(items, placements, removed);
+  const activeOrder = sortResearchItems(items, placements);
   return (
     <div className="research-board">
       <label className="search-checkbox">
@@ -55,6 +60,26 @@ export function ResearchBoard({
               {p ? ` · 순서 ${p.position}` : ""}
             </small>
             <h3>{n.title}</h3>
+            {onMove && p?.state !== "removed" && (
+              <div className="form-footer">
+                <button
+                  disabled={busy || activeOrder.indexOf(i) === 0}
+                  aria-label={`${n.title || "메모"} 위로`}
+                  onClick={() => onMove(i.id, -1)}
+                >
+                  ↑ 위로
+                </button>
+                <button
+                  disabled={
+                    busy || activeOrder.indexOf(i) === activeOrder.length - 1
+                  }
+                  aria-label={`${n.title || "메모"} 아래로`}
+                  onClick={() => onMove(i.id, 1)}
+                >
+                  ↓ 아래로
+                </button>
+              </div>
+            )}
             <p className="source-quote">{n.content}</p>
             {p?.comment && (
               <p className="source-quote">
@@ -124,9 +149,15 @@ export function ResearchBoard({
                   장·절 또는 묶음 제목
                   <input
                     name="section"
+                    list={`writing-sections-${i.id}`}
                     maxLength={300}
                     defaultValue={p?.section ?? ""}
                   />
+                  <datalist id={`writing-sections-${i.id}`}>
+                    {sections.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
                 </label>
                 <label>
                   배치 순서

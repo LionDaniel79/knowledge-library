@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { noteContextId } from "../../lib/note-context";
 import { introductionSchema } from "../../lib/book-introduction";
 import { reviewDecisionSchema } from "../../lib/catalog-review";
 import {
@@ -185,6 +186,98 @@ export async function prepareOptimistic(
       put("library_notes", after);
       result = { id: after.id, version: after.version };
       entityId = after.id;
+      const reviseContext = (
+        kind: string,
+        index: number,
+        old: RawRecord | undefined,
+        next: RawRecord,
+      ) =>
+        put("library_revisions", {
+          id: noteContextId(body.requestId, `revision-${kind}`, index),
+          entity_id: next.id,
+          action: kind === "topic" ? "assignTopic" : "connectRelatedNote",
+          before_data: old ?? null,
+          after_data: next,
+          created_at: at,
+        });
+      if (value.topicChanges?.length) {
+        const memberships = await repository.all("library_topic_memberships");
+        for (const [i, c] of value.topicChanges.entries()) {
+          const t = await own("library_topics", c.topicId);
+          if (t.archived_at && c.status === "accepted")
+            throw new ReplicaQueryError(
+              409,
+              "삭제한 주제입니다. 주제를 다시 선택해 주세요.",
+            );
+          const previous = memberships.find(
+            (m) =>
+              m.topic_id === c.topicId &&
+              m.source_kind === "note" &&
+              m.source_id === after.id,
+          );
+          check(previous, c.expectedVersion);
+          const next = {
+            ...(previous ?? {
+              id: noteContextId(body.requestId, "topic", i),
+              topic_id: c.topicId,
+              source_kind: "note",
+              source_id: after.id,
+              evidence: [],
+            }),
+            source_version: String(after.version),
+            status: c.status,
+            method: "manual",
+            version: (previous?.version ?? 0) + 1,
+          };
+          put("library_topic_memberships", next);
+          reviseContext("topic", i, previous, next);
+        }
+      }
+      if (value.relatedNotes?.length) {
+        const links = await repository.all("library_connections");
+        for (const [i, c] of value.relatedNotes.entries()) {
+          if (c.noteId === after.id)
+            throw new ReplicaQueryError(
+              400,
+              "같은 기록을 자신에게 연결할 수 없습니다.",
+            );
+          await note(c.noteId);
+          const [a, b] = [after.id, c.noteId].sort();
+          const previous = links
+            .filter(
+              (l) =>
+                l.source_kind === "note" &&
+                l.target_kind === "note" &&
+                ((l.source_id === a && l.target_id === b) ||
+                  (l.source_id === b && l.target_id === a)),
+            )
+            .sort(
+              (x, y) =>
+                Number(y.status === "accepted") -
+                  Number(x.status === "accepted") ||
+                String(x.created_at).localeCompare(String(y.created_at)) ||
+                x.id.localeCompare(y.id),
+            )[0];
+          if (previous?.status === "accepted") continue;
+          const next = {
+            ...(previous ?? {
+              id: noteContextId(body.requestId, "link", i),
+              source_kind: "note",
+              source_id: a,
+              target_kind: "note",
+              target_id: b,
+              created_at: at,
+            }),
+            status: "accepted",
+            relation: "related",
+            reason: "관련 기록으로 직접 연결",
+            method: "manual",
+            version: (previous?.version ?? 0) + 1,
+          };
+          put("library_connections", next);
+          reviseContext("link", i, previous, next);
+        }
+      }
     } else if (cmd.type === "createShelf") {
       const name = z.string().trim().min(1).max(80).parse(p.name);
       if ((await repository.shelves()).includes(name))
@@ -331,10 +424,87 @@ export async function prepareOptimistic(
         question: z.string().trim().max(2000).parse(p.question),
         created_at: at,
       });
+    } else if (body.type === "updateResearch") {
+      const old = await own("library_research", p.id);
+      if (old.title !== p.expectedTitle || old.question !== p.expectedQuestion)
+        throw new ReplicaQueryError(
+          409,
+          "목차나 제목이 다른 곳에서 변경됐습니다. 입력을 보관한 뒤 최신 내용과 비교해 주세요.",
+        );
+      base = old;
+      entityId = p.id;
+      put("library_research", {
+        ...old,
+        title: z.string().trim().min(1).max(300).parse(p.title),
+        question: z.string().trim().max(2000).parse(p.question),
+      });
+      result = { id: p.id };
+    } else if (body.type === "moveResearchItems") {
+      const items = z
+        .array(
+          z.object({
+            itemId: z.string().uuid(),
+            expectedVersion: z.number().int().nonnegative(),
+            position: z.number().int().min(1).max(100000),
+          }),
+        )
+        .min(2)
+        .max(2000)
+        .parse(p.items);
+      if (new Set(items.map((i) => i.itemId)).size !== items.length)
+        throw new ReplicaQueryError(400, "서로 다른 두 자료를 선택해 주세요.");
+      const rows = await Promise.all(
+        items.map((i) => own("library_research_items", i.itemId)),
+      );
+      if (rows.some((r) => r.research_id !== rows[0].research_id))
+        throw new ReplicaQueryError(
+          400,
+          "같은 글감 묶음 안에서만 순서를 바꿀 수 있습니다.",
+        );
+      for (const [i, item] of items.entries()) {
+        const old = await repository.raw(
+          "library_research_placements",
+          item.itemId,
+        );
+        check(old, item.expectedVersion);
+        const next = {
+          id: item.itemId,
+          role: "background",
+          section: "",
+          comment: "",
+          state: "active",
+          ...old,
+          position: item.position,
+          version: (old?.version ?? 0) + 1,
+          updated_at: at,
+        };
+        put("library_research_placements", next);
+        if (i === 0) {
+          base = old;
+          entityId = item.itemId;
+          result = { id: entityId };
+        } else
+          put("library_revisions", {
+            id: noteContextId(body.requestId, "research-move", i),
+            entity_id: item.itemId,
+            action: body.type,
+            before_data: old ?? null,
+            after_data: next,
+            created_at: at,
+          });
+      }
     } else if (body.type === "addResearchNote") {
       await own("library_research", p.researchId);
       const n = await note(p.noteId),
         b = n.book_id ? await own("library_books", n.book_id) : null;
+      if (
+        p.expectedNoteVersion !== undefined &&
+        p.expectedNoteVersion !== n.version
+      )
+        throw new ReplicaQueryError(
+          409,
+          "선택한 메모가 변경됐습니다. 다시 확인해 주세요.",
+        );
       p.expectedNoteVersion = n.version;
       p.expectedBookVersion = b?.version ?? null;
       p.expectedSource = researchSource(n, b);

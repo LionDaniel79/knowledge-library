@@ -1,4 +1,5 @@
 import { withSyncWrite } from "./sync/write";
+import { writeNoteContext } from "./note-context";
 import { editableFields } from "../lib/replica/command-envelope";
 import { previewNoteSelect, readReadingSummary } from "./record-catalog";
 import { exportCuration } from "./curation-export";
@@ -762,6 +763,7 @@ export function createLibraryStore(db: Database) {
               )
             ).rows[0];
           }
+          await writeNoteContext(tx, owner, id, version, p, cmd.requestId);
         }
         await tx.query(
           "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",
