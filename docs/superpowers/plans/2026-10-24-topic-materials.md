@@ -25,16 +25,16 @@
 
 Files: src/lib/material-query.ts, src/lib/topic-materials.ts, src/server/material-catalog.ts, src/client/replica/queries.ts, src/client/replica/repository-local.ts, tests/topic-materials.test.ts, tests/material-paging.test.ts.
 
-- [ ] 분야·책 주제 상속·명시 거절·보관 주제·복합 종류·정렬과 페이지 경계 회귀 검사에서 실패 확인.
-- [ ] 공통 자료 타입/주제 계산·정렬/페이지 순수 모델 구현. 서버 SQL 조회와 기기 materials 조회 연결.
-- [ ] 고립된 PGlite DB와 순수 조회 결과를 비교하고 기존 자료 분할 검사를 통과.
+- [x] 분야·책 주제 상속·명시 거절·보관 주제·복합 종류·정렬과 페이지 경계 회귀 검사에서 실패 확인.
+- [x] 공통 자료 타입/주제 계산·정렬/페이지 순수 모델 구현. 서버 SQL 조회와 기기 materials 조회 연결.
+- [x] 고립된 PGlite DB와 순수 조회 결과를 비교하고 기존 자료 분할 검사를 통과.
 
 ### Task 2: 화면·마무리
 
 Files: src/components/thought-map/topic-browser.tsx, src/components/thought-map/topic-manager.tsx, src/components/thought-map/panel.tsx, src/components/knowledge-panel.tsx, src/components/use-material-page.ts, src/app/globals.css, src/components/thought-map/help.tsx, e2e/topic-material-kind.spec.ts, playwright.topic-materials.config.ts.
 
-- [ ] 모의 브라우저로 주제 필터·다섯 정렬·관리 영역 마지막 배치·높이·주제 재정렬 보존 실패 확인.
-- [ ] 관리 영역을 분리하고 작은 접기 UI·위아래 이동·계정별 기기 설정 구현. 필터/정렬과 동일 높이 적용.
-- [ ] 전체 관련 검사·타입 검사·PC/터치 화면 확인. 설명을 사용법에 정리.
+- [x] 모의 브라우저로 주제 필터·다섯 정렬·관리 영역 마지막 배치·높이·주제 재정렬 보존 실패 확인.
+- [x] 관리 영역을 분리하고 작은 접기 UI·위아래 이동·계정별 기기 설정 구현. 필터/정렬과 동일 높이 적용.
+- [x] 전체 관련 검사·타입 검사·PC/터치 화면 확인. 설명을 사용법에 정리.
 - [ ] 새 검토자 한 명으로 전체 변경 검토 후 중요 지적 수정. 기존 승인된 GitHub/웹 배포 흐름으로 반영하고 공개 정적 파일 확인.
 - [ ] 11/1 검수 목록과 운영 기록·사용자 요약을 갱신.
