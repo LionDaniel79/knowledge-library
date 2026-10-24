@@ -12,10 +12,12 @@ export function ThoughtMapPanel({
   view,
   library,
   onOpen,
+  ownerId = "",
 }: {
   view: string;
   library: Library;
   onOpen: (kind: string, id: string) => void;
+  ownerId?: string;
 }) {
   const resource = usePagedResource<ThoughtMapSnapshot>(
     "/api/thought-map",
@@ -78,6 +80,7 @@ export function ThoughtMapPanel({
       {state &&
         (view === "topics" ? (
           <TopicBrowser
+            ownerId={ownerId}
             library={library}
             state={state}
             send={send}

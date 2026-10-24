@@ -1,8 +1,9 @@
 "use client";
 import { useState, useMemo } from "react";
 import type { Library } from "@/lib/domain";
-import { categories, categoryName, parseTags } from "@/lib/catalog";
-import type { ThoughtMapSnapshot, Topic } from "@/lib/thought-map/types";
+import { categories, categoryName } from "@/lib/catalog";
+import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
+import { buildTopicMaterials, pageTopicMaterials } from "@/lib/topic-materials";
 import { useMaterialPage } from "../use-material-page";
 import {
   useListPagination,
@@ -10,7 +11,9 @@ import {
   PageNavigation,
 } from "../list-pagination";
 import { TopicPicker, type ThoughtSend } from "./topic-picker";
-import { Modal } from "../modal";
+import { TopicManager } from "./topic-manager";
+import { useTopicOrder } from "./use-topic-order";
+import { useReplicaOptional } from "../replica/provider";
 export function TopicBrowser({
   library,
   state,
@@ -18,6 +21,7 @@ export function TopicBrowser({
   busy,
   error = "",
   onOpen,
+  ownerId = "",
 }: {
   library: Library;
   state: ThoughtMapSnapshot;
@@ -25,317 +29,80 @@ export function TopicBrowser({
   busy: boolean;
   error?: string;
   onOpen: (kind: string, id: string) => void;
+  ownerId?: string;
 }) {
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState("all"),
     [kind, setKind] = useState("note"),
-    [managing, setManaging] = useState(false);
+    [sort, setSort] = useState("newest");
+  const replica = useReplicaOptional();
+  const { topics: orderedTopics, move: moveTopic } = useTopicOrder(
+    state.topics,
+    ownerId || replica?.runtime?.owner || "preview",
+  );
   const paging = useListPagination(
     "topic-materials",
-    JSON.stringify([selected, field, kind]),
+    JSON.stringify([selected, field, kind, sort]),
   );
-  const [formOpen, setFormOpen] = useState(false);
-  const [deleting, setDeleting] = useState<Topic | null>(null);
-  const [editing, setEditing] = useState<Topic | null>(null),
-    [name, setName] = useState(""),
-    [description, setDescription] = useState(""),
-    [aliases, setAliases] = useState(""),
-    [parentId, setParentId] = useState("");
-  const catalog = useMaterialPage(
-    !!library.catalog && paging.ready,
-    {
+  const query = useMemo(
+    () => ({
       category: field,
       kind,
       topic: selected,
+      sort,
       limit: paging.size,
       offset: paging.offset,
-    },
+    }),
+    [field, kind, selected, sort, paging.size, paging.offset],
+  );
+  const catalog = useMaterialPage(
+    !!library.catalog && paging.ready,
+    query,
     state,
   );
-  const materials = [
-    ...(state.notes ?? library.notes).map((n) => ({
-      id: n.id,
-      kind: "note" as const,
-      title: n.title,
-      text: n.content,
-      category: library.books.find((b) => b.id === n.bookId)?.category ?? "",
-      version: n.version,
-    })),
-    ...library.books.map((b) => ({
-      id: b.id,
-      kind: "book" as const,
-      title: b.title,
-      text: [b.author, b.publisher].filter(Boolean).join(" · "),
-      category: b.category ?? "",
-      version: b.version,
-    })),
-  ];
+  const local = useMemo(
+    () =>
+      library.catalog
+        ? { total: 0, items: [] }
+        : pageTopicMaterials(
+            buildTopicMaterials({
+              books: library.books,
+              notes: state.notes ?? library.notes,
+              topics: state.topics,
+              memberships: state.memberships,
+            }),
+            query,
+          ),
+    [
+      library.catalog,
+      library.books,
+      library.notes,
+      state.notes,
+      state.topics,
+      state.memberships,
+      query,
+    ],
+  );
+  const total = library.catalog ? catalog.total : local.total;
+  const shown = library.catalog ? catalog.items : local.items;
   const membershipMap = useMemo(() => {
-    const map = new Map<string, typeof state.memberships>();
+    const map = new Map<string, typeof state.memberships>(),
+      valid = new Set(state.topics.map((t) => t.id));
     for (const m of state.memberships) {
-      if (!state.topics.some((t) => t.id === m.topicId)) continue;
+      if (!valid.has(m.topicId)) continue;
       const key = m.sourceKind + ":" + m.sourceId;
-      map.set(key, [...(map.get(key) ?? []), m]);
+      const list = map.get(key) ?? [];
+      list.push(m);
+      map.set(key, list);
     }
     return map;
   }, [state.memberships, state.topics]);
-  const assigned = (m: (typeof materials)[number]) =>
+  const assigned = (m: { kind: string; id: string }) =>
     (membershipMap.get(m.kind + ":" + m.id) ?? []).filter(
       (a) => a.status !== "rejected",
     );
-  const localShown = materials.filter(
-    (m) =>
-      (kind === "all" || m.kind === kind) &&
-      (field === "all" || m.category === field) &&
-      (selected === "all" || selected === "unclassified"
-        ? selected === "all" || assigned(m).length === 0
-        : assigned(m).some((a) => a.topicId === selected)),
-  );
-  const total = library.catalog ? catalog.total : localShown.length;
-  const shown = library.catalog
-    ? catalog.items
-    : localShown.slice(paging.offset, paging.offset + paging.size);
-  function edit(t: Topic | null) {
-    setFormOpen(true);
-    setEditing(t);
-    setName(t?.name ?? "");
-    setDescription(t?.description ?? "");
-    setAliases(t?.aliases.join(", ") ?? "");
-    setParentId(t?.parentId ?? "");
-  }
   return (
-    <div className="thought-layout">
-      <aside className="panel thought-topics">
-        <div className="topic-heading">
-          <h2>나의 주제</h2>
-          <button
-            className="topic-mobile-control"
-            aria-expanded={managing}
-            aria-controls="topic-manager"
-            onClick={() => setManaging(!managing)}
-          >
-            주제 관리
-          </button>
-        </div>
-        <select
-          className="topic-mobile-control"
-          aria-label="나의 주제 선택"
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          <option value="all">전체 주제</option>
-          <option value="unclassified">미분류</option>
-          {state.topics.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {!t.confirmed ? " · 제안" : ""}
-            </option>
-          ))}
-        </select>
-        <div
-          id="topic-manager"
-          className={`topic-manager${managing ? " is-open" : ""}`}
-        >
-          <button
-            disabled={busy}
-            onClick={() => void send("proposeTopics", {})}
-          >
-            기존 태그로 주제 제안
-          </button>
-          <button
-            aria-pressed={selected === "all"}
-            onClick={() => {
-              setSelected("all");
-              paging.setPage(0);
-            }}
-          >
-            전체 주제
-          </button>
-          <button
-            aria-pressed={selected === "unclassified"}
-            onClick={() => {
-              setSelected("unclassified");
-              paging.setPage(0);
-            }}
-          >
-            미분류
-            {!library.catalog
-              ? " " + materials.filter((m) => assigned(m).length === 0).length
-              : ""}
-          </button>
-          {state.topics.map((t) => (
-            <div key={t.id} className="topic-row">
-              <button
-                aria-pressed={selected === t.id}
-                onClick={() => {
-                  setSelected(t.id);
-                  paging.setPage(0);
-                }}
-              >
-                {t.parentId ? "↳ " : ""}
-                {t.name}
-                {!t.confirmed ? " · 제안" : ""}
-              </button>
-              <button
-                aria-label={`${t.name} 주제 수정`}
-                onClick={() => edit(t)}
-              >
-                수정
-              </button>
-              <button
-                disabled={busy}
-                aria-label={`${t.name} 주제 삭제`}
-                onClick={() => setDeleting(t)}
-              >
-                삭제
-              </button>
-            </div>
-          ))}
-          <button onClick={() => setFormOpen(true)}>주제 만들기·수정</button>
-          {!!state.archivedTopics?.length && (
-            <details>
-              <summary>삭제한 주제 · {state.archivedTopics.length}개</summary>
-              {state.archivedTopics.map((t) => (
-                <div key={t.id}>
-                  {t.name}
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void send("restoreTopic", {
-                        id: t.id,
-                        expectedVersion: t.version,
-                      })
-                    }
-                  >
-                    복원
-                  </button>
-                </div>
-              ))}
-            </details>
-          )}
-        </div>
-        {formOpen && (
-          <Modal
-            title={editing ? "주제 수정" : "주제 만들기"}
-            onClose={() => setFormOpen(false)}
-            canClose={!busy}
-          >
-            <form
-              className="thought-form"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const saved = await send("upsertTopic", {
-                  ...(editing
-                    ? {
-                        id: editing.id,
-                        expectedVersion: editing.version,
-                      }
-                    : {}),
-                  name,
-                  description,
-                  aliases: parseTags(aliases),
-                  parentId: parentId || null,
-                  kdcCodes: editing?.kdcCodes ?? [],
-                });
-                if (saved) {
-                  edit(null);
-                  setFormOpen(false);
-                }
-              }}
-            >
-              <label>
-                주제 이름
-                <input
-                  value={name}
-                  maxLength={80}
-                  required
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
-              <label>
-                주제 설명
-                <textarea
-                  value={description}
-                  maxLength={2000}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </label>
-              <label>
-                별칭 · 쉼표로 구분
-                <input
-                  value={aliases}
-                  onChange={(e) => setAliases(e.target.value)}
-                />
-              </label>
-              <label>
-                상위 주제
-                <select
-                  value={parentId}
-                  onChange={(e) => setParentId(e.target.value)}
-                >
-                  <option value="">상위 없음</option>
-                  {state.topics
-                    .filter((t) => t.id !== editing?.id)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <p className="form-hint">
-                최대 3단계. 같은 별칭이 있어도 주제를 자동으로 합치지 않습니다.
-              </p>
-              <button className="primary" disabled={busy}>
-                주제 저장
-              </button>
-              {editing && (
-                <button type="button" onClick={() => edit(null)}>
-                  새 주제 작성
-                </button>
-              )}
-            </form>
-          </Modal>
-        )}
-        {deleting && (
-          <Modal
-            title="주제 삭제 확인"
-            onClose={() => setDeleting(null)}
-            canClose={!busy}
-          >
-            <p>
-              ‘{deleting.name}’ 주제를 목록에서 삭제할까요? 메모와 기존 판단은
-              보존됩니다.
-            </p>
-            {error && (
-              <p role="alert" className="error">
-                {error}
-              </p>
-            )}
-            <button
-              disabled={busy}
-              onClick={async () => {
-                if (
-                  await send("deleteTopic", {
-                    id: deleting.id,
-                    expectedVersion: deleting.version,
-                  })
-                ) {
-                  if (selected === deleting.id) setSelected("all");
-                  if (editing?.id === deleting.id) {
-                    edit(null);
-                    setFormOpen(false);
-                  }
-                  setDeleting(null);
-                }
-              }}
-            >
-              주제 삭제
-            </button>
-            <button onClick={() => setDeleting(null)}>취소</button>
-          </Modal>
-        )}
-      </aside>
+    <div className="thought-layout topic-material-layout">
       <div className="thought-materials">
         <div className="panel thought-filters topic-material-filters">
           <label>
@@ -350,11 +117,39 @@ export function TopicBrowser({
             도서 분야
             <select value={field} onChange={(e) => setField(e.target.value)}>
               <option value="all">모든 분야</option>
+              <option value="unclassified">미분류</option>
               {categories.map(([c, n]) => (
                 <option key={c} value={c}>
                   {n}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            주제
+            <select
+              aria-label="주제"
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+            >
+              <option value="all">전체 주제</option>
+              <option value="unclassified">미분류</option>
+              {orderedTopics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {!t.confirmed ? " · 제안" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            정렬
+            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="newest">최신순</option>
+              <option value="oldest">오래된 순</option>
+              <option value="category">분야별</option>
+              <option value="topic">주제별</option>
+              <option value="book">책별</option>
             </select>
           </label>
           <PageSizeSelect label="주제별 자료" paging={paging} />
@@ -386,24 +181,34 @@ export function TopicBrowser({
                 className="thought-title"
                 onClick={() => onOpen(m.kind, m.id)}
               >
-                {m.title}
+                {m.title || m.text.split("\n")[0].slice(0, 60) || "메모"}
               </button>
+              {m.kind === "note" && m.bookTitle && (
+                <small className="topic-book-title">{m.bookTitle}</small>
+              )}
               <p>
                 {m.text.slice(0, 350)}
                 {m.text.length > 350 ? "…" : ""}
               </p>
               <div className="topic-chips">
-                {assigned(m).map((a) => (
-                  <span key={a.id}>
-                    {a.status === "suggested" ? "제안: " : ""}
-                    {state.topics.find((t) => t.id === a.topicId)?.name}
-                  </span>
-                ))}
+                {(m.topicIds ?? assigned(m).map((a) => a.topicId)).map(
+                  (id, i) => {
+                    const direct = assigned(m).find((a) => a.topicId === id);
+                    return (
+                      <span key={id}>
+                        {direct?.status === "suggested" ? "제안: " : ""}
+                        {m.kind === "note" && !direct ? "책 주제: " : ""}
+                        {m.topicNames?.[i] ??
+                          state.topics.find((t) => t.id === id)?.name}
+                      </span>
+                    );
+                  },
+                )}
               </div>
               <details>
                 <summary>주제 분류</summary>
                 <TopicPicker
-                  topics={state.topics}
+                  topics={orderedTopics}
                   memberships={state.memberships}
                   source={m}
                   send={send}
@@ -482,6 +287,16 @@ export function TopicBrowser({
           ))}
         </section>
       </div>
+      <TopicManager
+        state={state}
+        topics={orderedTopics}
+        selected={selected}
+        onSelect={setSelected}
+        onMove={moveTopic}
+        send={send}
+        busy={busy}
+        error={error}
+      />
     </div>
   );
 }

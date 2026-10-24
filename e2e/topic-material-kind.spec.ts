@@ -1,12 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
+import { pageTopicMaterials } from "../src/lib/topic-materials";
 
 let bundle: string;
 test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {TopicBrowser} from './src/components/thought-map/topic-browser';createRoot(document.getElementById('root')).render(<div className="thought-panel"><header style={{height:220}}>사유의 지도</header><TopicBrowser {...window.fixture} send={async()=>true} busy={false} onOpen={(kind,id)=>{window.opened={kind,id}}}/></div>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {TopicBrowser} from './src/components/thought-map/topic-browser';const root=createRoot(document.getElementById('root'));let revision=0;window.remountTopics=()=>root.render(<div className="thought-panel"><header style={{height:220}}>사유의 지도</header><TopicBrowser key={revision++} {...window.fixture} ownerId={window.fixtureOwner ?? "topic-fixture"} send={async()=>true} busy={false} onOpen={(kind,id)=>{window.opened={kind,id}}}/></div>);window.remountTopics();`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -37,6 +38,12 @@ async function mount(page: Page) {
     title: `내 생각 ${i + 1}`,
     text: "책을 읽고 내가 남긴 생각",
     category: i < 2 ? "200" : "100",
+    createdAt: `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+    updatedAt: `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00Z`,
+    bookId: null,
+    bookTitle: "",
+    topicIds: i === 0 ? [topics[0].id] : [],
+    topicNames: i === 0 ? [topics[0].name] : [],
     version: 1,
   }));
   const books = Array.from({ length: 35 }, (_, i) => ({
@@ -45,23 +52,23 @@ async function mount(page: Page) {
     title: `소장 책 ${i + 1}`,
     text: "저자 · 출판사",
     category: "100",
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+    bookId: null,
+    bookTitle: `소장 책 ${i + 1}`,
+    topicIds: i === 0 ? [topics[0].id] : [],
+    topicNames: i === 0 ? [topics[0].name] : [],
     version: 1,
   }));
   const requests: URLSearchParams[] = [];
   await page.route("https://library.test/api/library-materials?*", (r) => {
     const p = new URL(r.request().url()).searchParams;
     requests.push(p);
-    const kind = p.get("kind") ?? "all",
-      category = p.get("category");
-    const items = [...notes, ...books].filter(
-      (m) =>
-        (kind === "all" || kind === m.kind) &&
-        (!category || category === "all" || m.category === category),
-    );
-    const offset = Number(p.get("offset") ?? 0),
-      limit = Number(p.get("limit") ?? 30);
     return r.fulfill({
-      json: { total: items.length, items: items.slice(offset, offset + limit) },
+      json: pageTopicMaterials(
+        [...notes, ...books] as any,
+        Object.fromEntries(p),
+      ),
     });
   });
   await page.route("https://library.test/", (r) =>
@@ -88,7 +95,7 @@ async function mount(page: Page) {
   );
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
-  return { requests };
+  return { requests, topics };
 }
 
 test("topic materials start with my notes and reset the page when switching kind or library field", async ({
@@ -133,6 +140,103 @@ test("topic materials start with my notes and reset the page when switching kind
   );
 });
 
+test("topic filter and five global sort options apply with kind and category", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  await page
+    .getByRole("combobox", { name: "주제", exact: true })
+    .selectOption(f.topics[0].id);
+  await expect(page.locator(".thought-card")).toHaveCount(1);
+  await page
+    .getByRole("combobox", { name: "도서 분야", exact: true })
+    .selectOption("200");
+  await expect(page.locator(".topic-material-count")).toHaveText("내 기록 1개");
+  await page
+    .getByRole("combobox", { name: "자료 종류", exact: true })
+    .selectOption("book");
+  await expect(page.locator(".thought-card")).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "도서 분야", exact: true })
+    .selectOption("all");
+  await expect(page.locator(".topic-material-count")).toHaveText("책 1권");
+  await page
+    .getByRole("combobox", { name: "자료 종류", exact: true })
+    .selectOption("all");
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  for (const sort of ["oldest", "newest", "category", "topic", "book"]) {
+    await page
+      .getByRole("combobox", { name: "정렬", exact: true })
+      .selectOption(sort);
+    await expect.poll(() => f.requests.at(-1)?.get("sort")).toBe(sort);
+    await expect(page.locator(".thought-card")).toHaveCount(2);
+  }
+});
+
+test("compact topic management is last and its order survives reopening", async ({
+  page,
+}) => {
+  await mount(page);
+  await expect(page.locator(".thought-card")).toHaveCount(15);
+  const manager = page.locator(".thought-topics");
+  expect((await manager.boundingBox())!.y).toBeGreaterThan(
+    (await page.locator(".thought-card").last().boundingBox())!.y,
+  );
+  expect((await manager.boundingBox())!.height).toBeLessThan(100);
+  await page.getByRole("button", { name: "주제 관리", exact: true }).click();
+  await page
+    .getByRole("button", { name: "독서 주제 0 아래로", exact: true })
+    .click();
+  await expect(page.locator(".topic-row").first()).toContainText("독서 주제 1");
+  const optionNames = await page
+    .getByRole("combobox", { name: "주제", exact: true })
+    .locator("option")
+    .allTextContents();
+  expect(optionNames.slice(2, 4)).toEqual(["독서 주제 1", "독서 주제 0"]);
+  await page.evaluate(() => (window as any).remountTopics());
+  await page.getByRole("button", { name: "주제 관리", exact: true }).click();
+  await expect(page.locator(".topic-row").first()).toContainText("독서 주제 1");
+  await page.evaluate(() => {
+    (window as any).fixtureOwner = "another-owner";
+    (window as any).remountTopics();
+  });
+  await page.getByRole("button", { name: "주제 관리", exact: true }).click();
+  await expect(page.locator(".topic-row").first()).toContainText("독서 주제 0");
+});
+
+for (const width of [390, 1440])
+  test(`filter selects keep equal height and fit at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mount(page);
+    await expect(page.locator(".thought-card")).toHaveCount(15);
+    const controls = page.locator(".topic-material-filters select");
+    await expect(controls).toHaveCount(5);
+    const heights = await controls.evaluateAll((es) =>
+      es.map((e) => e.getBoundingClientRect().height),
+    );
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    const boxes = await controls.evaluateAll((es) =>
+      es.map((e) => {
+        const b = e.getBoundingClientRect();
+        return { x: b.x, y: b.y };
+      }),
+    );
+    expect(Math.abs(boxes[1].y - boxes[2].y)).toBeLessThanOrEqual(1);
+    expect(boxes[1].x).toBeLessThan(boxes[2].x);
+    expect(Math.abs(boxes[3].y - boxes[4].y)).toBeLessThanOrEqual(1);
+    expect(boxes[3].x).toBeLessThan(boxes[4].x);
+    expect(
+      await page.locator("body").evaluate((e) => e.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: `test-results/topic-materials/filters-${width}.png`,
+      fullPage: false,
+    });
+  });
+
 for (const width of [390, 1440])
   test(`the material list is reachable below compact filters with 40 topics at ${width}px`, async ({
     page,
@@ -145,16 +249,16 @@ for (const width of [390, 1440])
     expect(
       await page.locator("body").evaluate((el) => el.scrollWidth),
     ).toBeLessThanOrEqual(width);
-    if (width === 390)
-      await page
-        .getByRole("button", { name: "주제 관리", exact: true })
-        .click();
+    await page.getByRole("button", { name: "주제 관리", exact: true }).click();
     await page
       .getByRole("button", { name: "독서 주제 39", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "독서 주제 39", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByRole("combobox", { name: "주제", exact: true })
+      .selectOption("all");
     await page
       .getByRole("combobox", { name: "도서 분야", exact: true })
       .selectOption("200");

@@ -1,0 +1,222 @@
+import { beforeAll, afterAll, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { testDatabase } from "./helpers/database";
+import { readMaterialPage } from "../src/server/material-catalog";
+import {
+  buildTopicMaterials,
+  pageTopicMaterials,
+} from "../src/lib/topic-materials";
+import type { Book, Note } from "../src/lib/domain";
+import { queryMaterials, type LocalIndex } from "../src/client/replica/queries";
+
+let f: Awaited<ReturnType<typeof testDatabase>>;
+const owner = "topic-material-test",
+  topic = randomUUID(),
+  archived = randomUUID();
+const book = (title: string, category: string, date: string): Book => ({
+  id: randomUUID(),
+  title,
+  category,
+  author: "저자",
+  publisher: "출판사",
+  isbn: "",
+  formats: ["paper"],
+  totalPages: null,
+  tags: [],
+  shelf: "",
+  version: 1,
+  createdAt: date,
+});
+const books = [
+  book("정서와 작업하기", "186.5", "2020-01-01T00:00:00.000Z"),
+  book("넥서스", "300", "2026-01-01T00:00:00.000Z"),
+  book("신학의 책", "230.1", "2022-01-01T00:00:00.000Z"),
+];
+const note = (title: string, bookId: string | null, date: string): Note => ({
+  id: randomUUID(),
+  title,
+  content: "내 생각의 내용",
+  kind: "thought",
+  bookId,
+  page: null,
+  version: 1,
+  createdAt: date,
+  updatedAt: date,
+});
+const notes = [
+  note("오래된 정서", books[0].id, "2018-01-01T00:00:00.000Z"),
+  note("최근 정서", books[0].id, "2026-03-01T00:00:00.000Z"),
+  note("종교 기록", books[2].id, "2025-01-01T00:00:00.000Z"),
+  note("", null, "2026-04-01T00:00:00.000Z"),
+];
+const topics = [
+  { id: topic, name: "감정" },
+  { id: archived, name: "지운 주제", archivedAt: "2026-01-01" },
+];
+const memberships = [
+  {
+    id: randomUUID(),
+    topicId: topic,
+    sourceKind: "book",
+    sourceId: books[0].id,
+    status: "accepted",
+  },
+  {
+    id: randomUUID(),
+    topicId: topic,
+    sourceKind: "note",
+    sourceId: notes[1].id,
+    status: "rejected",
+  },
+  {
+    id: randomUUID(),
+    topicId: archived,
+    sourceKind: "note",
+    sourceId: notes[3].id,
+    status: "accepted",
+  },
+];
+beforeAll(async () => {
+  f = await testDatabase();
+  for (const b of books)
+    await f.db.query(
+      "INSERT INTO library_books(id,owner_id,title,author,publisher,category,created_at,formats) VALUES($1,$2,$3,$4,$5,$6,$7,ARRAY['paper'])",
+      [b.id, owner, b.title, b.author, b.publisher, b.category, b.createdAt],
+    );
+  for (const n of notes)
+    await f.db.query(
+      "INSERT INTO library_notes(id,owner_id,title,content,kind,book_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      [
+        n.id,
+        owner,
+        n.title || "미분류 메모",
+        n.content,
+        n.kind,
+        n.bookId,
+        n.createdAt,
+        n.updatedAt,
+      ],
+    );
+  for (const t of topics)
+    await f.db.query(
+      "INSERT INTO library_topics(id,owner_id,name,archived_at) VALUES($1,$2,$3,$4)",
+      [t.id, owner, t.name, t.archivedAt ?? null],
+    );
+  for (const m of memberships)
+    await f.db.query(
+      "INSERT INTO library_topic_memberships(id,owner_id,topic_id,source_kind,source_id,status,source_version,method) VALUES($1,$2,$3,$4,$5,$6,'1','manual')",
+      [m.id, owner, m.topicId, m.sourceKind, m.sourceId, m.status],
+    );
+});
+afterAll(async () => f?.pg.close());
+const local = (q: unknown) =>
+  pageTopicMaterials(
+    buildTopicMaterials({ books, notes, topics, memberships }),
+    q,
+  );
+
+it("the device materials query uses the same classifications and removes trashed records and excluded books", () => {
+  const data: LocalIndex = {
+    books: books.map((b) => ({
+      book: b,
+      createdKey: b.createdAt,
+      createdSql: b.createdAt,
+    })),
+    notes,
+    previews: {},
+    cycles: [],
+    excluded: [books[1].id],
+    trash: { [notes[2].id]: "2026-01-01" },
+    shelves: [],
+    annualMetrics: [],
+    topics: topics.map((t) => ({
+      id: t.id,
+      name: t.name,
+      archived_at: t.archivedAt,
+    })),
+    memberships: memberships.map((m) => ({
+      topic_id: m.topicId,
+      source_kind: m.sourceKind,
+      source_id: m.sourceId,
+      status: m.status,
+    })),
+    topicLinks: [],
+    entries: [],
+  };
+  expect(
+    queryMaterials(data, {
+      kind: "note",
+      category: "100",
+      topic,
+      sort: "newest",
+    }).items.map((m) => m.id),
+  ).toEqual([notes[0].id]);
+  expect(queryMaterials(data, { kind: "note", category: "200" }).total).toBe(0);
+  expect(queryMaterials(data, { kind: "book" }).total).toBe(2);
+});
+
+it("finds notes through the linked book's main KDC field and keeps unlinked records", async () => {
+  for (const category of ["100", "200", "unclassified"]) {
+    const expected =
+      category === "100"
+        ? notes.slice(0, 2).map((n) => n.id)
+        : category === "200"
+          ? [notes[2].id]
+          : [notes[3].id];
+    const q = { kind: "note", category, sort: "oldest" };
+    const remote = await readMaterialPage(f.db, owner, q);
+    expect(remote.items.map((m) => m.id)).toEqual(expected);
+    expect(local(q).items.map((m) => m.id)).toEqual(expected);
+    expect(remote.total).toBe(expected.length);
+  }
+});
+it("uses book topics for its notes while respecting explicit rejection and archived topics", async () => {
+  const q = { kind: "note", topic, sort: "newest" };
+  expect(
+    (await readMaterialPage(f.db, owner, q)).items.map((m) => m.id),
+  ).toEqual([notes[0].id]);
+  expect(local(q).items.map((m) => m.id)).toEqual([notes[0].id]);
+  const unclassified = { kind: "note", topic: "unclassified", sort: "oldest" };
+  expect((await readMaterialPage(f.db, owner, unclassified)).total).toBe(3);
+  expect(local(unclassified).total).toBe(3);
+  expect((await readMaterialPage(f.db, owner, { topic: archived })).total).toBe(
+    0,
+  );
+});
+it("sorts the whole mixed list before slicing and agrees across all five sort modes", async () => {
+  for (const sort of ["newest", "oldest", "category", "topic", "book"]) {
+    const q = { kind: "all", sort };
+    const expected = local(q);
+    const pages = [];
+    for (let offset = 0; offset < 7; offset += 2) {
+      const page = await readMaterialPage(f.db, owner, {
+        ...q,
+        offset,
+        limit: 2,
+      });
+      expect(page.total).toBe(7);
+      pages.push(...page.items);
+    }
+    expect(
+      pages.map((m) => m.id),
+      sort,
+    ).toEqual(expected.items.map((m) => m.id));
+    expect(new Set(pages.map((m) => m.kind + m.id)).size).toBe(7);
+  }
+  expect(local({ kind: "all", sort: "newest" }).items[0].id).toBe(notes[3].id);
+  expect(local({ kind: "all", sort: "oldest" }).items[0].id).toBe(notes[0].id);
+});
+it("isolates owners, validates sorting, and handles empty or beyond-end pages", async () => {
+  expect(
+    await readMaterialPage(f.db, "another-owner", { sort: "newest" }),
+  ).toEqual({ total: 0, items: [] });
+  expect(
+    await readMaterialPage(f.db, owner, { offset: 100, sort: "newest" }),
+  ).toEqual({ total: 7, items: [] });
+  await expect(readMaterialPage(f.db, "", {})).rejects.toMatchObject({
+    status: 401,
+  });
+  await expect(
+    readMaterialPage(f.db, owner, { sort: "injected sort" }),
+  ).rejects.toThrow();
+});

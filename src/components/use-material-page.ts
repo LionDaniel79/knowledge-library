@@ -7,6 +7,12 @@ export type Material = {
   text: string;
   category: string;
   version: number;
+  createdAt?: string;
+  updatedAt?: string;
+  bookId?: string | null;
+  bookTitle?: string;
+  topicIds?: string[];
+  topicNames?: string[];
 };
 export function useMaterialPage(
   enabled: boolean,

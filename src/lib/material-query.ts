@@ -5,8 +5,11 @@ export const materialPageQuery = z.object({
   kind: z.enum(["all", "note", "book"]).default("all"),
   category: z
     .string()
-    .regex(/^all$|^\d00$/)
+    .regex(/^all$|^unclassified$|^\d00$/)
     .default("all"),
+  sort: z
+    .enum(["default", "newest", "oldest", "category", "topic", "book"])
+    .default("default"),
   topic: z
     .union([z.enum(["all", "unclassified"]), z.string().uuid()])
     .default("all"),

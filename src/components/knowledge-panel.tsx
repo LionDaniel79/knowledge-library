@@ -259,7 +259,12 @@ export function KnowledgePanel({
           />
         </Suspense>
       ) : ["topics", "timeline", "review"].includes(tab) ? (
-        <ThoughtMapPanel view={tab} library={library} onOpen={onOpen} />
+        <ThoughtMapPanel
+          view={tab}
+          library={library}
+          onOpen={onOpen}
+          ownerId={ownerId}
+        />
       ) : tab === "connections" ? (
         <>
           <div className="panel knowledge-controls">

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  buildTopicMaterials,
+  pageTopicMaterials,
+} from "../../lib/topic-materials";
 import { categories } from "../../lib/catalog";
 import {
   bookSearchFields,
@@ -588,7 +592,29 @@ export async function querySearch(
         : null,
   };
 }
-export type QueryKind = "books" | "notes" | "reading" | "calendar" | "search";
+export function queryMaterials(data: LocalIndex, input: unknown) {
+  return pageTopicMaterials(
+    buildTopicMaterials({
+      books: data.books.map((b) => b.book),
+      notes: activeNotes(data),
+      topics: data.topics.map((t) => ({
+        id: t.id,
+        name: t.name,
+        archivedAt: t.archived_at,
+      })),
+      memberships: data.memberships.map((m) => ({
+        topicId: m.topic_id,
+        sourceKind: m.source_kind,
+        sourceId: m.source_id,
+        status: m.status,
+      })),
+      excludedBookIds: data.excluded,
+    }),
+    input,
+  );
+}
+export type QueryKind =
+  "books" | "notes" | "materials" | "reading" | "calendar" | "search";
 export async function runLocalQuery(
   data: LocalIndex,
   owner: string,
@@ -596,6 +622,8 @@ export async function runLocalQuery(
   input: any,
 ) {
   switch (kind) {
+    case "materials":
+      return queryMaterials(data, input);
     case "books":
       return queryBooks(data, owner, input);
     case "notes":

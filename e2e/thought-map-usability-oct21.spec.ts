@@ -177,10 +177,7 @@ for (const width of [390, 1440])
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mount(page);
-    if (width === 390)
-      await page
-        .getByRole("button", { name: "주제 관리", exact: true })
-        .click();
+    await page.getByRole("button", { name: "주제 관리", exact: true }).click();
     if (width === 1440) {
       expect(
         (await page.locator(".thought-topics").boundingBox())!.width,

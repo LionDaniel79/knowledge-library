@@ -676,42 +676,10 @@ export function createLocalReplicaRepository(
         path = url.pathname;
       if (path === "/api/library") return repository.overview();
       if (path === "/api/library-materials") {
-        const { kind, ...q } = materialPageQuery.parse(Object.fromEntries(p)),
-          { offset, limit } = q;
-        const notes =
-            kind === "book"
-              ? { items: [], total: 0 }
-              : await repository.notes(q),
-          books =
-            kind === "note"
-              ? { items: [], total: 0 }
-              : await repository.books({
-                  ...q,
-                  sort: "title",
-                  offset: Math.max(0, offset - notes.total),
-                  limit: Math.max(1, limit - notes.items.length),
-                });
-        return {
-          total: notes.total + books.total,
-          items: [
-            ...notes.items.map((n: any) => ({
-              id: n.id,
-              kind: "note",
-              title: n.title,
-              text: n.content,
-              category: n.bookCategory ?? "",
-              version: n.version,
-            })),
-            ...books.items.slice(0, limit - notes.items.length).map((b) => ({
-              id: b.id,
-              kind: "book",
-              title: b.title,
-              text: [b.author, b.publisher].filter(Boolean).join(" · "),
-              category: b.category ?? "",
-              version: b.version,
-            })),
-          ],
-        };
+        return query(
+          "materials",
+          materialPageQuery.parse(Object.fromEntries(p)),
+        );
       }
       if (path === "/api/library-search/topics") {
         const data = await index();
