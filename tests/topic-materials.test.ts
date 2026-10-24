@@ -8,6 +8,7 @@ import {
 } from "../src/lib/topic-materials";
 import type { Book, Note } from "../src/lib/domain";
 import { queryMaterials, type LocalIndex } from "../src/client/replica/queries";
+import { timestampKey } from "../src/lib/replica/projections";
 
 let f: Awaited<ReturnType<typeof testDatabase>>;
 const owner = "topic-material-test",
@@ -232,4 +233,114 @@ it("preserves compact book-title and category-name search used by other material
       books[0].id,
     ]);
   }
+});
+
+it("preserves submillisecond order in the SQL, pure and projected device material queries", async () => {
+  const ns = [
+    note("older", null, "2026-01-01T00:00:00.0001Z"),
+    note("newer", null, "2026-01-01T00:00:00.0002Z"),
+  ];
+  ns[0].id = "00000000-0000-4000-8000-000000000001";
+  ns[1].id = "00000000-0000-4000-8000-000000000002";
+  for (const n of ns)
+    await f.db.query(
+      "INSERT INTO library_notes(id,owner_id,title,content,kind,created_at,updated_at) VALUES($1,'precision-owner',$2,'thought','thought',$3,$3)",
+      [n.id, n.title, n.createdAt],
+    );
+  const q = { kind: "note", sort: "newest", limit: 1 };
+  expect((await readMaterialPage(f.db, "precision-owner", q)).items[0].id).toBe(
+    ns[1].id,
+  );
+  expect(
+    pageTopicMaterials(
+      buildTopicMaterials({
+        books: [],
+        notes: ns,
+        topics: [],
+        memberships: [],
+      }),
+      q,
+    ).items[0].id,
+  ).toBe(ns[1].id);
+  const data = {
+    books: [],
+    notes: ns.map((n) => ({
+      ...n,
+      createdAt: new Date(n.createdAt).toISOString(),
+      updatedAt: new Date(n.updatedAt).toISOString(),
+    })),
+    noteTimeKeys: Object.fromEntries(
+      ns.map((n) => [
+        n.id,
+        {
+          created: timestampKey(n.createdAt),
+          updated: timestampKey(n.updatedAt),
+        },
+      ]),
+    ),
+    previews: {},
+    cycles: [],
+    excluded: [],
+    trash: {},
+    shelves: [],
+    annualMetrics: [],
+    topics: [],
+    memberships: [],
+    topicLinks: [],
+    entries: [],
+  } as LocalIndex;
+  expect(queryMaterials(data, q).items[0].id).toBe(ns[1].id);
+});
+
+it("matches C collation for non-BMP book titles", async () => {
+  const bs = [
+    book("😀", "100", "2020-01-01Z"),
+    book("Ｚ", "100", "2020-01-01Z"),
+  ];
+  for (const b of bs)
+    await f.db.query(
+      "INSERT INTO library_books(id,owner_id,title,author,formats) VALUES($1,'unicode-owner',$2,'',ARRAY['paper'])",
+      [b.id, b.title],
+    );
+  const q = { kind: "book" };
+  expect(
+    (await readMaterialPage(f.db, "unicode-owner", q)).items.map(
+      (m) => m.title,
+    ),
+  ).toEqual(["Ｚ", "😀"]);
+  expect(
+    pageTopicMaterials(
+      buildTopicMaterials({
+        books: bs,
+        notes: [],
+        topics: [],
+        memberships: [],
+      }),
+      q,
+    ).items.map((m) => m.title),
+  ).toEqual(["Ｚ", "😀"]);
+});
+
+it("retains the multi-shelf names in material search", async () => {
+  const b = {
+    ...book("Alpha", "100", "2020-01-01Z"),
+    bookshelves: ["검토 대기열"],
+  };
+  await f.db.query(
+    "INSERT INTO library_books(id,owner_id,title,author,formats,bookshelves) VALUES($1,'shelf-owner',$2,'',ARRAY['paper'],$3)",
+    [b.id, b.title, b.bookshelves],
+  );
+  const q = { kind: "book", q: "검토 대기열" };
+  expect((await readMaterialPage(f.db, "shelf-owner", q)).total).toBe(1);
+  expect(
+    pageTopicMaterials(
+      buildTopicMaterials({
+        books: [b],
+        notes: [],
+        topics: [],
+        memberships: [],
+      }),
+      q,
+    ).total,
+  ).toBe(1);
 });

@@ -40,6 +40,7 @@ export interface SearchEntry {
   aux: number;
 }
 export interface LocalIndex {
+  noteTimeKeys?: Record<string, { created: string; updated: string }>;
   connectionBooks?: string[];
   books: IndexedBook[];
   notes: Note[];
@@ -609,6 +610,16 @@ export function queryMaterials(data: LocalIndex, input: unknown) {
         status: m.status,
       })),
       excludedBookIds: data.excluded,
+      timeKeys: Object.fromEntries([
+        ...data.books.map((b) => [
+          `book:${b.book.id}`,
+          { created: b.createdKey, updated: b.createdKey },
+        ]),
+        ...Object.entries(data.noteTimeKeys ?? {}).map(([id, value]) => [
+          `note:${id}`,
+          value,
+        ]),
+      ]),
     }),
     input,
   );

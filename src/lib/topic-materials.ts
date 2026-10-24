@@ -1,6 +1,7 @@
 import type { Book, Note } from "./domain";
 import { materialPageQuery } from "./material-query";
 import { categories } from "./catalog";
+import { binaryCompare as compare, timestampKey } from "./replica/projections";
 export interface TopicMaterial {
   id: string;
   kind: "note" | "book";
@@ -15,7 +16,15 @@ export interface TopicMaterial {
   topicIds: string[];
   topicNames: string[];
 }
-type SearchMaterial = TopicMaterial & { searchText?: string };
+export type MaterialTimeKeys = Record<
+  string,
+  { created: string; updated: string }
+>;
+type SearchMaterial = TopicMaterial & {
+  searchText?: string;
+  createdKey?: string;
+  updatedKey?: string;
+};
 export type MaterialTopic = {
   id: string;
   name: string;
@@ -27,7 +36,6 @@ export type MaterialMembership = {
   sourceId: string;
   status: string;
 };
-const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const materialCategory = (value?: string | null) => {
   const code = value?.trim() ?? "";
   return /^\d{3}(\.|$)/.test(code) ? code[0] + "00" : "";
@@ -38,12 +46,14 @@ export function buildTopicMaterials({
   topics,
   memberships,
   excludedBookIds = [],
+  timeKeys = {},
 }: {
   books: Book[];
   notes: Note[];
   topics: MaterialTopic[];
   memberships: MaterialMembership[];
   excludedBookIds?: string[];
+  timeKeys?: MaterialTimeKeys;
 }): SearchMaterial[] {
   const byBook = new Map(books.map((b) => [b.id, b]));
   const activeTopics = new Map(
@@ -102,6 +112,8 @@ export function buildTopicMaterials({
         version: n.version,
         createdAt: n.createdAt,
         updatedAt: n.updatedAt,
+        createdKey: timeKeys[`note:${n.id}`]?.created,
+        updatedKey: timeKeys[`note:${n.id}`]?.updated,
         bookId: n.bookId,
         bookTitle: b?.title ?? "",
         ...topicFields("note", n.id, n.bookId),
@@ -124,6 +136,8 @@ export function buildTopicMaterials({
         version: b.version,
         createdAt: b.createdAt,
         updatedAt: b.createdAt,
+        createdKey: timeKeys[`book:${b.id}`]?.created,
+        updatedKey: timeKeys[`book:${b.id}`]?.updated,
         bookId: b.id,
         bookTitle: b.title,
         ...topicFields("book", b.id),
@@ -133,6 +147,7 @@ export function buildTopicMaterials({
           b.publisher,
           b.isbn,
           b.shelf,
+          ...(b.bookshelves ?? []),
           ...b.tags,
         ].join(" "),
       })),
@@ -169,11 +184,14 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
               .includes(compact)))),
   );
   const date = (value: string) =>
-    Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : "";
+    Number.isFinite(Date.parse(value)) ? timestampKey(value) : "";
   const dates = new Map(
     rows.map((m) => [
       m,
-      { created: date(m.createdAt), updated: date(m.updatedAt) },
+      {
+        created: m.createdKey ?? date(m.createdAt),
+        updated: m.updatedKey ?? date(m.updatedAt),
+      },
     ]),
   );
   rows.sort((a, b) => {
@@ -203,8 +221,10 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
           : p.sort === "book"
             ? m.bookTitle
             : "";
+    const aKey = key(a),
+      bKey = key(b);
     return (
-      compare(key(a) || "\uffff", key(b) || "\uffff") ||
+      (aKey && bKey ? compare(aKey, bKey) : Number(!aKey) - Number(!bKey)) ||
       compare(dates.get(b)!.created, dates.get(a)!.created) ||
       compare(a.kind, b.kind) ||
       compare(a.id, b.id)
@@ -214,9 +234,16 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
     total: rows.length,
     items: rows
       .slice(p.offset, p.offset + p.limit)
-      .map(({ searchText: _search, ...m }) => ({
-        ...m,
-        text: m.text.slice(0, 350),
-      })),
+      .map(
+        ({
+          searchText: _search,
+          createdKey: _created,
+          updatedKey: _updated,
+          ...m
+        }) => ({
+          ...m,
+          text: m.text.slice(0, 350),
+        }),
+      ),
   };
 }

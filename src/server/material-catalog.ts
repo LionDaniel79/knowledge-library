@@ -10,21 +10,25 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
 ), book_topics AS (
   SELECT source_id,array_agg(topic_id ORDER BY name COLLATE "C",topic_id) AS ids,array_agg(name ORDER BY name COLLATE "C",topic_id) AS names
   FROM active_members WHERE source_kind='book' AND status<>'rejected' GROUP BY source_id
+), note_topics AS (
+  SELECT source_id,array_agg(topic_id ORDER BY name COLLATE "C",topic_id) AS ids,array_agg(name ORDER BY name COLLATE "C",topic_id) AS names
+  FROM (
+    SELECT source_id,topic_id,name FROM active_members WHERE source_kind='note' AND status<>'rejected'
+    UNION
+    SELECT n.id::text,a.topic_id,a.name FROM library_active_notes n
+      JOIN active_members a ON a.source_kind='book' AND a.source_id=n.book_id::text AND a.status<>'rejected'
+      LEFT JOIN active_members r ON r.source_kind='note' AND r.source_id=n.id::text AND r.topic_id=a.topic_id AND r.status='rejected'
+      WHERE n.owner_id=$1 AND r.source_id IS NULL
+  ) assignments GROUP BY source_id
 ), sources AS (
   SELECT n.id::text AS id,'note'::text AS kind,n.title,left(n.content,350) AS text,coalesce(b.category,'') AS raw_category,n.version,n.created_at,n.updated_at,
     n.book_id::text AS book_id,coalesce(b.title,'') AS book_title,coalesce(tm.ids,ARRAY[]::text[]) AS topic_ids,coalesce(tm.names,ARRAY[]::text[]) AS topic_names,
     concat_ws(' ',n.title,n.content,array_to_string(n.tags,' '),b.title) AS search_text
   FROM library_active_notes n LEFT JOIN library_books b ON b.owner_id=n.owner_id AND b.id=n.book_id
-  LEFT JOIN LATERAL (
-    SELECT array_agg(e.topic_id ORDER BY e.name COLLATE "C",e.topic_id) AS ids,array_agg(e.name ORDER BY e.name COLLATE "C",e.topic_id) AS names
-    FROM (SELECT DISTINCT a.topic_id,a.name FROM active_members a WHERE a.status<>'rejected' AND (
-      (a.source_kind='note' AND a.source_id=n.id::text) OR
-      (a.source_kind='book' AND a.source_id=n.book_id::text AND NOT EXISTS(SELECT 1 FROM active_members r WHERE r.source_kind='note' AND r.source_id=n.id::text AND r.topic_id=a.topic_id AND r.status='rejected'))
-    )) e
-  ) tm ON true WHERE n.owner_id=$1
+  LEFT JOIN note_topics tm ON tm.source_id=n.id::text WHERE n.owner_id=$1
   UNION ALL
   SELECT b.id::text,'book',b.title,concat_ws(' · ',nullif(b.author,''),nullif(b.publisher,'')),coalesce(b.category,''),b.version,b.created_at,b.created_at,
-    b.id::text,b.title,coalesce(bt.ids,ARRAY[]::text[]),coalesce(bt.names,ARRAY[]::text[]),concat_ws(' ',b.title,b.author,b.publisher,b.isbn,b.shelf,array_to_string(b.tags,' '))
+    b.id::text,b.title,coalesce(bt.ids,ARRAY[]::text[]),coalesce(bt.names,ARRAY[]::text[]),concat_ws(' ',b.title,b.author,b.publisher,b.isbn,b.shelf,array_to_string(b.bookshelves,' '),array_to_string(b.tags,' '))
   FROM library_active_books b LEFT JOIN book_topics bt ON bt.source_id=b.id::text WHERE b.owner_id=$1
 ), normalized AS (
   SELECT *,CASE WHEN btrim(raw_category) ~ '^[0-9]{3}([.]|$)' THEN left(btrim(raw_category),1)||'00' ELSE '' END AS category FROM sources

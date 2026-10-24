@@ -78,6 +78,7 @@ export function createLocalReplicaRepository(
   background = false,
 ) {
   const worker = createQueryWorker(storage.owner);
+  const materialTimeLoads = new WeakMap<LocalIndex, Promise<void>>();
   let cached: { token: string; data: LocalIndex } | undefined,
     loading: Promise<LocalIndex> | undefined,
     catalogCached: { token: string; data: LocalIndex } | undefined,
@@ -194,6 +195,15 @@ export function createLocalReplicaRepository(
         get("library_notes").map((r) => [r.id, projectNote(r, true)]),
       );
     const data: LocalIndex = {
+      noteTimeKeys: Object.fromEntries(
+        get("library_notes").map((r) => [
+          r.id,
+          {
+            created: timestampKey(r.created_at),
+            updated: timestampKey(r.updated_at),
+          },
+        ]),
+      ),
       connectionBooks: get("library_connections").flatMap((c) => [
         ...(c.source_kind === "book" ? [c.source_id] : []),
         ...(c.target_kind === "book" ? [c.target_id] : []),
@@ -513,13 +523,34 @@ export function createLocalReplicaRepository(
       catalogLoading = undefined;
     }));
   async function query<T>(kind: QueryKind, input: unknown): Promise<T> {
-    if (kind !== "search")
-      return runLocalQuery(
-        await catalogIndex(),
-        storage.owner,
-        kind,
-        input,
-      ) as Promise<T>;
+    if (kind !== "search") {
+      const data = await catalogIndex();
+      // Upgrade an older device index lazily from its existing local records.
+      // This neither downloads the library again nor rebuilds other indexes.
+      if (kind === "materials" && !data.noteTimeKeys) {
+        let loading = materialTimeLoads.get(data);
+        if (!loading) {
+          loading = (async () => {
+            const cp = await storage.checkpoint();
+            if (!cp) throw new ReplicaQueryError(503, "기기 자료가 없습니다.");
+            const keys: NonNullable<LocalIndex["noteTimeKeys"]> = {};
+            for await (const r of records("library_notes", cp.generation))
+              keys[r.id] = {
+                created: timestampKey(r.created_at),
+                updated: timestampKey(r.updated_at),
+              };
+            data.noteTimeKeys = keys;
+          })();
+          materialTimeLoads.set(data, loading);
+        }
+        try {
+          await loading;
+        } finally {
+          materialTimeLoads.delete(data);
+        }
+      }
+      return runLocalQuery(data, storage.owner, kind, input) as Promise<T>;
+    }
     if (background)
       return runLocalQuery(
         await index(),
