@@ -61,9 +61,11 @@ export function ThoughtMapHelp({ onClose }: { onClose: () => void }) {
           </p>
           <p>
             빈 공간을 끌면 화면이 이동합니다. 확대·축소와 전체 보기를 사용할 수
-            있습니다. 잘못 놓았다면 <strong>되돌리기</strong>, 관계를 끊으려면
-            아래 <strong>연결 관리</strong>를 사용하세요. 원문 메모는 ‘열기’에서
-            수정합니다.
+            있습니다. 관계를 끊으려면 <strong>연결선을 누른 뒤 끊기</strong>를
+            누르세요. 여러 관계가 한 선으로 보이면 메모 쌍을 골라 해제합니다.
+            잘못 이동하거나 끊었다면 <strong>되돌리기</strong>를 누르세요. 아래{" "}
+            <strong>연결 관리</strong>에서도 해제할 수 있습니다. 원문 메모는
+            ‘열기’에서 수정합니다.
           </p>
         </details>
         <details>

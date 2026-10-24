@@ -406,7 +406,9 @@ export function WhiteboardPanel({
     }
   }
   async function removeConnection(c: BoardConnection) {
+    if (linkBusy) return;
     setLinkBusy(true);
+    setError("");
     try {
       const result = await send("editConnection", {
         id: c.id,
@@ -416,6 +418,7 @@ export function WhiteboardPanel({
         reason: c.reason,
       });
       patchConnection({ ...c, status: "rejected", version: result.version });
+      setMessage("연결을 끊었습니다.");
       setUndo({
         board: current.current,
         link: {
@@ -431,6 +434,20 @@ export function WhiteboardPanel({
     } finally {
       setLinkBusy(false);
     }
+  }
+  function removeGroupConnection(sourceId: string, targetId: string) {
+    if (linkBusy) return;
+    const before = current.current;
+    const links = before.links.filter(
+      (l) =>
+        !(
+          (l.source === sourceId && l.target === targetId) ||
+          (l.source === targetId && l.target === sourceId)
+        ),
+    );
+    if (links.length === before.links.length) return;
+    update({ ...before, links }, before);
+    setMessage("묶음 연결을 끊었습니다.");
   }
   const derived = useMemo(() => {
     if (!source) return null;
@@ -688,6 +705,14 @@ export function WhiteboardPanel({
           selectedNote={selectedNote}
           selectedGroup={selectedGroup}
           fitKey={JSON.stringify([board.filter, searchRevision])}
+          busy={linkBusy}
+          onSelectLine={() => {
+            setSelectedNote(null);
+            setSelectedGroup(null);
+            setLinkSource(null);
+          }}
+          onRemoveConnection={removeConnection}
+          onRemoveGroupConnection={removeGroupConnection}
         />
       </div>
       <details className="wb-connection-list">
@@ -726,13 +751,8 @@ export function WhiteboardPanel({
             </span>
             <button
               type="button"
-              onClick={() => {
-                const before = current.current;
-                update(
-                  { ...before, links: before.links.filter((x) => x !== l) },
-                  before,
-                );
-              }}
+              disabled={linkBusy}
+              onClick={() => removeGroupConnection(l.source, l.target)}
             >
               묶음 연결 해제
             </button>

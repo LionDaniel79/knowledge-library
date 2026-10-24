@@ -5,8 +5,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: "list",
-  outputDir:
-    "E:/지식서재 작업/private-data/runtime/whiteboard-browser-results-20261023",
+  outputDir: "test-results/whiteboard",
   use: {
     ...devices["Desktop Chrome"],
     channel: "chrome",

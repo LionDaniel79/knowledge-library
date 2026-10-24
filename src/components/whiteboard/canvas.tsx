@@ -12,12 +12,18 @@ import {
   NOTE_WIDTH,
   NOTE_HEIGHT,
   type Board,
+  type BoardConnection,
   type BoardGroup,
   type BoardNode,
   type Point,
   type WhiteboardSnapshot,
 } from "@/lib/whiteboard";
 import { relationNames, type Relation } from "@/lib/knowledge";
+import {
+  buildConnectionLines,
+  hitPolygon,
+  nearestConnectionLine,
+} from "@/lib/whiteboard-lines";
 type Drag = {
   kind: "note" | "group" | "pan";
   id: string;
@@ -39,6 +45,10 @@ export function WhiteboardCanvas({
   selectedNote,
   selectedGroup,
   fitKey,
+  busy,
+  onSelectLine,
+  onRemoveConnection,
+  onRemoveGroupConnection,
 }: {
   source: WhiteboardSnapshot;
   board: Board;
@@ -60,15 +70,30 @@ export function WhiteboardCanvas({
   selectedNote: string | null;
   selectedGroup: string | null;
   fitKey: string;
+  busy: boolean;
+  onSelectLine: () => void;
+  onRemoveConnection: (connection: BoardConnection) => Promise<void>;
+  onRemoveGroupConnection: (source: string, target: string) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null),
     active = useRef<Drag | null>(null),
     [drag, setDrag] = useState<Drag | null>(null),
+    [selectedLineId, setSelectedLineId] = useState<string | null>(null),
     [view, setView] = useState({ x: 18, y: 18, zoom: 0.85 }),
     viewRef = useRef(view),
     frame = useRef(0);
   viewRef.current = view;
   const scene = useMemo(() => buildScene(source, board), [source, board]);
+  const noteLabels = useMemo(
+    () =>
+      new Map(
+        source.notes.map((n) => [
+          n.id,
+          n.title || n.content.slice(0, 30) || "메모",
+        ]),
+      ),
+    [source.notes],
+  );
   const collapsed = new Set(
     scene.groups.filter((g) => g.collapsed).map((g) => g.id),
   );
@@ -145,8 +170,13 @@ export function WhiteboardCanvas({
     };
   }, []);
   function start(e: ReactPointerEvent, kind: Drag["kind"], id: string) {
-    if (e.button !== 0 || (e.target as Element).closest("button,input,a"))
+    if (
+      busy ||
+      e.button !== 0 ||
+      (e.target as Element).closest("button,input,a")
+    )
       return;
+    if (kind !== "pan" || !id) setSelectedLineId(null);
     e.preventDefault();
     e.stopPropagation();
     const state = {
@@ -187,7 +217,21 @@ export function WhiteboardCanvas({
     setDrag(null);
     if (cancel) return;
     if (d.kind === "pan") {
-      if (d.moved) setView((v) => ({ ...v, x: v.x + d.dx, y: v.y + d.dy }));
+      if (d.moved) {
+        setSelectedLineId(null);
+        setView((v) => ({ ...v, x: v.x + d.dx, y: v.y + d.dy }));
+      } else if (d.id) {
+        const rect = viewport.current!.getBoundingClientRect(),
+          v = viewRef.current;
+        const point = {
+          x: (e.clientX - rect.left - v.x) / v.zoom,
+          y: (e.clientY - rect.top - v.y) / v.zoom,
+        };
+        setSelectedLineId(
+          nearestConnectionLine(lines, point, 22 / v.zoom)?.id ?? d.id,
+        );
+        onSelectLine();
+      }
       return;
     }
     if (d.kind === "note") {
@@ -231,44 +275,17 @@ export function WhiteboardCanvas({
     const p = pointOf(n);
     return { x: p.x + NOTE_WIDTH / 2, y: p.y + NOTE_HEIGHT / 2, key: n.id };
   };
-  const lines: {
-      id: string;
-      a: Point;
-      b: Point;
-      label: string;
-      group: boolean;
-    }[] = [],
-    seen = new Set<string>();
-  for (const c of source.connections.filter((c) => c.status === "accepted")) {
-    const a = endpoint(c.source_id),
-      b = endpoint(c.target_id);
-    if (!a || !b || a.key === b.key) continue;
-    const key = [a.key, b.key].sort().join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    lines.push({
-      id: c.id,
-      a,
-      b,
-      label: relationNames[c.relation as Relation] ?? "연결",
-      group: false,
-    });
-  }
-  for (const l of board.links) {
-    const a = scene.groups.find((g) => g.id === l.source),
-      b = scene.groups.find((g) => g.id === l.target);
-    if (a && b) {
-      const p = groupPoint(a),
-        q = groupPoint(b);
-      lines.push({
-        id: l.source + ":" + l.target,
-        a: { x: p.x + a.width / 2, y: p.y + 24 },
-        b: { x: q.x + b.width / 2, y: q.y + 24 },
-        label: "묶음 연결",
-        group: true,
-      });
-    }
-  }
+  const lines = buildConnectionLines(source, board, endpoint, (id) => {
+    const g = scene.groups.find((group) => group.id === id);
+    if (!g) return null;
+    const p = groupPoint(g);
+    return { x: p.x + g.width / 2, y: p.y + 24 };
+  });
+  const selectedLine = lines.find((line) => line.id === selectedLineId);
+  const selectedLineVisible = !!selectedLine;
+  useEffect(() => {
+    if (selectedLineId && !selectedLineVisible) setSelectedLineId(null);
+  }, [selectedLineId, selectedLineVisible]);
   const size = {
     width: Math.max(
       1800,
@@ -282,7 +299,76 @@ export function WhiteboardCanvas({
     ),
   };
   return (
-    <div className="wb-canvas-shell">
+    <div
+      className="wb-canvas-shell"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          setSelectedLineId(null);
+        }
+      }}
+    >
+      {selectedLine && (
+        <div className="wb-edge-actions" role="group" aria-label="선택한 연결">
+          <header>
+            <strong>
+              {selectedLine.kind === "group"
+                ? "묶음 연결"
+                : `메모 연결${selectedLine.connections.length > 1 ? ` ${selectedLine.connections.length}개` : ""}`}
+            </strong>
+            <button
+              type="button"
+              aria-label="연결 선택 닫기"
+              onClick={() => setSelectedLineId(null)}
+            >
+              ×
+            </button>
+          </header>
+          {selectedLine.kind === "note" ? (
+            selectedLine.connections.map((c) => (
+              <div className="wb-edge-action-row" key={c.id}>
+                <span>
+                  {noteLabels.get(c.source_id) ?? "메모"} ↔{" "}
+                  {noteLabels.get(c.target_id) ?? "메모"}
+                  <small>
+                    {relationNames[c.relation as Relation] ?? "연결"}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`${noteLabels.get(c.source_id) ?? "메모"} ↔ ${noteLabels.get(c.target_id) ?? "메모"} 연결 끊기`}
+                  onClick={() => void onRemoveConnection(c)}
+                >
+                  끊기
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="wb-edge-action-row">
+              <span>
+                {scene.groups.find((g) => g.id === selectedLine.link.source)
+                  ?.title ?? "묶음"}{" "}
+                ↔{" "}
+                {scene.groups.find((g) => g.id === selectedLine.link.target)
+                  ?.title ?? "묶음"}
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  onRemoveGroupConnection(
+                    selectedLine.link.source,
+                    selectedLine.link.target,
+                  )
+                }
+              >
+                끊기
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="wb-zoom">
         <button
           type="button"
@@ -375,24 +461,59 @@ export function WhiteboardCanvas({
           })}
           <svg
             className="wb-lines"
+            role="group"
             width={size.width}
             height={size.height}
             aria-label="메모와 묶음 연결선"
           >
             {lines.map((l) => (
-              <line
+              <g
                 key={l.id}
-                x1={l.a.x}
-                y1={l.a.y}
-                x2={l.b.x}
-                y2={l.b.y}
-                stroke={l.group ? "#94693c" : "#648b7f"}
-                strokeWidth={l.group ? 3 : 2}
-                strokeDasharray={l.group ? "8 5" : undefined}
-                vectorEffect="non-scaling-stroke"
+                className={`wb-line-control${selectedLineId === l.id ? " selected" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedLineId === l.id}
+                aria-label={l.kind === "group" ? "묶음 연결선" : "메모 연결선"}
+                onPointerDown={(e) => {
+                  if (!busy && e.button === 0)
+                    e.currentTarget.focus({ preventScroll: true });
+                  start(e, "pan", l.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!busy) {
+                      setSelectedLineId(l.id);
+                      onSelectLine();
+                    }
+                  }
+                }}
               >
-                <title>{l.label}</title>
-              </line>
+                <polygon
+                  className="wb-edge-hit"
+                  points={hitPolygon(l, view.zoom)
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")}
+                />
+                <line
+                  className="wb-line-draw"
+                  x1={l.a.x}
+                  y1={l.a.y}
+                  x2={l.b.x}
+                  y2={l.b.y}
+                  stroke={l.kind === "group" ? "#94693c" : "#648b7f"}
+                  strokeWidth={l.kind === "group" ? 3 : 2}
+                  strokeDasharray={l.kind === "group" ? "8 5" : undefined}
+                  vectorEffect="non-scaling-stroke"
+                >
+                  <title>
+                    {l.kind === "group"
+                      ? "묶음 연결"
+                      : `${l.connections.length}개 메모 연결`}
+                  </title>
+                </line>
+              </g>
             ))}
           </svg>
           {visible.map((n, i) => {

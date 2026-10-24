@@ -20,7 +20,7 @@ test.beforeAll(async () => {
     })
   ).outputFiles[0].text;
 });
-async function mount(page: Page) {
+async function mount(page: Page, configure?: (state: any) => void) {
   const ids = Array.from({ length: 9 }, () => randomUUID()),
     topics = [
       { id: ids[5], name: "정서", version: 1 },
@@ -95,8 +95,10 @@ async function mount(page: Page) {
     ],
     connections: [],
   };
+  configure?.(state);
   const calls: any[] = [];
   let failSave = false;
+  let failLink = false;
   let saveGate: Promise<void> | null = null;
   let releaseSave = () => {};
   await page.route("**/*", async (r) => {
@@ -149,6 +151,11 @@ async function mount(page: Page) {
         return r.fulfill({ json: link });
       }
       if (c.type === "editConnection") {
+        if (failLink)
+          return r.fulfill({
+            status: 503,
+            json: { error: "검수용 관계 저장 실패" },
+          });
         const link = state.connections.find((x: any) => x.id === c.payload.id);
         if (link.version !== c.payload.expectedVersion)
           return r.fulfill({
@@ -176,6 +183,12 @@ async function mount(page: Page) {
     calls,
     fail: () => {
       failSave = true;
+    },
+    failConnection: () => {
+      failLink = true;
+    },
+    allowConnection: () => {
+      failLink = false;
     },
     holdSave: () => {
       saveGate = new Promise<void>((resolve) => {
@@ -211,6 +224,218 @@ async function overlap(page: Page, a: string, b: string) {
   await page.mouse.move(y.x + 30, y.y + 20, { steps: 12 });
   await page.mouse.up();
 }
+
+function connectedFixture(state: any) {
+  state.connections = [
+    {
+      id: randomUUID(),
+      source_kind: "note",
+      target_kind: "note",
+      source_id: state.notes[0].id,
+      target_id: state.notes[1].id,
+      status: "accepted",
+      relation: "related",
+      reason: "검수용 관계",
+      version: 1,
+    },
+  ];
+  const key = (i: number) =>
+    `topic:${state.topics[0].id}::${state.notes[i].id}`;
+  state.board = {
+    id: "00000000-0000-4000-8000-000000000001",
+    version: 1,
+    data: {
+      schema: 1,
+      filter: { topics: [], tags: [], categories: [], books: [], q: "" },
+      positions: { [key(0)]: { x: 50, y: 100 }, [key(1)]: { x: 430, y: 100 } },
+      groupPositions: {},
+      groups: [],
+      collapsed: [],
+      links: [],
+    },
+  };
+}
+
+test("line action disconnects the actual note relationship and undo restores it", async ({
+  page,
+}) => {
+  const f = await mount(page, connectedFixture);
+  const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+  await expect(line).toBeVisible();
+  await line.click();
+  const actions = page.getByRole("group", { name: "선택한 연결", exact: true });
+  await actions.getByRole("button", { name: /끊기/ }).click();
+  await expect(line).toHaveCount(0);
+  expect(f.state.connections[0].status).toBe("rejected");
+  expect(f.state.notes).toHaveLength(5);
+  expect(
+    f.calls.find((c) => c.type === "editConnection").payload.expectedVersion,
+  ).toBe(1);
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect(line).toBeVisible();
+  expect(f.state.connections[0].status).toBe("accepted");
+  expect(
+    f.calls.filter((c) => c.type === "editConnection")[1].payload
+      .expectedVersion,
+  ).toBe(2);
+});
+
+test("failed unlink retains the line and selection for retry", async ({
+  page,
+}) => {
+  const f = await mount(page, connectedFixture);
+  f.failConnection();
+  const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+  await line.click();
+  const actions = page.getByRole("group", { name: "선택한 연결", exact: true });
+  await actions.getByRole("button", { name: /끊기/ }).click();
+  await expect(page.getByRole("alert")).toContainText("검수용 관계 저장 실패");
+  await expect(line).toBeVisible();
+  await expect(actions).toBeVisible();
+  expect(f.state.connections[0].status).toBe("accepted");
+  f.allowConnection();
+  await actions.getByRole("button", { name: /끊기/ }).click();
+  await expect(line).toHaveCount(0);
+  expect(f.state.connections[0].status).toBe("rejected");
+});
+
+test("line selection supports keyboard cancellation and dragging a line only pans", async ({
+  page,
+}) => {
+  const f = await mount(page, connectedFixture);
+  const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+  await line.focus();
+  await line.press("Enter");
+  await expect(
+    page.getByRole("group", { name: "선택한 연결", exact: true }),
+  ).toBeVisible();
+  await line.press("Escape");
+  await expect(
+    page.getByRole("group", { name: "선택한 연결", exact: true }),
+  ).toHaveCount(0);
+  const rect = await line.boundingBox();
+  await page.mouse.move(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    rect!.x + rect!.width / 2 + 70,
+    rect!.y + rect!.height / 2 + 40,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  await expect(
+    page.getByRole("group", { name: "선택한 연결", exact: true }),
+  ).toHaveCount(0);
+  expect(f.calls.filter((c) => c.type === "editConnection")).toHaveLength(0);
+  expect(f.state.connections[0].status).toBe("accepted");
+});
+
+function collapsedConnections(state: any) {
+  connectedFixture(state);
+  const [g1, g2] = state.topics.map((t: any) => `topic:${t.id}`);
+  state.board.data.positions = {};
+  state.board.data.groupPositions = {
+    [g1]: { x: 30, y: 30 },
+    [g2]: { x: 510, y: 30 },
+    unclassified: { x: 30, y: 230 },
+  };
+  state.board.data.collapsed = [g1, g2];
+  state.connections[0].target_id = state.notes[3].id;
+  state.connections.push({
+    ...state.connections[0],
+    id: randomUUID(),
+    source_id: state.notes[1].id,
+  });
+}
+
+test("overlapping grouped relationships can be disconnected one at a time", async ({
+  page,
+}) => {
+  const f = await mount(page, collapsedConnections);
+  const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+  await line.click();
+  const actions = page.getByRole("group", { name: "선택한 연결", exact: true });
+  await expect(actions.getByRole("button", { name: /끊기/ })).toHaveCount(2);
+  await actions
+    .getByRole("button", { name: "첫 생각 ↔ 신학 기록 연결 끊기", exact: true })
+    .click();
+  await expect(actions.getByRole("button", { name: /끊기/ })).toHaveCount(1);
+  await expect(line).toBeVisible();
+  expect(f.state.connections.map((c: any) => c.status)).toEqual([
+    "rejected",
+    "accepted",
+  ]);
+  expect(f.state.board.data.collapsed).toHaveLength(2);
+});
+
+test("group line unlink and undo preserve its notes and their real relationships", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    collapsedConnections(state);
+    state.board.data.links = [
+      {
+        source: `topic:${state.topics[0].id}`,
+        target: `topic:${state.topics[1].id}`,
+      },
+    ];
+  });
+  const groupLine = page.getByRole("button", {
+    name: "묶음 연결선",
+    exact: true,
+  });
+  await groupLine.click();
+  await page
+    .getByRole("group", { name: "선택한 연결", exact: true })
+    .getByRole("button", { name: "끊기", exact: true })
+    .click();
+  await expect(groupLine).toHaveCount(0);
+  await expect.poll(() => f.state.board.data.links.length).toBe(0);
+  expect(f.state.connections.every((c: any) => c.status === "accepted")).toBe(
+    true,
+  );
+  expect(f.state.notes).toHaveLength(5);
+  expect(f.state.board.data.collapsed).toHaveLength(2);
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect(groupLine).toBeVisible();
+});
+
+test("touch line target and unlink controls keep a usable size when zoomed out", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  try {
+    const f = await mount(page, connectedFixture);
+    await page.getByRole("button", { name: "전체 보기", exact: true }).tap();
+    const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+    const target = await line.boundingBox();
+    expect(target!.height).toBeGreaterThanOrEqual(43.5);
+    await line.tap();
+    const actions = page.getByRole("group", {
+      name: "선택한 연결",
+      exact: true,
+    });
+    const button = actions.getByRole("button", { name: /끊기/ });
+    const rect = await button.boundingBox();
+    expect(rect!.width).toBeGreaterThanOrEqual(44);
+    expect(rect!.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await page.evaluate(() => document.activeElement?.tagName.toLowerCase()),
+    ).not.toBe("input");
+    await page.screenshot({
+      path: "test-results/whiteboard/mobile-unlink.png",
+    });
+    await button.tap();
+    await expect(line).toHaveCount(0);
+    expect(f.state.connections[0].status).toBe("rejected");
+  } finally {
+    await context.close();
+  }
+});
 test("searchable multi-facets apply only on search and search the complete note body", async ({
   page,
 }) => {
