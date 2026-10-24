@@ -205,8 +205,8 @@ export function KnowledgePanel({
     <section className="knowledge-panel">
       <div className="knowledge-tabs">
         {[
-          ["whiteboard", "화이트보드"],
           ["topics", "주제별 자료"],
+          ["whiteboard", "화이트보드"],
           ["timeline", "생각의 흐름"],
           ["review", "검토할 후보"],
         ].map(([id, label]) => (

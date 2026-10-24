@@ -21,6 +21,8 @@ import {
   connectGroups,
   connectionForPair,
   seedBoard,
+  arrangeSearchResults,
+  repairSparseSearchLayout,
   type Board,
   type BoardFilter,
   type BoardConnection,
@@ -61,6 +63,7 @@ export function WhiteboardPanel({
     [saving, setSaving] = useState(false),
     [linkBusy, setLinkBusy] = useState(false),
     [conflict, setConflict] = useState(false),
+    [searchRevision, setSearchRevision] = useState(0),
     [selectedNote, setSelectedNote] = useState<string | null>(null),
     [selectedGroup, setSelectedGroup] = useState<string | null>(null),
     [linkSource, setLinkSource] = useState<{
@@ -82,21 +85,24 @@ export function WhiteboardPanel({
     dirty = useRef(false),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     alive = useRef(true),
+    lastDraft = useRef<string | null>(null),
     runSave = useRef<() => void>(() => {});
   const key = ownerId ? `library:whiteboard-draft:${ownerId}` : "";
   function remember(data: Board, unsaved: boolean) {
     if (!key) return;
     try {
-      localStorage.setItem(
-        key,
-        JSON.stringify({
-          data,
-          version: version.current,
-          dirty: unsaved,
-          resolutionToken: observedResolution.current,
-          needsChoice: needsChoice.current,
-        }),
-      );
+      // A response from a closed view must not clear a newer view's draft.
+      if (!alive.current && localStorage.getItem(key) !== lastDraft.current)
+        return;
+      const serialized = JSON.stringify({
+        data,
+        version: version.current,
+        dirty: unsaved,
+        resolutionToken: observedResolution.current,
+        needsChoice: needsChoice.current,
+      });
+      localStorage.setItem(key, serialized);
+      lastDraft.current = serialized;
     } catch {
       setError(
         "기기 저장 공간을 확인해 주세요. 현재 배치는 화면에 유지됩니다.",
@@ -212,10 +218,18 @@ export function WhiteboardPanel({
           }
         } catch {}
       value = seedBoard(data, value);
+      if (!needsChoice.current) {
+        const repaired = repairSparseSearchLayout(data, value);
+        if (repaired !== value) {
+          value = repaired;
+          dirty.current = true;
+          pending.current = value;
+        }
+      }
       current.current = value;
       setBoard(value);
       setFilter(value.filter);
-      if (needsChoice.current) remember(value, true);
+      if (needsChoice.current || pending.current) remember(value, true);
       if (pending.current) {
         pending.current = value;
         timer.current = setTimeout(() => void runSave.current(), 350);
@@ -471,7 +485,14 @@ export function WhiteboardPanel({
           e.preventDefault();
           const before = current.current;
           criteriaEdited.current = false;
-          update(seedBoard(source, { ...before, filter }), before);
+          setSearchRevision((n) => n + 1);
+          update(
+            arrangeSearchResults(
+              source,
+              seedBoard(source, { ...before, filter }),
+            ),
+            before,
+          );
           setSelectedGroup(null);
           setSelectedNote(null);
         }}
@@ -666,7 +687,7 @@ export function WhiteboardPanel({
           onSelectGroup={selectGroup}
           selectedNote={selectedNote}
           selectedGroup={selectedGroup}
-          fitKey={JSON.stringify(board.filter)}
+          fitKey={JSON.stringify([board.filter, searchRevision])}
         />
       </div>
       <details className="wb-connection-list">

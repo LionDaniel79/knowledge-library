@@ -3846,7 +3846,7 @@ textarea {
   margin: 0;
 }
 .wb-facet-popup {
-  position: fixed;
+  position: absolute;
   z-index: 3000;
   background: #fff;
   border: 1px solid #c7d3ce;
@@ -3855,6 +3855,9 @@ textarea {
   box-shadow: 0 12px 35px #15372a26;
 }
 .wb-facet-popup input {
+  font-size: 16px;
+  line-height: 1.25;
+  padding: 8px 10px;
   width: 100%;
   margin: 0 0 0.4rem;
   min-width: 0;

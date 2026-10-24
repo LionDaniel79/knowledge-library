@@ -97,6 +97,8 @@ async function mount(page: Page) {
   };
   const calls: any[] = [];
   let failSave = false;
+  let saveGate: Promise<void> | null = null;
+  let releaseSave = () => {};
   await page.route("**/*", async (r) => {
     const u = new URL(r.request().url());
     if (u.hostname !== "library.test") return r.abort();
@@ -120,6 +122,7 @@ async function mount(page: Page) {
           data: c.payload.data,
           version: (state.board?.version ?? 0) + 1,
         };
+        if (saveGate) await saveGate;
         return r.fulfill({
           json: { id: state.board.id, version: state.board.version },
         });
@@ -173,6 +176,15 @@ async function mount(page: Page) {
     calls,
     fail: () => {
       failSave = true;
+    },
+    holdSave: () => {
+      saveGate = new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      });
+      return () => {
+        saveGate = null;
+        releaseSave();
+      };
     },
   };
 }
@@ -274,6 +286,173 @@ test("pending facet choices survive a background board refresh until explicit se
   await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByText("1개 메모", { exact: true })).toBeVisible();
+});
+test("mobile picker opens as a stable list and focuses search only on a direct tap", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  try {
+    await mount(page);
+    await page.evaluate(() => {
+      document.body.style.minHeight = "1600px";
+    });
+    await page.getByRole("button", { name: "주제 선택", exact: true }).tap();
+    const input = page.getByRole("textbox", { name: "주제 검색", exact: true }),
+      popup = page.locator(".wb-facet-popup");
+    await expect(input).not.toBeFocused();
+    const original = await popup.evaluate((e) => ({
+      top: parseFloat((e as HTMLElement).style.top),
+      left: parseFloat((e as HTMLElement).style.left),
+    }));
+    await page.screenshot({
+      path: "E:/지식서재 작업/private-data/runtime/whiteboard-dropdown-20261024.png",
+      fullPage: false,
+    });
+    await page.evaluate(() => window.scrollTo(0, 24));
+    const gap = await page.evaluate(
+      () =>
+        document.querySelector(".wb-facet-popup")!.getBoundingClientRect().top -
+        document
+          .querySelector('[aria-label="주제 선택"]')!
+          .getBoundingClientRect().bottom,
+    );
+    expect(gap).toBeCloseTo(6, 0);
+    await input.tap();
+    await expect(input).toBeFocused();
+    await page.setViewportSize({ width: 390, height: 420 });
+    expect(
+      await popup.evaluate((e) => parseFloat((e as HTMLElement).style.top)),
+    ).toBe(original.top);
+    expect(
+      await popup.evaluate((e) => parseFloat((e as HTMLElement).style.left)),
+    ).toBe(original.left);
+    expect(
+      await input.evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
+    ).toBeGreaterThanOrEqual(16);
+    await input.fill("정서");
+    await page.getByRole("option", { name: "정서", exact: true }).tap();
+    await expect(
+      page.getByRole("button", { name: "주제 선택", exact: true }),
+    ).toContainText("정서");
+  } finally {
+    await context.close();
+  }
+});
+test("search brings two distant book memos together at a readable size without connecting them", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  f.state.notes[2].bookId = f.state.books[1].id;
+  const key = (i: number) =>
+    `topic:${f.state.topics[0].id}::${f.state.notes[i].id}`;
+  f.state.board = {
+    id: "00000000-0000-4000-8000-000000000001",
+    version: 1,
+    data: {
+      schema: 1,
+      filter: { topics: [], tags: [], categories: [], books: [], q: "" },
+      positions: { [key(0)]: { x: 46, y: 84 }, [key(1)]: { x: 46, y: 8000 } },
+      groupPositions: {},
+      groups: [],
+      collapsed: [],
+      links: [],
+    },
+  };
+  await Promise.all([
+    page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/whiteboard",
+    ),
+    page.evaluate(() => (window as any).refreshBoard()),
+  ]);
+  await page.waitForTimeout(100);
+  await choose(page, "도서", "상담 도서 · 상담 저자");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("2개 메모", { exact: true })).toBeVisible();
+  const a = await page
+      .locator(`[data-note-id="${f.state.notes[0].id}"]`)
+      .boundingBox(),
+    b = await page
+      .locator(`[data-note-id="${f.state.notes[1].id}"]`)
+      .boundingBox();
+  expect(a!.width).toBeGreaterThanOrEqual(180);
+  expect(Math.abs(a!.y - b!.y)).toBeLessThan(10);
+  expect(Math.abs(a!.x - b!.x)).toBeLessThan(300);
+  expect(f.state.connections).toHaveLength(0);
+  const viewport = await page.locator(".wb-viewport").boundingBox();
+  await page.mouse.move(
+    viewport!.x + viewport!.width - 30,
+    viewport!.y + viewport!.height - 40,
+  );
+  await page.mouse.down();
+  await page.mouse.move(viewport!.x + 30, viewport!.y + viewport!.height - 40, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect
+    .poll(async () => {
+      const note = await page
+        .locator(`[data-note-id="${f.state.notes[0].id}"]`)
+        .boundingBox();
+      return (
+        !!note &&
+        note.x >= viewport!.x &&
+        note.x + note.width <= viewport!.x + viewport!.width
+      );
+    })
+    .toBe(true);
+  await page.screenshot({
+    path: "E:/지식서재 작업/private-data/runtime/whiteboard-compact-20261024.png",
+    fullPage: false,
+  });
+});
+test("opening an old automatically spaced filtered board compacts its matching memos", async ({
+  page,
+}) => {
+  const f = await mount(page),
+    topic = f.state.topics[0].id;
+  f.state.notes = Array.from({ length: 150 }, (_, i) => ({
+    ...f.state.notes[0],
+    id: randomUUID(),
+    title: `메모 ${i}`,
+    tags: i === 0 || i === 149 ? ["찾기"] : [],
+  }));
+  f.state.board = {
+    id: "00000000-0000-4000-8000-000000000001",
+    version: 1,
+    data: {
+      schema: 1,
+      filter: { topics: [], tags: ["찾기"], categories: [], books: [], q: "" },
+      positions: Object.fromEntries(
+        f.state.notes.map((n: any, i: number) => [
+          `topic:${topic}::${n.id}`,
+          { x: 46 + (i % 3) * 236, y: 84 + Math.floor(i / 3) * 182 },
+        ]),
+      ),
+      groupPositions: { [`topic:${topic}`]: { x: 30, y: 30 } },
+      groups: [],
+      collapsed: [],
+      links: [],
+    },
+  };
+  await page.evaluate(() => {
+    (window as any).fixtureMount++;
+    (window as any).refreshBoard();
+  });
+  await expect(page.getByText("2개 메모", { exact: true })).toBeVisible();
+  const a = await page
+      .locator(`[data-note-id="${f.state.notes[0].id}"]`)
+      .boundingBox(),
+    b = await page
+      .locator(`[data-note-id="${f.state.notes[149].id}"]`)
+      .boundingBox();
+  expect(Math.abs(a!.y - b!.y)).toBeLessThan(10);
+  expect(Math.abs(a!.x - b!.x)).toBeLessThan(300);
 });
 test("touch facet selections stay checked after reopening and apply together on search", async ({
   browser,
@@ -530,6 +709,7 @@ test("a draft from before a resolution is preserved for choice rather than autom
   await choose(page, "주제", "정서");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect.poll(() => f.state.board?.version).toBe(1);
+  await expect(page.getByRole("status")).toContainText("저장됨");
   const draft = {
     data: structuredClone(f.state.board.data),
     version: 1,
@@ -565,4 +745,33 @@ test("a draft from before a resolution is preserved for choice rather than autom
   ).toBeVisible();
   await page.waitForTimeout(500);
   expect(f.state.board.version).toBe(1);
+});
+test("a late save from a closed board cannot replace a newer draft awaiting choice", async ({
+  page,
+}) => {
+  const f = await mount(page),
+    release = f.holdSave();
+  await choose(page, "주제", "정서");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect.poll(() => f.state.board?.version).toBe(1);
+  await page.evaluate(() => {
+    (window as any).fixtureMount++;
+    (window as any).refreshBoard();
+  });
+  await expect(
+    page.getByRole("button", { name: "현재 배치로 저장", exact: true }),
+  ).toBeVisible();
+  const reply = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === "/api/knowledge",
+  );
+  release();
+  await reply;
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    (window as any).fixtureMount++;
+    (window as any).refreshBoard();
+  });
+  await expect(
+    page.getByRole("button", { name: "현재 배치로 저장", exact: true }),
+  ).toBeVisible();
 });

@@ -10,6 +10,9 @@ import {
   connectGroups,
   boardSchema,
   boardStamp,
+  arrangeSearchResults,
+  repairSparseSearchLayout,
+  seedBoard,
   connectionForPair,
 } from "../src/lib/whiteboard";
 import type { WhiteboardSnapshot } from "../src/lib/whiteboard";
@@ -81,6 +84,43 @@ const source: WhiteboardSnapshot = {
   connections: [],
 };
 describe("whiteboard", () => {
+  it("packs sparse filtered memos without changing hidden placements or relationships", () => {
+    const many = {
+      ...source,
+      notes: Array.from({ length: 150 }, (_, i) => ({
+        ...source.notes[0],
+        id: randomUUID(),
+        tags: i === 0 || i === 149 ? ["찾기"] : [],
+      })),
+    };
+    const board = seedBoard(many, emptyBoard());
+    board.filter.tags = ["찾기"];
+    const before = buildScene(many, board),
+      hidden = Object.entries(board.positions).find(([key]) =>
+        key.endsWith(many.notes[50].id),
+      )!;
+    expect(Math.abs(before.nodes[0].y - before.nodes[1].y)).toBeGreaterThan(
+      5000,
+    );
+    const packed = arrangeSearchResults(many, board),
+      after = buildScene(many, packed);
+    expect(Math.abs(after.nodes[0].y - after.nodes[1].y)).toBeLessThan(1);
+    expect(Math.abs(after.nodes[0].x - after.nodes[1].x)).toBeGreaterThan(256);
+    expect(Math.abs(after.nodes[0].x - after.nodes[1].x)).toBeLessThan(300);
+    expect(dropTarget(after.nodes, after.nodes[0], after.nodes[0])).toBeNull();
+    expect(packed.positions[hidden[0]]).toEqual(hidden[1]);
+    expect(packed.groups).toEqual(board.groups);
+    expect(packed.links).toEqual(board.links);
+    expect(repairSparseSearchLayout(many, board)).not.toBe(board);
+    const manuallyPlaced = {
+      ...board,
+      positions: {
+        ...board.positions,
+        [before.nodes[0].id]: { x: 1000, y: 10000 },
+      },
+    };
+    expect(repairSparseSearchLayout(many, manuallyPlaced)).toBe(manuallyPlaced);
+  });
   it("recognizes a saved layout after JSONB object keys are reordered", () => {
     const data = emptyBoard();
     data.positions = { b: { x: 2, y: 3 }, a: { x: 4, y: 5 } };

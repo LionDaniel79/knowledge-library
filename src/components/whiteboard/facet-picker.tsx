@@ -19,19 +19,27 @@ export function FacetPicker({
   const [open, setOpen] = useState(false),
     [q, setQ] = useState("");
   const root = useRef<HTMLDivElement>(null),
+    touchOpen = useRef(false),
     popup = useRef<HTMLDivElement>(null),
     input = useRef<HTMLInputElement>(null),
     [position, setPosition] = useState({ left: 0, top: 0, width: 280 });
   useLayoutEffect(() => {
     if (!open) return;
     const r = root.current!.getBoundingClientRect(),
-      width = Math.min(300, window.innerWidth - 24);
+      viewportWidth = document.documentElement.clientWidth,
+      width = Math.min(300, viewportWidth - 24);
     setPosition({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(r.bottom + 6, window.innerHeight - 330)),
+      left:
+        window.scrollX +
+        Math.max(8, Math.min(r.left, viewportWidth - width - 8)),
+      top: window.scrollY + r.bottom + 6,
       width,
     });
-    input.current?.focus();
+    if (
+      !touchOpen.current &&
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    )
+      input.current?.focus({ preventScroll: true });
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -68,6 +76,9 @@ export function FacetPicker({
         aria-label={`${label} 선택`}
         aria-expanded={open}
         aria-haspopup="listbox"
+        onPointerDown={(e) => {
+          touchOpen.current = e.pointerType !== "mouse";
+        }}
         onClick={() => setOpen(!open)}
       >
         <small>{label}</small>

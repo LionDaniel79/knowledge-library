@@ -458,3 +458,85 @@ export function seedBoard(source: WhiteboardSnapshot, b: Board): Board {
     },
   };
 }
+
+// A search is a fresh view of the matching memos, not a window into the gaps
+// occupied by every other memo. Only matching placements are changed.
+export function arrangeSearchResults(
+  source: WhiteboardSnapshot,
+  b: Board,
+): Board {
+  const scene = buildScene(source, b),
+    positions = { ...b.positions },
+    groupPositions = { ...b.groupPositions },
+    dx = NOTE_WIDTH + 48,
+    dy = NOTE_HEIGHT + 48;
+  const sizes = scene.groups.map((g) => {
+    const columns = Math.min(3, g.nodes.length),
+      rows = Math.ceil(g.nodes.length / 3);
+    return {
+      width: g.collapsed
+        ? 320
+        : Math.max(320, 32 + NOTE_WIDTH + (columns - 1) * dx),
+      height: g.collapsed
+        ? 122
+        : Math.max(240, 70 + NOTE_HEIGHT + (rows - 1) * dy),
+    };
+  });
+  const stride = Math.max(320, ...sizes.map((s) => s.width)) + 40,
+    heights = [30, 30];
+  scene.groups.forEach((g, i) => {
+    const column = i % 2,
+      origin = { x: 30 + column * stride, y: heights[column] };
+    groupPositions[g.id] = origin;
+    heights[column] += sizes[i].height + 40;
+    g.nodes.forEach((n, j) => {
+      positions[n.id] = safePoint({
+        x: origin.x + 16 + (j % 3) * dx,
+        y: origin.y + 54 + Math.floor(j / 3) * dy,
+      });
+    });
+  });
+  const top = scene.groups.length ? Math.max(...heights) : 30;
+  scene.nodes
+    .filter((n) => !n.groupId)
+    .forEach((n, i) => {
+      positions[n.id] = safePoint({
+        x: 30 + (i % 5) * dx,
+        y: top + Math.floor(i / 5) * dy,
+      });
+    });
+  return { ...b, positions, groupPositions };
+}
+
+// Repair the old automatically seeded sparse search view once. User-positioned
+// notes keep their saved layout; an explicit new search can arrange them.
+export function repairSparseSearchLayout(
+  source: WhiteboardSnapshot,
+  b: Board,
+): Board {
+  if (
+    !b.filter.q &&
+    ![b.filter.topics, b.filter.tags, b.filter.categories, b.filter.books].some(
+      (v) => v.length,
+    )
+  )
+    return b;
+  const scene = buildScene(source, b);
+  if (scene.nodes.length < 2) return b;
+  const width =
+      Math.max(...scene.nodes.map((n) => n.x + NOTE_WIDTH)) -
+      Math.min(...scene.nodes.map((n) => n.x)),
+    height =
+      Math.max(...scene.nodes.map((n) => n.y + NOTE_HEIGHT)) -
+      Math.min(...scene.nodes.map((n) => n.y));
+  if (width <= 1600 && height <= 1200) return b;
+  const original = seedBoard(source, emptyBoard());
+  if (
+    scene.nodes.some((n) => {
+      const p = original.positions[n.id];
+      return !p || Math.abs(p.x - n.x) > 0.5 || Math.abs(p.y - n.y) > 0.5;
+    })
+  )
+    return b;
+  return arrangeSearchResults(source, b);
+}
