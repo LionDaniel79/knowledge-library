@@ -184,6 +184,9 @@ async function mount(page: Page, configure?: (state: any) => void) {
     fail: () => {
       failSave = true;
     },
+    allowSave: () => {
+      failSave = false;
+    },
     failConnection: () => {
       failLink = true;
     },
@@ -397,6 +400,100 @@ test("group line unlink and undo preserve its notes and their real relationships
   expect(f.state.board.data.collapsed).toHaveLength(2);
   await page.getByRole("button", { name: "되돌리기", exact: true }).click();
   await expect(groupLine).toBeVisible();
+});
+
+test("coincident note and group lines expose both relationship types", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    collapsedConnections(state);
+    const [a, b] = state.topics.map((t: any) => `topic:${t.id}`);
+    state.board.data.groupPositions[a] = { x: 30, y: 30 };
+    state.board.data.groupPositions[b] = { x: 30, y: 350 };
+    state.board.data.links = [{ source: a, target: b }];
+  });
+  await page.getByRole("button", { name: "묶음 연결선", exact: true }).click();
+  const actions = page.getByRole("group", { name: "선택한 연결", exact: true });
+  await expect(
+    actions.getByRole("button", { name: "메모 연결 보기", exact: true }),
+  ).toBeVisible();
+  await actions
+    .getByRole("button", { name: "묶음 연결 보기", exact: true })
+    .click();
+  await actions.getByRole("button", { name: "끊기", exact: true }).click();
+  await expect.poll(() => f.state.board.data.links.length).toBe(0);
+  expect(f.state.connections.every((c: any) => c.status === "accepted")).toBe(
+    true,
+  );
+});
+
+test("failed group unlink preserves the selected line and can retry", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    collapsedConnections(state);
+    state.board.data.links = [
+      {
+        source: `topic:${state.topics[0].id}`,
+        target: `topic:${state.topics[1].id}`,
+      },
+    ];
+  });
+  const line = page.getByRole("button", { name: "묶음 연결선", exact: true });
+  await line.click();
+  const actions = page.getByRole("group", { name: "선택한 연결", exact: true });
+  f.fail();
+  await actions.getByRole("button", { name: "끊기", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("검수용 저장 실패");
+  await expect(line).toBeVisible();
+  await expect(actions).toBeVisible();
+  expect(f.state.board.data.links).toHaveLength(1);
+  f.allowSave();
+  await actions.getByRole("button", { name: "끊기", exact: true }).click();
+  await expect(line).toHaveCount(0);
+  await expect.poll(() => f.state.board.data.links.length).toBe(0);
+});
+
+test("keyboard toggling cannot restore a group link during unlink save", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    collapsedConnections(state);
+    state.board.data.links = [
+      {
+        source: `topic:${state.topics[0].id}`,
+        target: `topic:${state.topics[1].id}`,
+      },
+    ];
+  });
+  const release = f.holdSave();
+  await page.getByRole("button", { name: "묶음 연결선", exact: true }).click();
+  await page
+    .getByRole("group", { name: "선택한 연결", exact: true })
+    .getByRole("button", { name: "끊기", exact: true })
+    .click();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBe(1);
+  const toggle = page.getByRole("button", { name: "정서 펼치기", exact: true });
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expect(toggle).toBeVisible();
+  release();
+  await expect(
+    page.getByRole("button", { name: "묶음 연결선", exact: true }),
+  ).toHaveCount(0);
+  expect(f.state.board.data.links).toHaveLength(0);
+  expect(f.state.board.data.collapsed).toHaveLength(2);
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBe(2);
+  expect(
+    f.calls
+      .filter((c) => c.type === "saveWhiteboard")
+      .map((c) => c.payload.data.links.length),
+  ).toEqual([0, 1]);
 });
 
 test("touch line target and unlink controls keep a usable size when zoomed out", async ({

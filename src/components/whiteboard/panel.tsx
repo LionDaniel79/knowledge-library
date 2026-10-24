@@ -86,7 +86,8 @@ export function WhiteboardPanel({
     timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     alive = useRef(true),
     lastDraft = useRef<string | null>(null),
-    runSave = useRef<() => void>(() => {});
+    runSave = useRef<() => Promise<void>>(async () => {}),
+    saveTask = useRef<Promise<void> | null>(null);
   const key = ownerId ? `library:whiteboard-draft:${ownerId}` : "";
   function remember(data: Board, unsaved: boolean) {
     if (!key) return;
@@ -126,49 +127,55 @@ export function WhiteboardPanel({
     if (!r.ok) throw Error(data.error ?? "저장하지 못했습니다.");
     return data;
   }
-  runSave.current = async () => {
-    if (writing.current || needsChoice.current) return;
-    writing.current = true;
-    if (alive.current) setSaving(true);
-    try {
-      while (pending.current) {
-        const value = pending.current;
-        pending.current = null;
-        try {
-          const result = await send("saveWhiteboard", {
-            data: value,
-            expectedVersion: version.current,
-          });
-          version.current = result.version;
-          acknowledged.current.add(
-            boardStamp({
-              id: WHITEBOARD_ID,
+  runSave.current = () => {
+    if (saveTask.current) return saveTask.current;
+    saveTask.current = (async () => {
+      if (writing.current || needsChoice.current) return;
+      writing.current = true;
+      if (alive.current) setSaving(true);
+      try {
+        while (pending.current) {
+          const value = pending.current;
+          pending.current = null;
+          try {
+            const result = await send("saveWhiteboard", {
               data: value,
-              version: result.version,
-            }),
-          );
-          if (acknowledged.current.size > 16)
-            acknowledged.current.delete(
-              acknowledged.current.values().next().value!,
+              expectedVersion: version.current,
+            });
+            version.current = result.version;
+            acknowledged.current.add(
+              boardStamp({
+                id: WHITEBOARD_ID,
+                data: value,
+                version: result.version,
+              }),
             );
-          dirty.current = !!pending.current;
-          remember(current.current, dirty.current);
-          if (alive.current) {
-            setError("");
-            setMessage(result.queued ? "기기에 저장됨" : "저장됨");
+            if (acknowledged.current.size > 16)
+              acknowledged.current.delete(
+                acknowledged.current.values().next().value!,
+              );
+            dirty.current = !!pending.current;
+            remember(current.current, dirty.current);
+            if (alive.current) {
+              setError("");
+              setMessage(result.queued ? "기기에 저장됨" : "저장됨");
+            }
+          } catch (e) {
+            pending.current = pending.current ?? current.current;
+            dirty.current = true;
+            remember(current.current, true);
+            if (alive.current) setError((e as Error).message);
+            break;
           }
-        } catch (e) {
-          pending.current = pending.current ?? current.current;
-          dirty.current = true;
-          remember(current.current, true);
-          if (alive.current) setError((e as Error).message);
-          break;
         }
+      } finally {
+        writing.current = false;
+        if (alive.current) setSaving(false);
       }
-    } finally {
-      writing.current = false;
-      if (alive.current) setSaving(false);
-    }
+    })().finally(() => {
+      saveTask.current = null;
+    });
+    return saveTask.current;
   };
   function update(next: Board, before?: Board) {
     current.current = next;
@@ -435,19 +442,49 @@ export function WhiteboardPanel({
       setLinkBusy(false);
     }
   }
-  function removeGroupConnection(sourceId: string, targetId: string) {
+  async function removeGroupConnection(sourceId: string, targetId: string) {
     if (linkBusy) return;
-    const before = current.current;
-    const links = before.links.filter(
-      (l) =>
-        !(
-          (l.source === sourceId && l.target === targetId) ||
-          (l.source === targetId && l.target === sourceId)
-        ),
-    );
-    if (links.length === before.links.length) return;
-    update({ ...before, links }, before);
-    setMessage("묶음 연결을 끊었습니다.");
+    setLinkBusy(true);
+    setError("");
+    if (timer.current) clearTimeout(timer.current);
+    try {
+      // Complete earlier local edits before issuing the versioned removal.
+      // In replica mode this only waits for the durable device queue.
+      await runSave.current();
+      if (dirty.current || needsChoice.current)
+        throw Error(
+          "먼저 배치의 저장 오류를 해결해 주세요. 연결은 유지됩니다.",
+        );
+      const before = current.current;
+      const links = before.links.filter(
+        (l) =>
+          !(
+            (l.source === sourceId && l.target === targetId) ||
+            (l.source === targetId && l.target === sourceId)
+          ),
+      );
+      if (links.length === before.links.length) return;
+      const next = { ...before, links };
+      writing.current = true;
+      const result = await send("saveWhiteboard", {
+        data: next,
+        expectedVersion: version.current,
+      });
+      version.current = result.version;
+      acknowledged.current.add(
+        boardStamp({ id: WHITEBOARD_ID, data: next, version: result.version }),
+      );
+      current.current = next;
+      setBoard(next);
+      remember(next, false);
+      setUndo({ board: before });
+      setMessage("묶음 연결을 끊었습니다.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      writing.current = false;
+      setLinkBusy(false);
+    }
   }
   const derived = useMemo(() => {
     if (!source) return null;
@@ -583,10 +620,12 @@ export function WhiteboardPanel({
             <input
               className="wb-group-name"
               aria-label="묶음 이름"
+              disabled={linkBusy}
               key={selected.id}
               defaultValue={selected.title}
               maxLength={80}
               onBlur={(e) => {
+                if (linkBusy) return;
                 const title = e.target.value.trim();
                 if (title && title !== selected.title) {
                   const before = current.current;
@@ -604,6 +643,7 @@ export function WhiteboardPanel({
             />
             <button
               type="button"
+              disabled={linkBusy}
               onClick={() => {
                 const before = current.current;
                 update(
@@ -637,7 +677,11 @@ export function WhiteboardPanel({
       {(error || resource.error) && (
         <p className="error wb-error" role="alert">
           {error || resource.error}{" "}
-          <button type="button" onClick={() => void runSave.current()}>
+          <button
+            type="button"
+            disabled={linkBusy}
+            onClick={() => void runSave.current()}
+          >
             다시 저장
           </button>
         </p>
@@ -646,6 +690,7 @@ export function WhiteboardPanel({
         <div className="notice">
           다른 곳의 배치와 현재 배치가 다릅니다.{" "}
           <button
+            disabled={linkBusy}
             onClick={() => {
               version.current = source.board?.version ?? 0;
               needsChoice.current = false;
@@ -658,6 +703,7 @@ export function WhiteboardPanel({
             현재 배치로 저장
           </button>
           <button
+            disabled={linkBusy}
             onClick={() => {
               const next = seedBoard(
                 source,
@@ -688,6 +734,7 @@ export function WhiteboardPanel({
           }}
           onGroupDrop={groupDrop}
           onToggle={(id) => {
+            if (linkBusy) return;
             const before = current.current;
             update(
               {

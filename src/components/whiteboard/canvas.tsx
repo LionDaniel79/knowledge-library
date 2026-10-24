@@ -22,7 +22,7 @@ import { relationNames, type Relation } from "@/lib/knowledge";
 import {
   buildConnectionLines,
   hitPolygon,
-  nearestConnectionLine,
+  connectionLinesAtPoint,
 } from "@/lib/whiteboard-lines";
 type Drag = {
   kind: "note" | "group" | "pan";
@@ -79,6 +79,7 @@ export function WhiteboardCanvas({
     active = useRef<Drag | null>(null),
     [drag, setDrag] = useState<Drag | null>(null),
     [selectedLineId, setSelectedLineId] = useState<string | null>(null),
+    [lineChoiceIds, setLineChoiceIds] = useState<string[]>([]),
     [view, setView] = useState({ x: 18, y: 18, zoom: 0.85 }),
     viewRef = useRef(view),
     frame = useRef(0);
@@ -227,8 +228,10 @@ export function WhiteboardCanvas({
           x: (e.clientX - rect.left - v.x) / v.zoom,
           y: (e.clientY - rect.top - v.y) / v.zoom,
         };
+        const choices = connectionLinesAtPoint(lines, point, 22 / v.zoom);
+        setLineChoiceIds(choices.map((l) => l.id));
         setSelectedLineId(
-          nearestConnectionLine(lines, point, 22 / v.zoom)?.id ?? d.id,
+          choices.find((l) => l.id === d.id)?.id ?? choices[0]?.id ?? d.id,
         );
         onSelectLine();
       }
@@ -324,6 +327,27 @@ export function WhiteboardCanvas({
               ×
             </button>
           </header>
+          {lineChoiceIds.filter((id) => lines.some((l) => l.id === id)).length >
+            1 && (
+            <div className="wb-edge-kinds">
+              {lines
+                .filter((l) => lineChoiceIds.includes(l.id))
+                .map((l) => (
+                  <button
+                    type="button"
+                    key={l.id}
+                    disabled={busy}
+                    aria-label={
+                      l.kind === "group" ? "묶음 연결 보기" : "메모 연결 보기"
+                    }
+                    aria-pressed={l.id === selectedLineId}
+                    onClick={() => setSelectedLineId(l.id)}
+                  >
+                    {l.kind === "group" ? "묶음 연결" : "메모 연결"}
+                  </button>
+                ))}
+            </div>
+          )}
           {selectedLine.kind === "note" ? (
             selectedLine.connections.map((c) => (
               <div className="wb-edge-action-row" key={c.id}>
@@ -484,6 +508,7 @@ export function WhiteboardCanvas({
                     e.preventDefault();
                     e.stopPropagation();
                     if (!busy) {
+                      setLineChoiceIds([l.id]);
                       setSelectedLineId(l.id);
                       onSelectLine();
                     }

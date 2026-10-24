@@ -3991,6 +3991,21 @@ textarea {
   justify-content: space-between;
   gap: 12px;
 }
+.wb-edge-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+.wb-edge-kinds button {
+  padding: 0 10px;
+  border: 1px solid #b9ccc1;
+  border-radius: 8px;
+}
+.wb-edge-kinds button[aria-pressed="true"] {
+  background: #e4ebe6;
+  font-weight: 700;
+}
 .wb-edge-action-row {
   padding: 5px 0;
   border-top: 1px solid #e4ebe6;

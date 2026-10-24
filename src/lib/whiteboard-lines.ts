@@ -87,8 +87,15 @@ export function nearestConnectionLine(
   p: Point,
   tolerance: number,
 ): ConnectionLine | undefined {
-  let selected: ConnectionLine | undefined,
-    nearest = Infinity;
+  return connectionLinesAtPoint(lines, p, tolerance)[0];
+}
+export function connectionLinesAtPoint(
+  lines: ConnectionLine[],
+  p: Point,
+  tolerance: number,
+): ConnectionLine[] {
+  let nearest = Infinity;
+  const hits: { line: ConnectionLine; distance: number }[] = [];
   for (const line of lines) {
     const dx = line.b.x - line.a.x,
       dy = line.b.y - line.a.y,
@@ -101,10 +108,11 @@ export function nearestConnectionLine(
         ),
       ),
       distance = Math.hypot(p.x - line.a.x - t * dx, p.y - line.a.y - t * dy);
-    if (distance <= tolerance && distance < nearest) {
-      selected = line;
-      nearest = distance;
+    if (distance <= tolerance) {
+      hits.push({ line, distance });
+      nearest = Math.min(nearest, distance);
     }
   }
-  return selected;
+  // Expose genuinely coincident lines, not just the top SVG hit area.
+  return hits.filter((h) => h.distance <= nearest + 0.001).map((h) => h.line);
 }
