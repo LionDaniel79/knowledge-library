@@ -27,3 +27,12 @@
 표지 온라인 캐시·전체 백업 최적화는 이 동기화 수정에 포함하지 않는다. 최초 전체 기기 저장량은 그대로이며 기존 저장본을 지우거나 처음부터 재수신하도록 요구하지 않는다.
 
 실제 PC/iPhone 왕복과 청구량 측정은 사용자 지시대로 11월 1일 검수 목록에 유지한다. 다음 절차에서 새 전체 수신을 유발하지 않고 이어받기·변경 없음·메모 1개·표지 재열람을 측정한다.
+
+## 반영 결과
+
+- 구현 6fbe55d, 검증 기록을 포함한 24a6f53을 main에 반영하고 GitHub에 전송했다. Vercel 운영 배포 dpl_4wCW6ytY5nLCpoA4SundTgNxKM6F는 READY이며 해당 Git 커밋의 상태도 success다. Linux 빌드는 2분32초, 후처리는 39초였다.
+- 공개 주소 https://knowledge-library-inky.vercel.app/ 및 manifest, 대표 정적 스크립트 3개는 HTTP200이다. HTML과 정적 파일만 요청했고 로그인·동기화 API·개인 자료는 호출하지 않았다.
+- PC 실행본은 같은 소스의 로컬 빌드 aBsvC_xyszTuA2oZ1nERB로 교체했다. 기존 실행본의 Next16.4.0을 이미 웹에서 사용 중인 소스의16.4.2와 맞추고 변경된 Next 모듈 3개만 교체했다. 나머지 의존성 버전은 동일하다. 설정·인증 비밀정보는 복사하거나 변경하지 않았다.
+- PC PID16592, 제한 역할 library_web_runtime, 자동 시작 작업 Running, 서버 창 핸들0을 확인했다. 기존 OCR Python 프로세스8개 모두 유지됐다. PC loopback/Tailscale의 정적 manifest 모두HTTP200이며, 실제 PDF 열람·기기 동기화 검수는 호출하지 않았다.
+- 교체 전 실행본 한 벌은 E:\지식서재 작업\private-data\operations\neon-traffic-20261025\pc-rollback에 보관한다. 생성 자료·검사·배포·PC 교체 기록도 같은 operations 폴더에 보관한다.
+- 자료가 전혀 없는 임시 stage 폴더(node_modules/@next 빈 디렉터리만 포함)의 삭제는 재귀/비재귀 모두 자동 승인 검토에서 정책상 차단되어 그대로 두었다. 원본 자료나 실행 기능에는 영향이 없다.
