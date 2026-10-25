@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Book, BookPage, Format } from "../lib/domain";
 import { categories } from "../lib/catalog";
-import { bookSearchFields, compactSearchText } from "../lib/search-fields";
+import {
+  bookSearchFields,
+  compactSearchText,
+  compactBookTitleSearch,
+} from "../lib/search-fields";
 import { LibraryError, type Executor } from "./library-store";
 import {
   attachCatalogCovers,
@@ -46,6 +50,8 @@ function ownerRequired(owner: string) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
 }
 const serialize = <T>(value: unknown): T => JSON.parse(JSON.stringify(value));
+const compactBookTitleSql =
+  "regexp_replace(lower(b.title),'[[:space:]　 ,，、]+','','g')";
 export async function readBookPage(
   tx: Executor,
   owner: string,
@@ -63,14 +69,23 @@ export async function readBookPage(
   };
   if (q.exclude) where.push(`b.id<>${param(q.exclude)}::uuid`);
   for (const field of ["title", "author", "publisher", "isbn"] as const) {
-    if (q[field])
+    if (q[field]) {
+      const literal = `strpos(regexp_replace(lower(b.${field}),'[[:space:]　 ]+','','g'),${param(compactSearchText(q[field]))})>0`;
+      const title = field === "title" ? compactBookTitleSearch(q[field]) : "";
       where.push(
-        `strpos(regexp_replace(lower(b.${field}),'[[:space:]　 ]+','','g'),${param(compactSearchText(q[field]))})>0`,
+        title
+          ? `(${literal} OR strpos(${compactBookTitleSql},${param(title)})>0)`
+          : literal,
       );
+    }
   }
   if (q.q) {
     const text = param("%" + q.q.replace(/[\\%_]/g, "\\$&") + "%");
     const compactText = param(q.q.replace(/\s+/g, "").toLowerCase());
+    const title = compactBookTitleSearch(q.q);
+    const titleMatch = title
+      ? ` OR strpos(${compactBookTitleSql},${param(title)})>0`
+      : "";
     const categoryIds = categories
       .filter(([, name]) =>
         name.toLocaleLowerCase().includes(q.q.toLocaleLowerCase()),
@@ -80,6 +95,7 @@ export async function readBookPage(
       `(concat_ws(' ',b.title,b.author,b.publisher,b.isbn,b.shelf,array_to_string(b.tags,' '),array_to_string(b.bookshelves,' ')) ILIKE ${text} ESCAPE '\\'
        OR position(${compactText} in regexp_replace(lower(b.title),'[[:space:]　 ]+','','g'))>0
        OR position(${compactText} in regexp_replace(lower(b.author),'[[:space:]　 ]+','','g'))>0
+       ${titleMatch}
        OR b.category=ANY(${param(categoryIds)}::text[]))`,
     );
   }
@@ -112,7 +128,7 @@ export async function readBookPage(
     ).rows[0].total,
   );
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify(["catalog-spacing/v2", owner, q]))
+    .update(JSON.stringify(["catalog-title/v3", owner, q]))
     .digest("hex");
   const fields =
     q.sort === "title"

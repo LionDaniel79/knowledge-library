@@ -9,6 +9,7 @@ import {
   bookSearchFields,
   memoSearchFields,
   containsSearchField,
+  containsBookTitleSearch,
 } from "../../lib/search-fields";
 import {
   monthCells,
@@ -196,7 +197,7 @@ export async function queryBooks(
     ({ book: b }) =>
       b.id !== q.exclude &&
       ["title", "author", "publisher", "isbn"].every((field) =>
-        containsSearchField(
+        (field === "title" ? containsBookTitleSearch : containsSearchField)(
           b[field as keyof Book] as string,
           q[field as keyof typeof bookSearchFields],
         ),
@@ -214,7 +215,7 @@ export async function queryBooks(
           .join(" ")
           .toLowerCase()
           .includes(needle) ||
-        b.title.replace(/\s+/g, "").toLowerCase().includes(compact) ||
+        containsBookTitleSearch(b.title, q.q) ||
         b.author.replace(/\s+/g, "").toLowerCase().includes(compact) ||
         categoryIds.includes(b.category ?? "")) &&
       (q.category === "all" ||
@@ -231,7 +232,7 @@ export async function queryBooks(
       topicMatch(data, "book", b.id, q.topic),
   );
   const total = rows.length,
-    fingerprint = await digest(["catalog-spacing/v2", owner, q]);
+    fingerprint = await digest(["catalog-title/v3", owner, q]);
   const keys = (r: IndexedBook) =>
     q.sort === "title"
       ? [r.book.title, r.book.id]

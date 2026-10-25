@@ -71,6 +71,7 @@ import { PdfIdentityEvidence } from "./pdf-identity-evidence";
 import { BackupPanel } from "./backup-panel";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
+import { containsBookTitleSearch } from "@/lib/search-fields";
 type View =
   | "home"
   | "books"
@@ -316,6 +317,7 @@ export function LibraryApp({
         .filter(
           (b) =>
             (!needle ||
+              containsBookTitleSearch(b.title, needle) ||
               [
                 b.title,
                 b.author,

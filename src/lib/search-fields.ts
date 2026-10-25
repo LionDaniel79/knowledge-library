@@ -15,3 +15,15 @@ export const compactSearchText = (value: string) =>
   value.toLowerCase().replace(/[\s　 ]+/g, "");
 export const containsSearchField = (value: string | undefined, query: string) =>
   !query || compactSearchText(value ?? "").includes(compactSearchText(query));
+export const compactBookTitleSearch = (value: string) =>
+  compactSearchText(value).replace(/[,，、]/g, "");
+export const containsBookTitleSearch = (
+  value: string | undefined,
+  query: string,
+) => {
+  const compact = compactBookTitleSearch(query);
+  return (
+    containsSearchField(value, query) ||
+    (!!compact && compactBookTitleSearch(value ?? "").includes(compact))
+  );
+};
