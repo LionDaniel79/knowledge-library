@@ -191,7 +191,7 @@ export function LibraryApp({
     revision: Library;
   } | null>(null);
   const remote = !!data.catalog;
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = view === "books" ? query.trim().toLocaleLowerCase() : "";
   const bookPaging = useListPagination(
     "books",
     JSON.stringify([view, needle, sort, category, shelfFilter, filter]),
@@ -201,8 +201,7 @@ export function LibraryApp({
     JSON.stringify([view, needle, noteTag, noteType, noteBook]),
   );
   const catalog = useBookCatalog({
-    enabled:
-      remote && (view === "books" || needle.length > 0) && bookPaging.ready,
+    enabled: remote && view === "books" && bookPaging.ready,
     query: {
       q: needle,
       sort,
@@ -355,7 +354,7 @@ export function LibraryApp({
         );
 
   const notePage = useNotePage(
-    remote && notePaging.ready && (view === "notes" || !!needle),
+    remote && notePaging.ready && view === "notes",
     {
       q: needle,
       tag: noteTag,
@@ -367,7 +366,7 @@ export function LibraryApp({
     data,
   );
   const matchedNotes =
-    remote && (view === "notes" || !!needle)
+    remote && view === "notes"
       ? notePage.items
       : data.notes.filter(
           (n) =>
@@ -754,28 +753,6 @@ export function LibraryApp({
           >
             <Menu size={24} />
           </button>
-          <div className="search-field">
-            <Search size={19} />
-            <input
-              aria-label="서재 검색"
-              placeholder="책, 저자, 내 생각을 검색하세요"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                bookPaging.setPage(0);
-                notePaging.setPage(0);
-              }}
-            />
-            {query && (
-              <button
-                className="clear-search"
-                aria-label="검색 지우기"
-                onClick={() => setQuery("")}
-              >
-                ×
-              </button>
-            )}
-          </div>
           <button
             className="topbar-add secondary"
             onClick={() => setEditor({ kind: "note" })}
@@ -900,6 +877,20 @@ export function LibraryApp({
                 </select>
               </label>
               <label>
+                검색
+                <input
+                  type="search"
+                  aria-label="소장 도서 검색"
+                  placeholder="제목·저자·출판사·ISBN"
+                  value={query}
+                  maxLength={200}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    bookPaging.setPage(0);
+                  }}
+                />
+              </label>
+              <label>
                 정렬
                 <select
                   aria-label="도서 정렬"
@@ -995,6 +986,8 @@ export function LibraryApp({
           )}
           {view === "search" ? (
             <LibrarySearchPanel
+              library={data}
+              ownerId={ownerId}
               onOpen={(kind, id) => {
                 if (kind === "book") setDetail(id);
                 else {
@@ -1002,59 +995,6 @@ export function LibraryApp({
                 }
               }}
             />
-          ) : needle ? (
-            <section data-testid="search-results">
-              <div className="section-heading">
-                <h2>
-                  책 <span className="count">{matchedCount}</span>
-                </h2>
-              </div>
-              <PageSizeSelect label="검색 도서" paging={bookPaging} />
-              <div className="shelf-grid">
-                {(remote
-                  ? matchedBooks
-                  : matchedBooks.slice(
-                      bookPaging.offset,
-                      bookPaging.offset + bookPaging.size,
-                    )
-                ).map(bookCard)}
-              </div>
-              <PageNavigation
-                label="검색 도서"
-                paging={bookPaging}
-                total={matchedCount}
-                busy={catalog.loading || !!catalog.error}
-              />
-              <h2 className="section-space">
-                내 기록{" "}
-                <span className="count">
-                  {remote ? notePage.total : matchedNotes.length}
-                </span>
-              </h2>
-              <PageSizeSelect label="검색 기록" paging={notePaging} />
-              <div className="notes-grid">
-                {(remote
-                  ? matchedNotes
-                  : matchedNotes.slice(
-                      notePaging.offset,
-                      notePaging.offset + notePaging.size,
-                    )
-                ).map(noteCard)}
-              </div>
-              <PageNavigation
-                label="검색 기록"
-                paging={notePaging}
-                total={remote ? notePage.total : matchedNotes.length}
-                busy={notePage.loading || !!notePage.error}
-              />
-              {!catalog.loading &&
-                !matchedBooks.length &&
-                !matchedNotes.length && (
-                  <div className="empty-state">
-                    일치하는 기록이 없습니다. 다른 단어로 찾아보세요.
-                  </div>
-                )}
-            </section>
           ) : (
             <>
               {(view === "home" || view === "stats") && (
@@ -1488,13 +1428,13 @@ export function LibraryApp({
                 ))}
             </>
           )}
-          {remote && (view === "books" || needle) && catalog.error && (
+          {remote && view === "books" && catalog.error && (
             <p role="alert" className="error">
               {catalog.error}{" "}
               <button onClick={catalog.reload}>다시 조회</button>
             </p>
           )}
-          {!needle && view === "books" && (
+          {view === "books" && (
             <PageNavigation
               label="소장 도서"
               paging={bookPaging}
@@ -1630,7 +1570,11 @@ export function LibraryApp({
         </Modal>
       )}
       {detail && remote && !detailBook && !editor && (
-        <Modal title="책을 펼쳐 보기" onClose={() => setDetail(null)}>
+        <Modal
+          className="book-detail-modal"
+          title="책을 펼쳐 보기"
+          onClose={() => setDetail(null)}
+        >
           <p
             className="empty-state"
             role={detailState?.error ? "alert" : "status"}
@@ -1640,7 +1584,11 @@ export function LibraryApp({
         </Modal>
       )}
       {detailBook && !editor && (
-        <Modal title="책을 펼쳐 보기" onClose={() => setDetail(null)}>
+        <Modal
+          className="book-detail-modal"
+          title="책을 펼쳐 보기"
+          onClose={() => setDetail(null)}
+        >
           {detailState?.error && (
             <p role="status" className="notice">
               최신 정보를 불러오지 못했습니다. 다시 열어 주세요.

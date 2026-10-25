@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   buildTopicMaterials,
+  materialCategory,
   pageTopicMaterials,
 } from "../../lib/topic-materials";
 import { categories } from "../../lib/catalog";
@@ -71,6 +72,7 @@ const paging = {
 };
 const bookQuery = z.object({
   q: z.string().trim().max(200).default(""),
+  exclude: z.string().uuid().optional(),
   ...bookSearchFields,
   sort: z.enum(["newest", "oldest", "title", "author"]).default("newest"),
   category: z
@@ -140,17 +142,38 @@ function decodeCursor(value: string) {
 }
 const digest = (value: unknown) =>
   sha256Bytes(new TextEncoder().encode(JSON.stringify(value)));
-function topicMatch(data: LocalIndex, kind: string, id: string, topic: string) {
-  const assigned = data.memberships.filter(
+function topicMatch(
+  data: LocalIndex,
+  kind: string,
+  id: string,
+  topic: string,
+  bookId?: string | null,
+) {
+  if (topic === "all") return true;
+  const active = new Set(
+    data.topics.filter((t) => !t.archived_at).map((t) => t.id),
+  );
+  const direct = data.memberships.filter(
     (m) =>
-      m.source_kind === kind && m.source_id === id && m.status !== "rejected",
+      m.source_kind === kind && m.source_id === id && active.has(m.topic_id),
   );
-  return (
-    topic === "all" ||
-    (topic === "unclassified"
-      ? !assigned.length
-      : assigned.some((m) => m.topic_id === topic))
+  const rejected = new Set(
+    direct.filter((m) => m.status === "rejected").map((m) => m.topic_id),
   );
+  const assigned = [
+    ...direct,
+    ...(kind === "note" && bookId
+      ? data.memberships.filter(
+          (m) =>
+            m.source_kind === "book" &&
+            m.source_id === bookId &&
+            active.has(m.topic_id),
+        )
+      : []),
+  ].filter((m) => m.status !== "rejected" && !rejected.has(m.topic_id));
+  return topic === "unclassified"
+    ? !assigned.length
+    : assigned.some((m) => m.topic_id === topic);
 }
 export async function queryBooks(
   data: LocalIndex,
@@ -171,6 +194,7 @@ export async function queryBooks(
     .map(([id]) => id as string);
   let rows = activeBooks(data).filter(
     ({ book: b }) =>
+      b.id !== q.exclude &&
       ["title", "author", "publisher", "isbn"].every((field) =>
         containsSearchField(
           b[field as keyof Book] as string,
@@ -296,8 +320,9 @@ export function queryNotes(data: LocalIndex, input: unknown) {
           (p.book === "unlinked" ? !n.bookId : n.bookId === p.book)) &&
         (!p.from || date >= p.from) &&
         (!p.to || date <= p.to) &&
-        (p.category === "all" || b?.category === p.category) &&
-        topicMatch(data, "note", n.id, p.topic)
+        (p.category === "all" ||
+          materialCategory(b?.category) === p.category) &&
+        topicMatch(data, "note", n.id, p.topic, n.bookId)
       );
     })
     .sort(

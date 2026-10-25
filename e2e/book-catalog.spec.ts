@@ -120,7 +120,10 @@ test("server catalog searches beyond loaded books, ignores late results and open
   await expect(
     page.getByRole("button", { name: /멀리 있는 정서 책/ }).first(),
   ).toBeVisible();
-  const search = page.getByPlaceholder("책, 저자, 내 생각을 검색하세요");
+  const search = page.getByRole("searchbox", {
+    name: "소장 도서 검색",
+    exact: true,
+  });
   await search.fill("느린 검색");
   await slowSeen;
   await search.fill("정서");
@@ -133,12 +136,9 @@ test("server catalog searches beyond loaded books, ignores late results and open
   await page.getByRole("button", { name: "수정", exact: true }).click();
   await expect(page.getByLabel(/책 제목/)).toHaveValue("멀리 있는 정서 책");
   await page.getByRole("button", { name: "닫기", exact: true }).last().click();
-  await page.getByRole("button", { name: "닫기", exact: true }).last().click();
-  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).click();
   await page
-    .getByRole("button", { name: "새 기록", exact: true })
-    .first()
+    .getByRole("dialog")
+    .getByRole("button", { name: "기록", exact: true })
     .click();
   await page.getByLabel("연결할 책 검색", { exact: true }).fill("정서");
   await expect(

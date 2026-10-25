@@ -17,7 +17,10 @@ type RelatedBook = {
   version: number;
   same_file?: boolean;
 };
-export function BookRelations({
+export function BookRelations(props: { book: Book; library: Library }) {
+  return <BookRelationsBody key={props.book.id} {...props} />;
+}
+function BookRelationsBody({
   book,
   library,
 }: {
@@ -132,28 +135,18 @@ export function BookRelations({
           )}
           <details>
             <summary>도서를 직접 찾아 비교</summary>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const id = new FormData(e.currentTarget).get("bookId");
-                if (id === book.id) {
-                  setError("서로 다른 도서를 선택해 주세요.");
-                  return;
-                }
-                setBusy(true);
-                void libraryRequest("/api/books/" + id, { cache: "no-store" })
-                  .then(async (r) => {
-                    const j = await r.json();
-                    if (!r.ok) throw Error(j.error ?? "도서 조회 실패");
-                    choose(j);
-                  })
-                  .catch((e) => setError(e.message))
-                  .finally(() => setBusy(false));
+            <BookPicker
+              library={library}
+              required
+              disabled={busy}
+              excludeId={book.id}
+              autoSelectFirst
+              expandedResults
+              onSelect={(b) => {
+                if (b) choose(b);
+                else setSelected(null);
               }}
-            >
-              <BookPicker library={library} required disabled={busy} />
-              <button disabled={busy}>선택한 도서 비교</button>
-            </form>
+            />
           </details>
           {selected && (
             <form
@@ -206,7 +199,7 @@ export function BookRelations({
                 />
               </label>
               <button className="primary" disabled={busy}>
-                확인한 관계 저장
+                연결
               </button>
             </form>
           )}

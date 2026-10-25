@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Book, Library } from "@/lib/domain";
 import {
   useListPagination,
@@ -12,11 +12,19 @@ export function BookPicker({
   defaultValue = "",
   disabled = false,
   required = false,
+  excludeId,
+  autoSelectFirst = false,
+  expandedResults = false,
+  onSelect,
 }: {
   library: Library;
   defaultValue?: string;
   disabled?: boolean;
   required?: boolean;
+  excludeId?: string;
+  autoSelectFirst?: boolean;
+  expandedResults?: boolean;
+  onSelect?: (book: Book | null) => void;
 }) {
   const [query, setQuery] = useState(""),
     [value, setValue] = useState(defaultValue),
@@ -28,6 +36,7 @@ export function BookPicker({
     enabled: !!library.catalog && !disabled && paging.ready,
     query: {
       q: query,
+      exclude: excludeId,
       sort: "title",
       offset: paging.offset,
       limit: paging.size,
@@ -36,22 +45,53 @@ export function BookPicker({
   });
   const local = library.books.filter(
     (b) =>
-      !query ||
-      [b.title, b.author, b.isbn]
-        .join(" ")
-        .toLowerCase()
-        .includes(query.toLowerCase()),
+      b.id !== excludeId &&
+      (!query ||
+        [b.title, b.author, b.publisher, b.isbn]
+          .join(" ")
+          .toLowerCase()
+          .includes(query.toLowerCase())),
   );
   const options = [
     ...new Map(
       [
-        ...(selected ? [selected] : []),
+        ...(!autoSelectFirst && selected ? [selected] : []),
         ...(library.catalog
           ? catalog.items
           : local.slice(paging.offset, paging.offset + paging.size)),
       ].map((b) => [b.id, b]),
     ).values(),
   ];
+  const selectionStamp = useRef("");
+  const ready = !library.catalog || (!catalog.loading && !catalog.error);
+  const next =
+    options.find((b) => b.id === value) ??
+    (autoSelectFirst ? options[0] : undefined);
+  useEffect(() => {
+    if (!autoSelectFirst || !ready || disabled) return;
+    const stamp = JSON.stringify([
+      query,
+      paging.offset,
+      next?.id,
+      next?.version,
+    ]);
+    if (selectionStamp.current === stamp) return;
+    selectionStamp.current = stamp;
+    setValue(next?.id ?? "");
+    setSelected(next);
+    onSelect?.(next ?? null);
+  }, [autoSelectFirst, ready, disabled, query, paging.offset, next, onSelect]);
+  const pages = (
+    <>
+      <PageSizeSelect label="연결할 책" paging={paging} />
+      <PageNavigation
+        label="연결할 책"
+        paging={paging}
+        total={library.catalog ? catalog.total : local.length}
+        busy={catalog.loading || !!catalog.error}
+      />
+    </>
+  );
   return (
     <div className="book-picker">
       {!disabled && (
@@ -59,7 +99,14 @@ export function BookPicker({
           연결할 책 검색
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (autoSelectFirst) {
+                setValue("");
+                setSelected(undefined);
+                onSelect?.(null);
+              }
+            }}
             placeholder="제목·저자·ISBN으로 전체 서재 검색"
           />
         </label>
@@ -76,7 +123,14 @@ export function BookPicker({
             setSelected(options.find((b) => b.id === e.target.value));
           }}
         >
-          <option value="">책과 연결하지 않은 생각</option>
+          {!autoSelectFirst && (
+            <option value="">책과 연결하지 않은 생각</option>
+          )}
+          {autoSelectFirst && !options.length && (
+            <option value="">
+              {catalog.loading ? "책을 찾는 중…" : "검색 결과 없음"}
+            </option>
+          )}
           {options.map((b) => (
             <option key={b.id} value={b.id}>
               {b.title}
@@ -86,7 +140,11 @@ export function BookPicker({
         </select>
       </label>
       {disabled && <input type="hidden" name="bookId" value={value} />}
-      {catalog.loading && <small className="book-picker-status" role="status">책을 찾고 있습니다…</small>}
+      {catalog.loading && (
+        <small className="book-picker-status" role="status">
+          책을 찾고 있습니다…
+        </small>
+      )}
       {catalog.error && (
         <p role="alert">
           {catalog.error}
@@ -95,22 +153,32 @@ export function BookPicker({
           </button>
         </p>
       )}
-      {!disabled && (
-        <details className="book-picker-pages">
-          <summary>
-            책 검색 결과 ·{" "}
-            {(library.catalog ? catalog.total : local.length).toLocaleString()}
-            권
-          </summary>
-          <PageSizeSelect label="연결할 책" paging={paging} />
-          <PageNavigation
-            label="연결할 책"
-            paging={paging}
-            total={library.catalog ? catalog.total : local.length}
-            busy={catalog.loading || !!catalog.error}
-          />
-        </details>
-      )}
+      {!disabled &&
+        (expandedResults ? (
+          <div className="book-picker-pages">
+            <p>
+              책 검색 결과 ·{" "}
+              {(library.catalog
+                ? catalog.total
+                : local.length
+              ).toLocaleString()}
+              권
+            </p>
+            {pages}
+          </div>
+        ) : (
+          <details className="book-picker-pages">
+            <summary>
+              책 검색 결과 ·{" "}
+              {(library.catalog
+                ? catalog.total
+                : local.length
+              ).toLocaleString()}
+              권
+            </summary>
+            {pages}
+          </details>
+        ))}
     </div>
   );
 }

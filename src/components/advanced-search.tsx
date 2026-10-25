@@ -1,38 +1,34 @@
 "use client";
-import { useState } from "react";
-import type { Book, Note } from "@/lib/domain";
+import { useId, useState } from "react";
+import type { Book, Note, Library } from "@/lib/domain";
 import { categories, categoryName } from "@/lib/catalog";
-import { Modal } from "./modal";
+import { noteKindNames } from "@/lib/note-kinds";
+import { containsSearchField } from "@/lib/search-fields";
+import { FacetPicker } from "./whiteboard/facet-picker";
+import { useBookCatalog } from "./use-book-catalog";
 import { usePagedResource } from "./use-paged-resource";
 import {
   useListPagination,
   PageSizeSelect,
   PageNavigation,
 } from "./list-pagination";
-const kinds = {
-  unclassified: "미분류 메모",
-  thought: "나의 생각",
-  note: "독서 메모",
-  highlight: "하이라이트",
-  review: "서평",
-  claim: "주장",
-  evidence: "근거",
-  counterargument: "반론",
-  reflection: "생각의 변화",
-};
 export function AdvancedSearch({
   mode,
-  onClose,
+  library,
   onOpen,
 }: {
   mode: "book" | "note";
-  onClose: () => void;
+  library: Library;
   onOpen: (kind: string, id: string) => void;
 }) {
   const [submitted, setSubmitted] = useState<Record<string, string> | null>(
-    null,
-  );
-  const [revision, setRevision] = useState(0);
+      null,
+    ),
+    [revision, setRevision] = useState(0),
+    [topic, setTopic] = useState("all"),
+    [tag, setTag] = useState("all"),
+    [bookTitle, setBookTitle] = useState("");
+  const bookListId = useId();
   const paging = useListPagination(
     "advanced-" + mode,
     JSON.stringify(submitted),
@@ -47,25 +43,45 @@ export function AdvancedSearch({
     !!submitted && paging.ready,
     revision,
   );
-  const fields =
-    mode === "book"
-      ? [
-          ["title", "제목"],
-          ["author", "저자"],
-          ["publisher", "출판사"],
-          ["isbn", "ISBN"],
-        ]
-      : [
-          ["title", "제목"],
-          ["content", "메모 내용"],
-          ["bookTitle", "연결된 책 제목"],
-          ["tag", "태그"],
-        ];
+  const topics = usePagedResource<{ topics: { id: string; name: string }[] }>(
+    "/api/library-search/topics",
+    mode === "note",
+  );
+  const tags = usePagedResource<{ tag: string }[]>(
+    "/api/note-tags",
+    mode === "note",
+  );
+  const books = useBookCatalog({
+    enabled: mode === "note" && !!library.catalog && !!bookTitle.trim(),
+    query: { title: bookTitle, sort: "title", limit: 30 },
+    revision: library.books,
+  });
+  const titles = [
+    ...new Set(
+      (library.catalog
+        ? books.items
+        : library.books.filter((b) => containsSearchField(b.title, bookTitle))
+      ).map((b) => b.title),
+    ),
+  ].slice(0, 30);
+  const fields = (
+    <>
+      <label>
+        분야
+        <select name="category" aria-label="분야">
+          <option value="all">모든 분야</option>
+          {categories.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+          {mode === "book" && <option value="unclassified">미분류</option>}
+        </select>
+      </label>
+    </>
+  );
   return (
-    <Modal
-      title={mode === "book" ? "도서 상세 검색" : "메모 상세 검색"}
-      onClose={onClose}
-    >
+    <section className="advanced-search">
       <form
         className="advanced-search-form"
         onSubmit={(e) => {
@@ -76,72 +92,142 @@ export function AdvancedSearch({
               String(value).trim(),
             ]),
           );
-          if (mode === "note" && !values.tag) values.tag = "all";
           setSubmitted(values);
           paging.setPage(0);
           setRevision((n) => n + 1);
         }}
+        onReset={() => {
+          setSubmitted(null);
+          setTopic("all");
+          setTag("all");
+          setBookTitle("");
+        }}
       >
-        <div className="form-row">
-          {fields.map(([name, label]) => (
-            <label key={name}>
-              {label}
-              <input
-                name={name}
-                maxLength={name === "tag" ? 80 : 300}
-                autoFocus={name === "title"}
-              />
-            </label>
-          ))}
-        </div>
-        <div className="form-row">
-          <label>
-            분야
-            <select name="category">
-              <option value="all">모든 분야</option>
-              {categories.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
+        {mode === "book" ? (
+          <>
+            <div className="form-row">
+              {[
+                ["title", "제목"],
+                ["author", "저자"],
+                ["publisher", "출판사"],
+                ["isbn", "ISBN"],
+              ].map(([name, label]) => (
+                <label key={name}>
+                  {label}
+                  <input name={name} maxLength={300} />
+                </label>
               ))}
-              {mode === "book" && <option value="unclassified">미분류</option>}
-            </select>
-          </label>
-          {mode === "book" ? (
-            <label>
-              소장·독서 상태
-              <select name="filter">
-                <option value="all">전체</option>
-                <option value="reading">읽는 중</option>
-                <option value="completed">완독</option>
-                <option value="paper">종이책</option>
-                <option value="ebook">전자책</option>
-                <option value="pdf">PDF</option>
-              </select>
-            </label>
-          ) : (
+            </div>
+            <div className="form-row">
+              {fields}
+              <label>
+                소장·독서 상태
+                <select name="filter">
+                  <option value="all">전체</option>
+                  <option value="reading">읽는 중</option>
+                  <option value="completed">완독</option>
+                  <option value="paper">종이책</option>
+                  <option value="ebook">전자책</option>
+                  <option value="pdf">PDF</option>
+                </select>
+              </label>
+            </div>
+          </>
+        ) : (
+          <div className="memo-search-fields">
             <label>
               종류
-              <select name="kind">
+              <select name="kind" aria-label="종류">
                 <option value="all">모든 기록</option>
-                {Object.entries(kinds).map(([id, name]) => (
+                <option value="unclassified">미분류 메모</option>
+                {Object.entries(noteKindNames).map(([id, name]) => (
                   <option key={id} value={id}>
                     {name}
                   </option>
                 ))}
               </select>
             </label>
-          )}
-        </div>
-        <small className="form-hint">
-          입력한 조건을 모두 만족하는 자료를 찾습니다.
-        </small>
+            {fields}
+            <label>
+              주제
+              <FacetPicker
+                compact
+                label="주제"
+                multiple={false}
+                options={[
+                  { value: "unclassified", label: "미분류" },
+                  ...(topics.data?.topics ?? []).map((t) => ({
+                    value: t.id,
+                    label: t.name,
+                  })),
+                ]}
+                values={topic === "all" ? [] : [topic]}
+                onChange={(ids) => setTopic(ids[0] ?? "all")}
+              />
+              <input type="hidden" name="topic" value={topic} />
+            </label>
+            <label>
+              태그
+              <FacetPicker
+                compact
+                label="태그"
+                multiple={false}
+                options={[
+                  { value: "untagged", label: "태그 없는 기록" },
+                  ...[
+                    ...new Set([
+                      ...(tags.data ?? []).map((t) => t.tag),
+                      ...library.notes.flatMap((n) => n.tags ?? []),
+                    ]),
+                  ].map((t) => ({ value: t, label: t })),
+                ]}
+                values={tag === "all" ? [] : [tag]}
+                onChange={(ids) => setTag(ids[0] ?? "all")}
+              />
+              <input type="hidden" name="tag" value={tag} />
+            </label>
+            <label>
+              제목
+              <input
+                aria-label="제목"
+                name="bookTitle"
+                list={bookListId}
+                value={bookTitle}
+                onChange={(e) => setBookTitle(e.target.value)}
+                placeholder="연결된 책 제목"
+                maxLength={300}
+              />
+              <datalist id={bookListId}>
+                {titles.map((title) => (
+                  <option key={title} value={title}>
+                    {title}
+                  </option>
+                ))}
+              </datalist>
+            </label>
+            <label>
+              메모 내용
+              <input name="content" aria-label="메모 내용" maxLength={300} />
+            </label>
+          </div>
+        )}
+        {(topics.error || tags.error || books.error) && mode === "note" && (
+          <p role="alert">
+            {topics.error || tags.error || books.error}
+            <button
+              type="button"
+              onClick={() => {
+                topics.reload();
+                tags.reload();
+                books.reload();
+              }}
+            >
+              다시 조회
+            </button>
+          </p>
+        )}
         <div className="form-footer">
-          <button
-            type="reset"
-            className="secondary"
-            onClick={() => setSubmitted(null)}
-          >
+          <button type="reset" className="secondary">
             초기화
           </button>
           <button className="primary">검색</button>
@@ -151,20 +237,20 @@ export function AdvancedSearch({
       {submitted && (
         <section
           className="advanced-search-results"
-          aria-label="상세 검색 결과"
+          aria-label={mode === "book" ? "도서 검색 결과" : "메모 검색 결과"}
         >
           <p role="status">
             {result.loading ? "찾는 중…" : `${result.data?.total ?? 0}개 결과`}
           </p>
-          <PageSizeSelect label="상세 검색" paging={paging} />
+          <PageSizeSelect
+            label={mode === "book" ? "도서 검색" : "메모 검색"}
+            paging={paging}
+          />
           {result.data?.items.map((item) => (
             <article key={item.id}>
               <button
                 className="text-button"
-                onClick={() => {
-                  onClose();
-                  onOpen(mode, item.id);
-                }}
+                onClick={() => onOpen(mode, item.id)}
               >
                 <strong>{item.title}</strong>
               </button>
@@ -181,13 +267,13 @@ export function AdvancedSearch({
             </article>
           ))}
           <PageNavigation
-            label="상세 검색"
+            label={mode === "book" ? "도서 검색" : "메모 검색"}
             paging={paging}
             total={result.data?.total ?? 0}
             busy={result.loading}
           />
         </section>
       )}
-    </Modal>
+    </section>
   );
 }

@@ -11,6 +11,7 @@ import {
 } from "./book-records";
 const queryInput = z.object({
   q: z.string().trim().max(200).default(""),
+  exclude: z.string().uuid().optional(),
   ...bookSearchFields,
   sort: z.enum(["newest", "oldest", "title", "author"]).default("newest"),
   category: z
@@ -60,6 +61,7 @@ export async function readBookPage(
     values.push(v);
     return "$" + values.length;
   };
+  if (q.exclude) where.push(`b.id<>${param(q.exclude)}::uuid`);
   for (const field of ["title", "author", "publisher", "isbn"] as const) {
     if (q[field])
       where.push(

@@ -1,242 +1,72 @@
 "use client";
-import { libraryRequest } from "@/client/replica/request";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { Library } from "@/lib/domain";
 import { AdvancedSearch } from "./advanced-search";
-import {
-  useListPagination,
-  PageSizeSelect,
-  PageNavigation,
-} from "./list-pagination";
-import { usePagedResource } from "./use-paged-resource";
-import type { SearchHit } from "@/server/library-search";
-import type { SearchTopic } from "@/server/library-search-context";
+import { IntegratedSearch } from "./integrated-search";
+const empty: Library = { books: [], notes: [], cycles: [] };
+const tabs = { book: "도서 검색", note: "메모 검색", all: "통합 검색" };
 export function LibrarySearchPanel({
   onOpen,
+  library = empty,
+  ownerId = "default",
 }: {
   onOpen: (kind: string, id: string) => void;
+  library?: Library;
+  ownerId?: string;
 }) {
-  const [text, setText] = useState(""),
-    [layer, setLayer] = useState("all"),
-    [error, setError] = useState(""),
-    [searched, setSearched] = useState(false);
-  const [advanced, setAdvanced] = useState<"book" | "note" | null>(null);
-  const [topicId, setTopicId] = useState(""),
-    [topicScope, setTopicScope] = useState("exact"),
-    [expandAliases, setExpandAliases] = useState(false),
-    [topics, setTopics] = useState<SearchTopic[] | null>(null),
-    [loadingTopics, setLoadingTopics] = useState(false);
-  const [submitted, setSubmitted] = useState<Record<string, string>>({
-    text: "",
-    layer: "all",
-  });
-  async function loadTopics() {
-    if (topics || loadingTopics) return;
-    setLoadingTopics(true);
+  const [tab, setTab] = useState<keyof typeof tabs>("book");
+  const key = "library:search-tab:" + ownerId;
+  useEffect(() => {
     try {
-      const r = await libraryRequest("/api/library-search/topics", {
-          cache: "no-store",
-        }),
-        j = await r.json();
-      if (!r.ok) throw Error(j.error ?? "주제를 불러오지 못했습니다.");
-      setTopics(j.topics);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoadingTopics(false);
+      const saved = localStorage.getItem(key);
+      setTab(saved === "note" || saved === "all" ? saved : "book");
+    } catch {
+      setTab("book");
     }
-  }
-  const [revision, setRevision] = useState(0);
-  const paging = useListPagination("search", JSON.stringify(submitted));
-  const result = usePagedResource<{ items: SearchHit[]; total: number }>(
-    "/api/library-search?" +
-      new URLSearchParams({
-        ...submitted,
-        offset: String(paging.offset),
-        limit: String(paging.size),
-      }),
-    searched && paging.ready,
-    revision,
-  );
-  const hits = result.data?.items ?? [];
-  const busy = result.loading;
-  function search() {
-    setError("");
-    setSubmitted({
-      text,
-      layer,
-      topicScope,
-      expandAliases: String(expandAliases),
-      ...(topicId ? { topicId } : {}),
-    });
-    paging.setPage(0);
-    setSearched(true);
-    setRevision((n) => n + 1);
-  }
+  }, [key]);
   return (
     <section className="panel library-search-panel">
-      <div className="form-footer search-advanced-actions">
-        <button onClick={() => setAdvanced("book")}>도서 상세 검색</button>
-        <button onClick={() => setAdvanced("note")}>메모 상세 검색</button>
-      </div>
-      {advanced && (
-        <AdvancedSearch
-          mode={advanced}
-          onClose={() => setAdvanced(null)}
-          onOpen={onOpen}
-        />
-      )}
-      <form
-        className="thought-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void search();
-        }}
+      <div
+        className="library-search-tabs"
+        role="tablist"
+        aria-label="검색 방식"
       >
-        <label>
-          자료 검색어
-          <input
-            value={text}
-            maxLength={200}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="기억나는 문장, 제목, 주제"
-          />
-        </label>
-        <details
-          className="search-topic-options"
-          onToggle={(e) => {
-            if (e.currentTarget.open) void loadTopics();
-          }}
-        >
-          <summary>주제와 다른 표현으로 찾기</summary>
-          <label>
-            주제
-            <select
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
-              disabled={loadingTopics}
-            >
-              <option value="">모든 주제</option>
-              {topics?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            주제 범위
-            <select
-              value={topicScope}
-              onChange={(e) => setTopicScope(e.target.value)}
-              disabled={!topicId}
-            >
-              <option value="exact">선택한 주제만</option>
-              <option value="children">하위 주제도 포함</option>
-              <option value="related">하위 주제와 연결한 주제 포함</option>
-            </select>
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={expandAliases}
-              onChange={(e) => setExpandAliases(e.target.checked)}
-            />
-            내가 정한 다른 표현도 검색
-          </label>
-          <p className="form-hint">
-            사유의 지도에서 확인한 주제와 연결만 사용합니다. ‘다른 표현’은
-            검색어 전체가 주제 이름이나 별칭과 일치할 때 함께 찾습니다.
-          </p>
-          {topics?.length === 0 && (
-            <p className="muted">
-              확인한 주제가 아직 없습니다. 사유의 지도에서 주제를 만들거나
-              제안을 확인해 주세요.
-            </p>
-          )}
-        </details>
-        <label>
-          검색 대상
-          <select value={layer} onChange={(e) => setLayer(e.target.value)}>
-            <option value="all">모두</option>
-            <option value="mine">내 글과 판단</option>
-            <option value="source">책 정보·인용·확인 전 기록</option>
-            <option value="auxiliary">검색용 정리 정보</option>
-          </select>
-        </label>
-        <button className="primary" disabled={busy}>
-          {busy ? "검색 중…" : "자료 찾기"}
-        </button>
-      </form>
-      {(error || result.error) && (
-        <p role="alert" className="error">
-          {error || result.error}
-        </p>
-      )}
-      {searched && !busy && !result.error && !hits.length && (
-        <p role="status">조건에 맞는 자료가 없습니다.</p>
-      )}
-      <PageSizeSelect label="통합 검색" paging={paging} />
-      <div className="search-hit-list">
-        {hits.map((h) => (
-          <article key={h.id}>
-            <small>
-              {h.layer === "mine"
-                ? "내 글과 판단"
-                : h.layer === "auxiliary"
-                  ? "검색용 정리 정보"
-                  : h.voice === "unconfirmed"
-                    ? "누구의 말인지 확인 전"
-                    : "책 정보·인용"}
-            </small>
-            <h3>
-              <button onClick={() => onOpen(h.source.kind, h.source.id)}>
-                {h.title}
-              </button>
-            </h3>
-            <p>{h.quote}</p>
-            <details>
-              <summary>근거 보기</summary>
-              {!!h.matchedTerms?.length && (
-                <p>찾은 표현: {h.matchedTerms.join(" · ")}</p>
-              )}
-              {!!h.topicMatches?.length && (
-                <p>
-                  찾은 주제:{" "}
-                  {h.topicMatches
-                    .map(
-                      (t) =>
-                        `${t.name} (${t.relation === "exact" ? "선택한 주제" : t.relation === "child" ? "하위 주제" : "확인한 연결"})`,
-                    )
-                    .join(" · ")}
-                </p>
-              )}
-              <p>
-                {h.origin === "original"
-                  ? "저장된 원자료"
-                  : h.origin === "human"
-                    ? "사용자 판단"
-                    : "보조 정리 정보"}{" "}
-                ·{" "}
-                {h.coverage === "metadata"
-                  ? "서지 범위"
-                  : h.coverage === "partial"
-                    ? "일부 내용"
-                    : h.coverage === "toc"
-                      ? "목차"
-                      : "기록 범위"}
-              </p>
-            </details>
-          </article>
+        {Object.entries(tabs).map(([id, name]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={"search-tab-" + id}
+            aria-controls={"search-panel-" + id}
+            aria-selected={tab === id}
+            className={tab === id ? "primary" : "secondary"}
+            onClick={() => {
+              setTab(id as keyof typeof tabs);
+              try {
+                localStorage.setItem(key, id);
+              } catch {}
+            }}
+          >
+            {name}
+          </button>
         ))}
       </div>
-      {searched && (
-        <PageNavigation
-          label="통합 검색"
-          paging={paging}
-          total={result.data?.total ?? 0}
-          busy={busy || !!result.error}
-        />
-      )}
+      <div
+        role="tabpanel"
+        id={"search-panel-" + tab}
+        aria-labelledby={"search-tab-" + tab}
+      >
+        {tab === "all" ? (
+          <IntegratedSearch onOpen={onOpen} />
+        ) : (
+          <AdvancedSearch
+            key={tab}
+            mode={tab}
+            library={library}
+            onOpen={onOpen}
+          />
+        )}
+      </div>
     </section>
   );
 }
