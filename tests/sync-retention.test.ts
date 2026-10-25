@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
 import { pruneSyncChanges } from "../src/server/sync/retention";
 import { readSyncMeta, readSyncChanges } from "../src/server/sync/read";
-import { createSyncCursor } from "../src/lib/replica/contracts";
+import {
+  createSyncCursor,
+  parseSyncCursor,
+} from "../src/lib/replica/contracts";
 let f: Awaited<ReturnType<typeof testDatabase>>;
 beforeAll(async () => {
   f = await testDatabase();
@@ -71,14 +74,25 @@ it("removes only a contiguous expired journal prefix and preserves books, revisi
       cursor: createSyncCursor({ owner, epoch: after.epoch, after: "0" }),
     }),
   ).rejects.toMatchObject({ status: 410 });
-  expect(
-    (
-      await readSyncChanges(f.db, owner, {
-        epoch: after.epoch,
-        cursor: createSyncCursor({ owner, epoch: after.epoch, after: "2" }),
-      })
-    ).rows,
-  ).toHaveLength(4);
+  const delta = await readSyncChanges(f.db, owner, {
+    epoch: after.epoch,
+    cursor: createSyncCursor({ owner, epoch: after.epoch, after: "2" }),
+  });
+  // Insert+delete of the same book is delivered once as its current tombstone.
+  expect(delta.rows).toHaveLength(3);
+  expect(delta.rows.map((r) => r.entity).sort()).toEqual([
+    "library_book_exclusions",
+    "library_books",
+    "library_revisions",
+  ]);
+  expect(delta.rows.find((r) => r.entity === "library_books")).toMatchObject({
+    key: JSON.stringify([removed]),
+    deleted: true,
+  });
+  expect(parseSyncCursor(delta.cursor, owner, after.epoch).after).toBe(
+    after.head,
+  );
+  expect(delta.hasMore).toBe(false);
   expect(
     (
       await f.db.query(

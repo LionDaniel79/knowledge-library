@@ -14,6 +14,18 @@ import { syncInput, syncRead, syncSql, validateSyncKey } from "./registry";
 // Batch typical cover images with the scan page. Large originals still use
 // bounded value parts; the SQL running byte budget keeps every page <=512KiB.
 const INLINE_BYTES = 128 * 1024;
+/** Shared wire projection; raw values stay inside Postgres until the page is bounded. */
+export function syncValueEntrySql() {
+  return `CASE WHEN deleted THEN
+   jsonb_build_object('entity',entity,'key',record_key,'revision',revision,'deleted',true,'sha256',NULL,'bytes',0)
+  WHEN raw IS NULL THEN NULL ELSE
+   jsonb_build_object('entity',entity,'key',record_key,'revision',revision,'deleted',false,
+    'sha256',encode(sha256(raw),'hex'),'bytes',octet_length(raw)) ||
+   CASE WHEN octet_length(raw)<=${INLINE_BYTES} THEN jsonb_build_object('inline',convert_from(raw,'UTF8'))
+   ELSE jsonb_build_object('parts',(SELECT jsonb_agg(jsonb_build_object('index',i,'bytes',octet_length(part),'sha256',encode(sha256(part),'hex')) ORDER BY i)
+    FROM generate_series(0,(octet_length(raw)-1)/${VALUE_PART_BYTES}) i
+    CROSS JOIN LATERAL (SELECT substring(raw FROM i*${VALUE_PART_BYTES}+1 FOR ${VALUE_PART_BYTES}) AS part) p)) END END`;
+}
 export async function selectSyncRows(
   tx: Executor,
   owner: string,
@@ -26,18 +38,13 @@ export async function selectSyncRows(
     : `${sql.key} COLLATE "C">$2 COLLATE "C"`;
   const result = await tx.query(
     `WITH selected AS MATERIALIZED (
-  SELECT ${sql.key} AS record_key,convert_to((${sql.value})::text,'UTF8') AS raw,
+  SELECT '${entity}'::text AS entity, false AS deleted, ${sql.key} AS record_key,convert_to((${sql.value})::text,'UTF8') AS raw,
    coalesce(v.revision,0)::text AS revision
   FROM ${sql.table} t LEFT JOIN public.library_sync_row_versions v
    ON v.owner_id=t.owner_id AND v.entity='${entity}' AND v.record_key=${sql.key}
   WHERE t.owner_id=$1 AND ${where} ORDER BY ${sql.key} COLLATE "C" LIMIT $3
  ), described AS (
-  SELECT record_key,jsonb_build_object('entity','${entity}','key',record_key,'revision',revision,'deleted',false,
-   'sha256',encode(sha256(raw),'hex'),'bytes',octet_length(raw)) ||
-   CASE WHEN octet_length(raw)<=${INLINE_BYTES} THEN jsonb_build_object('inline',convert_from(raw,'UTF8'))
-   ELSE jsonb_build_object('parts',(SELECT jsonb_agg(jsonb_build_object('index',i,'bytes',octet_length(part),'sha256',encode(sha256(part),'hex')) ORDER BY i)
-    FROM generate_series(0,(octet_length(raw)-1)/${VALUE_PART_BYTES}) i
-    CROSS JOIN LATERAL (SELECT substring(raw FROM i*${VALUE_PART_BYTES}+1 FOR ${VALUE_PART_BYTES}) AS part) p)) END AS entry
+  SELECT record_key,${syncValueEntrySql()} AS entry
   FROM selected
  ), bounded AS (
   SELECT entry,row_number() OVER(ORDER BY record_key COLLATE "C") AS pos,

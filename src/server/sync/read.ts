@@ -6,7 +6,6 @@ import {
   syncEntity,
   SYNC_PROTOCOL,
   type SyncPage,
-  type SyncRow,
 } from "../../lib/replica/contracts";
 import { LibraryError, type Database } from "../library-store";
 import {
@@ -16,7 +15,8 @@ import {
   syncSql,
   syncEntityAvailable,
 } from "./registry";
-import { assertSyncResponse, selectSyncRows, tombstone } from "./values";
+import { assertSyncResponse, selectSyncRows } from "./values";
+import { selectSyncChangePage } from "./change-values";
 const count = z.number().int().min(1).max(200).default(50);
 const scanInput = z
   .object({
@@ -158,59 +158,13 @@ export async function readSyncChanges(
         [owner, position.after, v.limit],
       )
     ).rows;
-    const current = new Map<string, SyncRow>();
-    for (const name of new Set(events.map((e) => e.entity))) {
-      const entity = syncInput(syncEntity, name),
-        keys = [
-          ...new Set(
-            events
-              .filter((e) => e.entity === entity)
-              .map((e) => String(e.record_key)),
-          ),
-        ];
-      for (const row of await selectSyncRows(tx, owner, entity, {
-        keys,
-        limit: 200,
-      }))
-        current.set(entity + "\0" + row.key, row);
-      const deleted = (
-        await tx.query(
-          "SELECT record_key,revision::text FROM public.library_sync_row_versions WHERE owner_id=$1 AND entity=$2 AND record_key=ANY($3::text[]) AND deleted",
-          [owner, entity, keys],
-        )
-      ).rows;
-      for (const r of deleted)
-        current.set(
-          entity + "\0" + r.record_key,
-          tombstone(entity, r.record_key, r.revision),
-        );
-    }
-    const rows: SyncRow[] = [];
-    let after = position.after;
-    for (const event of events) {
-      const row = current.get(event.entity + "\0" + event.record_key);
-      if (!row)
-        throw new LibraryError(409, "변경된 자료를 다시 확인해야 합니다.");
-      const candidate = {
-        epoch: head.epoch,
-        head: head.head,
-        cursor: createSyncCursor({
+    const { rows, after } = events.length
+      ? await selectSyncChangePage(
+          tx,
           owner,
-          epoch: head.epoch,
-          after: event.revision,
-        }),
-        rows: [...rows, row],
-        hasMore: true,
-      };
-      try {
-        assertSyncResponse(candidate);
-      } catch (e) {
-        if (!rows.length) throw e;
-        break;
-      }
-      rows.push(row);
-      after = event.revision;
-    }
+          events as { entity: string; record_key: string; revision: string }[],
+        )
+      : { rows: [], after: position.after };
     const page = {
       epoch: head.epoch,
       head: head.head,

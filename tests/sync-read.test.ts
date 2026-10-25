@@ -214,6 +214,15 @@ it("works with read-only table privileges without access to private sync helper 
     expect(
       (await scanSyncRows(f.db, owner, { entity: "library_books" })).rows,
     ).toHaveLength(1);
+    const meta = await readSyncMeta(f.db, owner, false);
+    expect(
+      (
+        await readSyncChanges(f.db, owner, {
+          epoch: meta.epoch,
+          cursor: createSyncCursor({ owner, epoch: meta.epoch, after: "0" }),
+        })
+      ).rows,
+    ).toHaveLength(1);
     await expect(
       f.db.query("SELECT public.library_sync_emit($1,$2,$3,$4::jsonb)", [
         owner,
