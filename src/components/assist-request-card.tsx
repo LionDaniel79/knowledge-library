@@ -4,6 +4,10 @@ import { Trash2 } from "lucide-react";
 import { libraryRequest } from "@/client/replica/request";
 import type { Library } from "@/lib/domain";
 import type { SynthesisResult } from "@/lib/assist-synthesis";
+import {
+  thoughtRelationNames,
+  type ThoughtRelation,
+} from "@/lib/thought-map/types";
 const statusNames: Record<string, string> = {
   queued: "처리 대기",
   claimed: "실행 준비",
@@ -80,6 +84,18 @@ export function AssistRequestCard({
   }
   const suggestions = (value.result?.output?.suggestions ??
     []) as SynthesisResult["suggestions"];
+  const output = value.result?.output,
+    legacyEvidence =
+      r.purpose === "synthesis"
+        ? []
+        : [
+            ...(output?.evidence ?? []),
+            ...(output?.items ?? output?.tags ?? []).map(
+              (v: any) => v.evidence,
+            ),
+            output?.before,
+            output?.after,
+          ].filter(Boolean);
   return (
     <article className="assist-request-row">
       <details
@@ -162,17 +178,51 @@ export function AssistRequestCard({
                 []
               ).map((item: any, index: number) => (
                 <p key={index}>
-                  {item.value ?? item.tag}
+                  <span>
+                    {item.kind === "topic" ? "주제" : "태그"}:{" "}
+                    {item.value ?? item.tag}
+                  </span>
                   <button
                     disabled={busy || adopted(index)}
                     onClick={() => void adopt(index)}
                   >
-                    {adopted(index) ? "저장함" : "제안 저장"}
+                    {adopted(index)
+                      ? "저장함"
+                      : item.kind === "topic"
+                        ? "주제로 저장"
+                        : "태그로 저장"}
                   </button>
                 </p>
               ))}
               {value.result.output?.explanation && (
                 <p>{value.result.output.explanation}</p>
+              )}
+              {r.purpose === "compare_notes" && output?.relation && (
+                <p>
+                  생각의 관계:{" "}
+                  {thoughtRelationNames[output.relation as ThoughtRelation] ??
+                    output.relation}
+                </p>
+              )}
+              {!!legacyEvidence.length && (
+                <details>
+                  <summary>근거 기록</summary>
+                  {legacyEvidence.map((e: any, i: number) => {
+                    const id =
+                      e.noteId ?? value.scope?.sources?.[e.sourceIndex]?.id;
+                    return (
+                      <div key={i}>
+                        <blockquote>{e.quote}</blockquote>
+                        {id && onOpen && (
+                          <button onClick={() => onOpen("note", id)}>
+                            {library.notes.find((n) => n.id === id)?.title ||
+                              `원문 기록 ${i + 1}`}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </details>
               )}
             </>
           )}

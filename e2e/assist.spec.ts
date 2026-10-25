@@ -19,7 +19,12 @@ test.beforeAll(async () => {
     })
   ).outputFiles[0].text;
 });
-async function mount(page: any, stale = false, limit = "0.5") {
+async function mount(
+  page: any,
+  stale = false,
+  limit = "0.5",
+  purpose = "synthesis",
+) {
   const notes = [0, 1].map((i) => ({
     ...previewLibrary.notes[0],
     id: crypto.randomUUID(),
@@ -32,7 +37,7 @@ async function mount(page: any, stale = false, limit = "0.5") {
   const id = crypto.randomUUID(),
     request = {
       id,
-      purpose: "synthesis",
+      purpose,
       status: "completed",
       created_at: "2026-10-25T00:00:00Z",
       updated_at: "2026-10-25T00:00:00Z",
@@ -98,32 +103,94 @@ async function mount(page: any, stale = false, limit = "0.5") {
                       valid: true,
                       costUsd: "0.001",
                       provenance: { model: "gpt-6-luna" },
-                      output: {
-                        suggestions: [
-                          {
-                            kind: "note_connection",
-                            title: "공감과 경계의 연결",
-                            reason: "서로 다른 기록을 함께 살펴볼 가치",
-                            sourceIndices: [0, 1],
-                            topicIds: [],
-                            outline: [],
-                            evidence: [
-                              {
-                                sourceIndex: 0,
+                      output:
+                        purpose === "compare_notes"
+                          ? {
+                              relation: "expands",
+                              explanation: "이전 생각을 넓힌 비교 설명",
+                              before: {
+                                noteId: notes[0].id,
+                                noteVersion: 1,
                                 start: 0,
                                 end: 2,
                                 quote: "공감",
                               },
-                              {
-                                sourceIndex: 1,
+                              after: {
+                                noteId: notes[1].id,
+                                noteVersion: 1,
                                 start: 0,
                                 end: 2,
                                 quote: "경계",
                               },
-                            ],
-                          },
-                        ],
-                      },
+                            }
+                          : purpose === "tag_suggestion"
+                            ? {
+                                tags: [
+                                  {
+                                    tag: "관계",
+                                    evidence: {
+                                      sourceIndex: 0,
+                                      start: 0,
+                                      end: 2,
+                                      quote: "공감",
+                                    },
+                                  },
+                                ],
+                              }
+                            : purpose === "organize_note"
+                              ? {
+                                  items: [
+                                    {
+                                      kind: "topic",
+                                      value: "관계",
+                                      evidence: {
+                                        sourceIndex: 0,
+                                        start: 0,
+                                        end: 2,
+                                        quote: "공감",
+                                      },
+                                    },
+                                  ],
+                                }
+                              : purpose === "excerpt_explanation"
+                                ? {
+                                    explanation: "구절 설명",
+                                    evidence: [
+                                      {
+                                        sourceIndex: 0,
+                                        start: 0,
+                                        end: 2,
+                                        quote: "공감",
+                                      },
+                                    ],
+                                  }
+                                : {
+                                    suggestions: [
+                                      {
+                                        kind: "note_connection",
+                                        title: "공감과 경계의 연결",
+                                        reason:
+                                          "서로 다른 기록을 함께 살펴볼 가치",
+                                        sourceIndices: [0, 1],
+                                        topicIds: [],
+                                        outline: [],
+                                        evidence: [
+                                          {
+                                            sourceIndex: 0,
+                                            start: 0,
+                                            end: 2,
+                                            quote: "공감",
+                                          },
+                                          {
+                                            sourceIndex: 1,
+                                            start: 0,
+                                            end: 2,
+                                            quote: "경계",
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
                     },
                   },
                 ],
@@ -290,3 +357,30 @@ test("compact AI rows and detailed evidence fit a mobile screen", async ({
     fullPage: false,
   });
 });
+
+for (const purpose of [
+  "compare_notes",
+  "tag_suggestion",
+  "organize_note",
+  "excerpt_explanation",
+])
+  test(`legacy ${purpose} keeps source evidence readable`, async ({ page }) => {
+    await mount(page, false, "0.5", purpose);
+    await page.locator(".assist-request-row summary").click();
+    const evidence = page
+      .locator(".assist-request-detail details")
+      .filter({ has: page.locator("summary", { hasText: "근거 기록" }) });
+    await expect(evidence).toHaveCount(1);
+    await evidence.locator("summary").click();
+    await expect(evidence.getByText("공감", { exact: true })).toBeVisible();
+    if (purpose === "organize_note")
+      await expect(page.getByText("주제: 관계", { exact: true })).toBeVisible();
+    if (purpose === "tag_suggestion")
+      await expect(page.getByText("태그: 관계", { exact: true })).toBeVisible();
+    if (purpose === "compare_notes") {
+      await expect(
+        page.getByText("생각의 관계: 확장", { exact: true }),
+      ).toBeVisible();
+      await expect(evidence.getByText("경계", { exact: true })).toBeVisible();
+    }
+  });
