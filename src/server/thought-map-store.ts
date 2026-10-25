@@ -1,6 +1,7 @@
 import { withSyncWrite } from "./sync/write";
 import { insertCandidate, mutateCandidate } from "./thought-candidates";
 import { readActiveNote } from "./active-note";
+import { readActiveBook } from "./active-book";
 import type { CandidateInput } from "../lib/thought-map/types";
 import { randomUUID, createHash } from "node:crypto";
 import { LibraryError, type Database, type Executor } from "./library-store";
@@ -45,12 +46,14 @@ export async function ownRow(
   const row =
     table === "library_active_notes"
       ? await readActiveNote(tx, owner, id, lock)
-      : (
-          await tx.query(
-            `SELECT * FROM ${table} WHERE owner_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
-            [owner, id],
-          )
-        ).rows[0];
+      : table === "library_active_books"
+        ? await readActiveBook(tx, owner, id, lock)
+        : (
+            await tx.query(
+              `SELECT * FROM ${table} WHERE owner_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
+              [owner, id],
+            )
+          ).rows[0];
   if (!row) throw new LibraryError(404, "자료를 찾을 수 없습니다.");
   return row;
 }

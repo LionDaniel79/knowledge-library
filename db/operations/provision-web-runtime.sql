@@ -14,7 +14,7 @@ GRANT SELECT ON library_active_notes TO library_web_runtime;
 GRANT SELECT ON library_active_books,library_active_documents,library_active_cycles TO library_web_runtime;
 GRANT SELECT, INSERT, UPDATE ON library_book_exclusions TO library_web_runtime;
 GRANT SELECT, INSERT, UPDATE ON
-  library_books, library_cycles, library_notes, library_operations,
+  library_books, library_cycles, library_notes, library_operations, library_whiteboards,
   library_note_trash,
   library_annual_metrics, library_documents, library_shelves,
   library_connections, library_research, library_research_items,

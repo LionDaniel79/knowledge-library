@@ -1,6 +1,7 @@
 import { syncQuery, withSyncWrite } from "./sync/write";
 import { randomUUID, createHash } from "node:crypto";
 import { readActiveNote } from "./active-note";
+import { readActiveBook } from "./active-book";
 import { z } from "zod";
 import {
   curationItemSchema,
@@ -78,17 +79,10 @@ export async function readCurationSource(
     };
   }
   z.string().uuid().parse(source.id);
-  const table =
-    source.kind === "book" ? "library_active_books" : "library_active_notes";
   const row =
     source.kind === "note"
       ? await readActiveNote(db, owner, source.id, lock)
-      : (
-          await db.query(
-            `SELECT * FROM ${table} WHERE owner_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
-            [owner, source.id],
-          )
-        ).rows[0];
+      : await readActiveBook(db, owner, source.id, lock);
   if (!row) throw new LibraryError(404, "자료를 찾을 수 없습니다.");
   if (source.kind === "book" && row.source_data?.app === "Local PDF") {
     const eligible = await db.query(

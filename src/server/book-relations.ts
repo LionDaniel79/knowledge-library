@@ -51,7 +51,7 @@ export function createBookRelationStore(
       const ids = [p.leftId, p.rightId].sort(),
         books = (
           await tx.query(
-            "SELECT id,title,author,publisher,isbn,version FROM library_active_books WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+            "SELECT b.id,b.title,b.author,b.publisher,b.isbn,b.version FROM library_books b WHERE b.owner_id=$1 AND b.id=ANY($2::uuid[]) AND NOT EXISTS (SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=b.owner_id AND e.id=b.id AND e.state='excluded') ORDER BY b.id FOR UPDATE OF b",
             [owner, ids],
           )
         ).rows;
