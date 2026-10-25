@@ -8,9 +8,26 @@ export function failure(error: unknown) {
       { error: error.issues[0]?.message ?? "입력을 확인해 주세요." },
       { status: 400 },
     );
-  console.error("Library request failed", {
+  const diagnostics: Record<string, string> = {
     name: error instanceof Error ? error.name : "UnknownError",
-  });
+  };
+  if (error instanceof Error) {
+    const details = error as Error & { code?: unknown };
+    if (
+      typeof details.code === "string" &&
+      (/^[0-9A-Z]{5}$/.test(details.code) ||
+        [
+          "ECONNRESET",
+          "ECONNREFUSED",
+          "ETIMEDOUT",
+          "EAI_AGAIN",
+          "ENOTFOUND",
+        ].includes(details.code))
+    )
+      diagnostics.code = details.code;
+  }
+  // Never log messages, SQL, parameters, request bodies or session credentials.
+  console.error("Library request failed", diagnostics);
   return Response.json(
     {
       error:
