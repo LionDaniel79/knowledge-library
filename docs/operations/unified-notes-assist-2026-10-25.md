@@ -39,3 +39,12 @@
 작은 개선으로 남긴 항목: 요청 행은 현재 날짜만 표시하므로 같은 날의 여러 요청을 시·분으로 구별하는 표시는 추후 추가할 수 있다. 이는 결과 조회·저장·삭제를 막지 않는다.
 
 대표 표본 밖의 누락, 실제 iPhone 키보드, 기기 간 전달, 계정의 실제 모델 권한/응답 품질은 이 코드 검토에서 확인하지 않았다. 전자는 전송 미리보기/범위 제한으로 알리고, 실기 동기화와 실제 호출 검수는 11월 1일 목록에 유지한다.
+
+
+## 배포 확인
+
+- 구현 `7dad0f0`, 검토 수정 `569b2ae`를 GitHub main에 반영했다.
+- 단위·고립 DB 85/85, 모의 화면 23/23, TypeScript와 diff 검사 통과. 실제 개인 DB/기기 동기화는 실행하지 않았다.
+- Vercel 운영 배포 `dpl_EADBqA666WLtbLHH1QSEzREm8erF` READY. 공개 주소 https://knowledge-library-inky.vercel.app/ .
+- 공개 빌드 `3zl0ELBiCu_mZbTsR6AQq`의 정적 JS/CSS 43개가 모두 HTTP200이며 새 필터/AI 모델/기록 확인/비교 관계 코드가 포함됐다. 로그인 또는 DB 조회 없이 확인했다.
+- 검수 로그/스크린샷은 `E:\지식서재 작업\private-data\operations\unified-notes-assist-20261025`에 보관한다. 실행 중인 PC 서버와 OCR은 변경하지 않았다.
