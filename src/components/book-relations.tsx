@@ -31,6 +31,7 @@ function BookRelationsBody({
     [selected, setSelected] = useState<RelatedBook | null>(null),
     [relation, setRelation] = useState("same_edition"),
     [reason, setReason] = useState(""),
+    [manualOpen, setManualOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const requests = useRef(new Map<string, string>());
@@ -122,7 +123,14 @@ function BookRelationsBody({
               <p>
                 {c.author} · {c.isbn || "ISBN 미입력"}
               </p>
-              <button type="button" disabled={busy} onClick={() => choose(c)}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setManualOpen(false);
+                  choose(c);
+                }}
+              >
                 {c.same_file ? "동일 파일 후보 확인" : "같은 ISBN 후보 확인"}
               </button>
             </article>
@@ -133,20 +141,33 @@ function BookRelationsBody({
               있습니다.
             </p>
           )}
-          <details>
+          <details
+            open={manualOpen}
+            onToggle={(e) => {
+              if (e.currentTarget !== e.target) return;
+              const open = e.currentTarget.open;
+              if (open) {
+                setSelected(null);
+                setReason("");
+              }
+              setManualOpen(open);
+            }}
+          >
             <summary>도서를 직접 찾아 비교</summary>
-            <BookPicker
-              library={library}
-              required
-              disabled={busy}
-              excludeId={book.id}
-              autoSelectFirst
-              expandedResults
-              onSelect={(b) => {
-                if (b) choose(b);
-                else setSelected(null);
-              }}
-            />
+            {manualOpen && (
+              <BookPicker
+                library={library}
+                required
+                disabled={busy}
+                excludeId={book.id}
+                autoSelectFirst
+                expandedResults
+                onSelect={(b) => {
+                  if (b) choose(b);
+                  else setSelected(null);
+                }}
+              />
+            )}
           </details>
           {selected && (
             <form

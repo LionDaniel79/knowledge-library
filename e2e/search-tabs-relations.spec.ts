@@ -19,7 +19,7 @@ test.beforeAll(async () => {
     })
   ).outputFiles[0].text;
 });
-async function mount(page: Page, mode = "relations") {
+async function mount(page: Page, mode = "relations", withCandidate = false) {
   const books = ["첫번째 원본", "두번째 판본", "세번째 번역"].map(
     (title, i) => ({
       ...previewLibrary.books[0],
@@ -44,7 +44,7 @@ async function mount(page: Page, mode = "relations") {
       return r.fulfill({
         json: {
           source: books.find((b) => b.id === id),
-          candidates: [],
+          candidates: withCandidate ? [books[2]] : [],
           relations: [],
           localAvailable: true,
         },
@@ -298,3 +298,32 @@ for (const width of [390, 1280])
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width);
   });
+
+test("candidate to direct-search transition always connects the displayed target", async ({
+  page,
+}) => {
+  const f = await mount(page, "relations", true);
+  await page.getByText("다른 소장본·판본 연결", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "같은 ISBN 후보 확인", exact: true })
+    .click();
+  await page.getByText("도서를 직접 찾아 비교", { exact: true }).click();
+  const picker = page.locator(".book-picker select[name=bookId]");
+  await expect(picker).toHaveValue(f.books[1].id);
+  await page
+    .getByRole("button", { name: "같은 ISBN 후보 확인", exact: true })
+    .click();
+  const direct = page
+    .getByText("도서를 직접 찾아 비교", { exact: true })
+    .locator("..");
+  await expect(direct).not.toHaveAttribute("open", "");
+  await page.getByText("도서를 직접 찾아 비교", { exact: true }).click();
+  await expect(picker).toHaveValue(f.books[1].id);
+  await picker.selectOption(f.books[1].id);
+  await page
+    .getByLabel("확인한 근거", { exact: true })
+    .fill("선택한 두번째 판본을 확인");
+  await page.getByRole("button", { name: "연결", exact: true }).click();
+  await expect.poll(() => f.calls.filter((c) => c.rightId).length).toBe(1);
+  expect(f.calls.find((c) => c.rightId).rightId).toBe(f.books[1].id);
+});
