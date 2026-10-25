@@ -10,3 +10,10 @@
 판단: 태그 관리는 기존 공유 선택기를 확장해 삭제 명령을 복제하지 않았다. 검색 결과 카드는 부모의 기존 렌더러를 전달해 같은 책/메모 동작을 보존한다. 제목·저자·독립 메모 등 직접 검색 범위는 예전 상단 검색을 따른다.
 
 모의 PC/휴대폰 및 고립 DB로 확인한다. 개인 자료를 작성/삭제하지 않았고, 실제 기기 간 동기화와 iPhone 키보드는11/1검수 목록에 유지한다. 원본 PDF·PC 서버·OCR·API 키·유료 AI 호출은 변경하지 않는다.
+
+
+## 최종 검증·배포
+- 관련 단위·고립 DB23/23, 모의 화면21/21, 타입/diff 검사 통과. 신선한 전체 코드 검토1회에서 Critical/Important/Minor 지적 없음.
+- 구현10f0cb9를 GitHub main에 반영했고 Vercel 운영 배포dpl_CSPCn5DN9jZpzqsvVieBA4Chhp6r가 READY다.
+- https://knowledge-library-inky.vercel.app/ 의 빌드3X-Dqr7CQgw6bIpXaw3Kp에서 정적 자산43개 모두HTTP200, 새 기록·태그 선택/검색·기존 카드 전달·도서/기록 검색 코드를 확인했다. 로그인/개인DB 호출 없이 확인했다.
+- 검수 로그와 휴대폰 화면은 `E:\지식서재 작업\private-data\operations\reading-shortcuts-search-20261025`에 보관한다. 실제 동기화·iPhone 키보드 검수는11/1에 유지한다.
