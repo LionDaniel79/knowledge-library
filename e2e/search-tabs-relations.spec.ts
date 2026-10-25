@@ -188,9 +188,9 @@ test("memo search combines searchable topic and tag, suggested book title and co
   await page.getByRole("option", { name: "관계", exact: true }).click();
   await page.getByRole("button", { name: "태그 선택", exact: true }).click();
   await page
-    .getByRole("textbox", { name: "태그 검색", exact: true })
+    .getByRole("searchbox", { name: "태그 검색", exact: true })
     .fill("공감");
-  await page.getByRole("option", { name: "공감", exact: true }).click();
+  await page.getByRole("button", { name: "공감", exact: true }).click();
   await page
     .getByRole("combobox", { name: "제목", exact: true })
     .fill("두번째");
@@ -213,7 +213,7 @@ test("memo search combines searchable topic and tag, suggested book title and co
     content: "경계",
   });
   const fields = await page
-    .locator(".memo-search-fields > label")
+    .locator(".memo-search-fields > label, .memo-search-fields > .tag-filter")
     .evaluateAll((es) => es.map((e) => e.firstChild?.textContent?.trim()));
   expect(fields).toEqual(["종류", "분야", "주제", "태그", "제목", "메모 내용"]);
 });
@@ -260,12 +260,10 @@ test("integrated search moves the old top search into the third tab", async ({
   await page
     .getByRole("searchbox", { name: "통합 검색어", exact: true })
     .fill("저자1");
-  await page.getByRole("button", { name: "검색", exact: true }).click();
-  await expect.poll(() => f.calls.filter((c) => c.searchQuery).length).toBe(1);
-  expect(f.calls.find((c) => c.searchQuery).searchQuery).toMatchObject({
-    text: "저자1",
-    layer: "all",
-  });
+  await expect(page.locator(".integrated-search .shelf-card")).toHaveCount(1);
+  await expect(page.locator(".integrated-search .shelf-card")).toContainText(
+    f.books[1].title,
+  );
   await page.evaluate(() => (window as any).render());
   await expect(
     page.getByRole("tab", { name: "통합 검색", exact: true }),

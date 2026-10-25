@@ -4,6 +4,7 @@ import type { Book, Note, Library } from "@/lib/domain";
 import { categories, categoryName } from "@/lib/catalog";
 import { noteKindNames } from "@/lib/note-kinds";
 import { containsSearchField } from "@/lib/search-fields";
+import { NoteTagFilter } from "./note-tag-filter";
 import { FacetPicker } from "./whiteboard/facet-picker";
 import { useBookCatalog } from "./use-book-catalog";
 import { usePagedResource } from "./use-paged-resource";
@@ -16,10 +17,14 @@ export function AdvancedSearch({
   mode,
   library,
   onOpen,
+  onUpdated = async () => {},
+  preview = false,
 }: {
   mode: "book" | "note";
   library: Library;
   onOpen: (kind: string, id: string) => void;
+  onUpdated?: () => Promise<void>;
+  preview?: boolean;
 }) {
   const [submitted, setSubmitted] = useState<Record<string, string> | null>(
       null,
@@ -45,10 +50,6 @@ export function AdvancedSearch({
   );
   const topics = usePagedResource<{ topics: { id: string; name: string }[] }>(
     "/api/library-search/topics",
-    mode === "note",
-  );
-  const tags = usePagedResource<{ tag: string }[]>(
-    "/api/note-tags",
     mode === "note",
   );
   const books = useBookCatalog({
@@ -166,26 +167,25 @@ export function AdvancedSearch({
               />
               <input type="hidden" name="topic" value={topic} />
             </label>
-            <label>
-              태그
-              <FacetPicker
-                compact
-                label="태그"
-                multiple={false}
-                options={[
-                  { value: "untagged", label: "태그 없는 기록" },
-                  ...[
-                    ...new Set([
-                      ...(tags.data ?? []).map((t) => t.tag),
-                      ...library.notes.flatMap((n) => n.tags ?? []),
-                    ]),
-                  ].map((t) => ({ value: t, label: t })),
-                ]}
-                values={tag === "all" ? [] : [tag]}
-                onChange={(ids) => setTag(ids[0] ?? "all")}
+            <>
+              <NoteTagFilter
+                searchable
+                tags={library.notes.flatMap((n) => n.tags ?? [])}
+                value={tag}
+                onChange={setTag}
+                preview={preview}
+                onUpdated={async () => {
+                  setRevision((n) => n + 1);
+                  await onUpdated();
+                }}
+                onRemoved={(removed) =>
+                  setSubmitted((old) =>
+                    old?.tag === removed ? { ...old, tag: "all" } : old,
+                  )
+                }
               />
               <input type="hidden" name="tag" value={tag} />
-            </label>
+            </>
             <label>
               제목
               <input
@@ -211,14 +211,13 @@ export function AdvancedSearch({
             </label>
           </div>
         )}
-        {(topics.error || tags.error || books.error) && mode === "note" && (
+        {(topics.error || books.error) && mode === "note" && (
           <p role="alert">
-            {topics.error || tags.error || books.error}
+            {topics.error || books.error}
             <button
               type="button"
               onClick={() => {
                 topics.reload();
-                tags.reload();
                 books.reload();
               }}
             >

@@ -2,18 +2,24 @@
 import { useEffect, useState } from "react";
 import type { Library } from "@/lib/domain";
 import { AdvancedSearch } from "./advanced-search";
-import { IntegratedSearch } from "./integrated-search";
+import { IntegratedSearch, type SearchCards } from "./integrated-search";
 const empty: Library = { books: [], notes: [], cycles: [] };
 const tabs = { book: "도서 검색", note: "메모 검색", all: "통합 검색" };
 export function LibrarySearchPanel({
   onOpen,
   library = empty,
   ownerId = "default",
+  preview = false,
+  onUpdated = async () => {},
+  renderBook,
+  renderNote,
 }: {
   onOpen: (kind: string, id: string) => void;
   library?: Library;
   ownerId?: string;
-}) {
+  preview?: boolean;
+  onUpdated?: () => Promise<void>;
+} & SearchCards) {
   const [tab, setTab] = useState<keyof typeof tabs>("book");
   const key = "library:search-tab:" + ownerId;
   useEffect(() => {
@@ -57,13 +63,20 @@ export function LibrarySearchPanel({
         aria-labelledby={"search-tab-" + tab}
       >
         {tab === "all" ? (
-          <IntegratedSearch onOpen={onOpen} />
+          <IntegratedSearch
+            library={library}
+            onOpen={onOpen}
+            renderBook={renderBook}
+            renderNote={renderNote}
+          />
         ) : (
           <AdvancedSearch
             key={tab}
             mode={tab}
             library={library}
             onOpen={onOpen}
+            preview={preview}
+            onUpdated={onUpdated}
           />
         )}
       </div>

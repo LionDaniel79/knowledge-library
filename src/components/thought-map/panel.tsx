@@ -72,14 +72,10 @@ export function ThoughtMapPanel({
   }
   return (
     <section className="thought-panel">
-      <div className="thought-actions">
-        <button disabled={busy} onClick={resource.reload}>
-          지도 새로고침
-        </button>
-      </div>
       {(error || resource.error) && (
         <p className="error" role="alert">
           {error || resource.error} 입력 중인 내용은 유지됩니다.
+          <button onClick={resource.reload}>다시 불러오기</button>
         </p>
       )}
       {message && <p role="status">{message}</p>}

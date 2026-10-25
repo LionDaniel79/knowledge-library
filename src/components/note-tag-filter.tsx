@@ -13,12 +13,16 @@ export function NoteTagFilter({
   onChange,
   onUpdated,
   preview,
+  searchable = false,
+  onRemoved,
 }: {
   tags: string[];
   value: string;
   onChange: (tag: string) => void;
   onUpdated: () => Promise<void>;
   preview: boolean;
+  searchable?: boolean;
+  onRemoved?: (tag: string) => void;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
   const [items, setItems] = useState<Tag[]>([]),
@@ -26,7 +30,8 @@ export function NoteTagFilter({
       null,
     ),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [query, setQuery] = useState("");
   async function load() {
     if (preview) return;
     setError("");
@@ -58,6 +63,7 @@ export function NoteTagFilter({
       if (value === pending.tag) onChange("all");
       setPending(null);
       setItems((items) => items.filter((t) => t.tag !== pending.tag));
+      onRemoved?.(pending.tag);
       void onUpdated().catch((e) => setError(e.message));
       void load();
     } catch (e) {
@@ -66,9 +72,18 @@ export function NoteTagFilter({
       setBusy(false);
     }
   }
-  const options = [...new Set([...tags, ...items.map((t) => t.tag)])].sort(
-    (a, b) => a.localeCompare(b, "ko"),
-  );
+  const options = [
+    ...new Set([
+      ...(searchable && !preview ? [] : tags),
+      ...items.map((t) => t.tag),
+    ]),
+  ]
+    .filter(
+      (t) =>
+        !searchable ||
+        t.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+    )
+    .sort((a, b) => a.localeCompare(b, "ko"));
   function choose(tag: string) {
     onChange(tag);
     if (details.current) details.current.open = false;
@@ -79,13 +94,17 @@ export function NoteTagFilter({
       <details
         ref={details}
         onToggle={(e) => {
-          if (e.currentTarget.open) {
+          if (e.target === e.currentTarget && e.currentTarget.open) {
+            setQuery("");
             setPending(null);
             void load();
           }
         }}
       >
-        <summary aria-label="기록 태그 필터 · 태그 관리">
+        <summary
+          role={searchable ? "button" : undefined}
+          aria-label={searchable ? "태그 선택" : "기록 태그 필터 · 태그 관리"}
+        >
           {value === "all"
             ? "모든 태그"
             : value === "untagged"
@@ -94,6 +113,20 @@ export function NoteTagFilter({
           <span>관리 ▾</span>
         </summary>
         <div className="tag-dropdown">
+          {searchable && (
+            <input
+              type="search"
+              aria-label="태그 검색"
+              placeholder="태그 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+                if (e.key === "Escape" && details.current)
+                  details.current.open = false;
+              }}
+            />
+          )}
           <button type="button" onClick={() => choose("all")}>
             모든 태그
           </button>

@@ -755,10 +755,12 @@ export function LibraryApp({
           </button>
           <button
             className="topbar-add secondary"
+            aria-label="새 기록"
+            aria-haspopup="dialog"
             onClick={() => setEditor({ kind: "note" })}
           >
             <Plus size={16} />
-            <span>기록 남기기</span>
+            <span>새 기록</span>
           </button>
           <div className="avatar" aria-label="나의 서재">
             나
@@ -988,6 +990,10 @@ export function LibraryApp({
             <LibrarySearchPanel
               library={data}
               ownerId={ownerId}
+              preview={preview}
+              onUpdated={refresh}
+              renderBook={bookCard}
+              renderNote={noteCard}
               onOpen={(kind, id) => {
                 if (kind === "book") setDetail(id);
                 else {

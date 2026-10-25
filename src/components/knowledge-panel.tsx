@@ -31,8 +31,7 @@ export function KnowledgePanel({
   onSaveNote?: (c: Command) => Promise<void>;
 }) {
   const [tab, setTab] = useState("topics"),
-    [help, setHelp] = useState(false),
-    [revision, setRevision] = useState(0);
+    [help, setHelp] = useState(false);
   return (
     <section className="knowledge-panel">
       <div className="knowledge-tabs">
@@ -50,7 +49,6 @@ export function KnowledgePanel({
             {name}
           </button>
         ))}
-        <button onClick={() => setRevision((n) => n + 1)}>새로고침</button>
         <button aria-haspopup="dialog" onClick={() => setHelp(true)}>
           사용법
         </button>
@@ -66,28 +64,24 @@ export function KnowledgePanel({
             library={library}
             ownerId={ownerId}
             onOpen={onOpen}
-            revision={revision}
+            revision={0}
           />
         ) : tab === "whiteboard" ? (
           <WhiteboardPanel
             library={library}
             onOpen={onOpen}
             ownerId={ownerId}
-            revision={revision}
+            revision={0}
           />
         ) : tab === "memo-box" ? (
           <MemoBox
             library={library}
             onOpen={onOpen}
             onNewNote={onNewNote}
-            revision={revision}
+            revision={0}
           />
         ) : (
-          <WritingWorkbench
-            library={library}
-            onOpen={onOpen}
-            revision={revision}
-          />
+          <WritingWorkbench library={library} onOpen={onOpen} revision={0} />
         )}
       </Suspense>
     </section>

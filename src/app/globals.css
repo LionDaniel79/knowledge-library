@@ -4949,3 +4949,62 @@ textarea {
     gap: 8px;
   }
 }
+
+/* Recording remains available on every screen, including narrow devices. */
+.topbar .topbar-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.topbar .topbar-add span {
+  display: inline;
+}
+.memo-search-fields > .tag-filter {
+  min-width: 0;
+  gap: 6px;
+  font-weight: 600;
+  align-content: start;
+}
+.memo-search-fields .tag-filter summary {
+  height: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+}
+.memo-search-fields .tag-filter > details {
+  margin: 0;
+}
+.memo-search-fields .tag-dropdown {
+  left: auto;
+  right: 0;
+  min-width: 0;
+  width: min(320px, calc(100vw - 48px));
+}
+.memo-search-fields .tag-dropdown > input {
+  margin-bottom: 6px;
+}
+.integrated-search-input {
+  position: relative;
+}
+.integrated-search-input input {
+  padding-right: 42px;
+}
+.integrated-search-input .clear-search {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  min-height: 36px;
+  width: 36px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.integrated-search .section-heading h2,
+.integrated-search .section-space {
+  font-size: 21px;
+}
+
+.integrated-search-input input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
