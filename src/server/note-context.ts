@@ -70,7 +70,7 @@ export async function writeNoteContext(
       throw new LibraryError(400, "같은 기록을 자신에게 연결할 수 없습니다.");
     const source = (
       await tx.query(
-        "SELECT id FROM library_active_notes WHERE owner_id=$1 AND id=$2 FOR SHARE",
+        "SELECT n.id FROM library_notes n WHERE n.owner_id=$1 AND n.id=$2 AND NOT EXISTS (SELECT 1 FROM library_note_trash t WHERE t.owner_id=n.owner_id AND t.id=n.id AND t.restored_at IS NULL) FOR SHARE OF n",
         [owner, related.noteId],
       )
     ).rows[0];
