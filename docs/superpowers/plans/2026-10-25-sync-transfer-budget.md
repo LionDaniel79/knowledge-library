@@ -27,18 +27,18 @@
 **Files:** src/server/sync/read.ts, src/server/sync/values.ts, src/server/sync/change-values.ts, tests/sync-transfer-budget.test.ts
 **Interfaces:** selectSyncChangePage(tx, owner, events) -> Promise<{rows: SyncRow[]; after: string}>. 기존 SyncPage/커서는 변경하지 않는다.
 
-- [ ] 생성 자료 200건을 사용해 DB 반환량·응답량·누락 없음·중복 제거·혼합 테이블·삭제·복원·누락 행을 검증하는 회귀 검사를 작성한다.
-- [ ] 기존 코드에서 과다 반환과 반복 키 검사 실패를 확인한다.
-- [ ] SQL 행 표현을 공유하고 이벤트의 첫 등장 순서에 따라 DB 내부에서 제한한다. 제외된 첫 이벤트 이전까지만 커서를 전진한다.
-- [ ] sync-transfer-budget, sync-read, sync-change-order, sync-bootstrap-races, sync-redaction, sync-retention 검사를 통과시킨다.
-- [ ] 변경과 수치를 기록하고 커밋한다.
+- [x] 생성 자료 200건을 사용해 DB 반환량·응답량·누락 없음·중복 제거·혼합 테이블·삭제·복원·누락 행을 검증하는 회귀 검사를 작성한다.
+- [x] 기존 코드에서 과다 반환과 반복 키 검사 실패를 확인한다.
+- [x] SQL 행 표현을 공유하고 이벤트의 첫 등장 순서에 따라 DB 내부에서 제한한다. 제외된 첫 이벤트 이전까지만 커서를 전진한다.
+- [x] sync-transfer-budget, sync-read, sync-change-order, sync-bootstrap-races, sync-redaction, sync-retention 검사를 통과시킨다.
+- [x] 변경과 수치를 기록하고 커밋한다.
 
 ### Task 2: 기존 기기 흐름과 배포 검증
 
 **Files:** tests/sync-transfer-budget.test.ts, docs/operations/sync-transfer-budget-2026-10-25.md, docs/operations/sync-acceptance-2026-11-01.md
 **Interfaces:** 기존 sqlSyncTransport, createMemoryReplica, bootstrapReplica, pullReplica 사용. 새 API/저장소는 추가하지 않는다.
 
-- [ ] 생성 DB와 기기로 초기 저장→변경 없는 확인→메모 1개 변경→재개 흐름의 바이트·자료 일치를 검증한다. 기존 outbox를 보존한다.
-- [ ] 관련 동기화·복제 검사와 typecheck/build/산출물 검사를 실행하고 수치와 제한을 기록한다.
-- [ ] 전체 변경을 한 번 별도 검토받고 중요한 결함을 수정·검증한다.
+- [x] 생성 DB와 기기로 초기 저장→변경 없는 확인→메모 1개 변경→재개 흐름의 바이트·자료 일치를 검증한다. 기존 outbox를 보존한다.
+- [x] 관련 동기화·복제 검사와 typecheck/build/산출물 검사를 실행하고 수치와 제한을 기록한다.
+- [x] 전체 변경을 한 번 별도 검토받고 중요한 결함을 수정·검증한다.
 - [ ] 기존 승인 범위의 배포 절차로 웹 배포를 갱신한다. 운영 DB를 호출하는 동기화 검사는 하지 않는다. PC 실행본이 별도인 점을 확인하고 중단 없는 반영 방법을 결정한다.
