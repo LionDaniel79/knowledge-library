@@ -1,6 +1,12 @@
 "use client";
 import { useState, useMemo } from "react";
-import type { Library } from "@/lib/domain";
+import type { NewNoteContext } from "@/lib/note-context";
+import { NoteTagFilter } from "../note-tag-filter";
+import { NoteBookFilter } from "../note-book-filter";
+import { NoteTrash } from "../note-trash";
+import { AssistLauncher } from "../assist-panel";
+import { noteKindNames } from "@/lib/note-kinds";
+import type { Library, Command } from "@/lib/domain";
 import { categories, categoryName } from "@/lib/catalog";
 import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
 import { buildTopicMaterials, pageTopicMaterials } from "@/lib/topic-materials";
@@ -22,6 +28,9 @@ export function TopicBrowser({
   error = "",
   onOpen,
   ownerId = "",
+  onUpdated = async () => {},
+  onSaveNote,
+  onNewNote,
 }: {
   library: Library;
   state: ThoughtMapSnapshot;
@@ -30,10 +39,15 @@ export function TopicBrowser({
   error?: string;
   onOpen: (kind: string, id: string) => void;
   ownerId?: string;
+  onUpdated?: () => Promise<void>;
+  onSaveNote?: (c: Command) => Promise<void>;
+  onNewNote?: (c: NewNoteContext) => void;
 }) {
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState("all"),
-    [kind, setKind] = useState("note"),
+    [noteType, setNoteType] = useState("all"),
+    [tag, setTag] = useState("all"),
+    [bookId, setBookId] = useState("all"),
     [search, setSearch] = useState(""),
     [sort, setSort] = useState("newest");
   const replica = useReplicaOptional();
@@ -43,19 +57,32 @@ export function TopicBrowser({
   );
   const paging = useListPagination(
     "topic-materials",
-    JSON.stringify([selected, field, kind, sort, search]),
+    JSON.stringify([selected, field, noteType, tag, bookId, sort, search]),
   );
   const query = useMemo(
     () => ({
       category: field,
       q: search,
-      kind,
+      kind: "note",
+      noteType,
+      tag,
+      bookId,
       topic: selected,
       sort,
       limit: paging.size,
       offset: paging.offset,
     }),
-    [field, kind, selected, sort, search, paging.size, paging.offset],
+    [
+      field,
+      noteType,
+      tag,
+      bookId,
+      selected,
+      sort,
+      search,
+      paging.size,
+      paging.offset,
+    ],
   );
   const catalog = useMaterialPage(
     !!library.catalog && paging.ready,
@@ -106,13 +133,21 @@ export function TopicBrowser({
   return (
     <div className="thought-layout topic-material-layout">
       <div className="thought-materials">
-        <div className="panel thought-filters topic-material-filters">
+        <div className="panel thought-filters topic-material-filters unified-notes-filters">
           <label>
-            자료 종류
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="note">내 기록</option>
-              <option value="book">책</option>
-              <option value="all">책과 내 기록</option>
+            종류
+            <select
+              aria-label="종류"
+              value={noteType}
+              onChange={(e) => setNoteType(e.target.value)}
+            >
+              <option value="all">모든 기록</option>
+              <option value="unclassified">미분류 메모</option>
+              {Object.entries(noteKindNames).map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -127,6 +162,11 @@ export function TopicBrowser({
               ))}
             </select>
           </label>
+          <NoteBookFilter
+            library={library}
+            value={bookId}
+            onChange={setBookId}
+          />
           <label>
             주제
             <select
@@ -144,6 +184,13 @@ export function TopicBrowser({
               ))}
             </select>
           </label>
+          <NoteTagFilter
+            tags={(state.notes ?? library.notes).flatMap((n) => n.tags ?? [])}
+            value={tag}
+            onChange={setTag}
+            onUpdated={onUpdated}
+            preview={false}
+          />
           <label>
             정렬
             <select value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -163,16 +210,15 @@ export function TopicBrowser({
               placeholder="제목·내용 검색"
             />
           </label>
-          <PageSizeSelect label="주제별 자료" paging={paging} />
+
           <p className="topic-material-count" aria-live="polite">
-            {kind === "note"
-              ? "내 기록"
-              : kind === "book"
-                ? "책"
-                : "책과 내 기록"}{" "}
-            {total.toLocaleString()}
-            {kind === "book" ? "권" : "개"}
+            내 기록 {total.toLocaleString()}개
           </p>
+          {onNewNote && (
+            <button className="primary" onClick={() => onNewNote({})}>
+              새 기록
+            </button>
+          )}
           {catalog.loading && <p role="status">자료를 불러오고 있습니다…</p>}
           {catalog.error && (
             <p role="alert">
@@ -181,12 +227,23 @@ export function TopicBrowser({
             </p>
           )}
         </div>
+        <AssistLauncher
+          library={library}
+          scope={query}
+          ownerId={ownerId}
+          onOpen={onOpen}
+          onAdopt={() => {
+            void onUpdated();
+          }}
+        />
         <div className="thought-card-grid">
           {shown.map((m) => (
             <article className="panel thought-card" key={m.kind + m.id}>
               <small>
-                {m.kind === "book" ? "소장 도서" : "내 기록"} ·{" "}
-                {categoryName(m.category)}
+                {m.noteType
+                  ? noteKindNames[m.noteType as keyof typeof noteKindNames]
+                  : "내 기록"}{" "}
+                · {categoryName(m.category)}
               </small>
               <button
                 className="thought-title"
@@ -201,6 +258,11 @@ export function TopicBrowser({
                 {m.text.slice(0, 350)}
                 {m.text.length > 350 ? "…" : ""}
               </p>
+              <div className="note-card-tags">
+                {(m.tags ?? []).map((t) => (
+                  <span key={t}>#{t}</span>
+                ))}
+              </div>
               <div className="topic-chips">
                 {(m.topicIds ?? assigned(m).map((a) => a.topicId)).map(
                   (id, i) => {
@@ -232,12 +294,15 @@ export function TopicBrowser({
         {!catalog.loading && !shown.length && (
           <p>해당 자료가 없습니다. 다른 주제나 미분류 자료를 확인해 보세요.</p>
         )}
-        <PageNavigation
-          label="주제별 자료"
-          paging={paging}
-          total={total}
-          busy={catalog.loading || !!catalog.error}
-        />
+        <div className="topic-material-pagination">
+          <PageNavigation
+            label="내 기록"
+            paging={paging}
+            total={total}
+            busy={catalog.loading || !!catalog.error}
+          />
+          <PageSizeSelect label="내 기록" paging={paging} />
+        </div>
         <section className="panel">
           <h3>주제 사이의 연결</h3>
           <p>서로 다른 원자료의 근거가 있을 때만 연결을 제안합니다.</p>
@@ -308,6 +373,11 @@ export function TopicBrowser({
         busy={busy}
         error={error}
       />
+      {onSaveNote && (
+        <div className="topic-notes-trash">
+          <NoteTrash library={library} onSave={onSaveNote} />
+        </div>
+      )}
     </div>
   );
 }

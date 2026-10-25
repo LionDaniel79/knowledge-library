@@ -15,6 +15,8 @@ export interface TopicMaterial {
   bookTitle: string;
   topicIds: string[];
   topicNames: string[];
+  noteType?: string;
+  tags?: string[];
 }
 export type MaterialTimeKeys = Record<
   string,
@@ -107,6 +109,8 @@ export function buildTopicMaterials({
         id: n.id,
         kind: "note" as const,
         title: n.title,
+        noteType: n.kind,
+        tags: n.tags ?? [],
         text: n.content,
         category: materialCategory(b?.category),
         version: n.version,
@@ -131,6 +135,8 @@ export function buildTopicMaterials({
         id: b.id,
         kind: "book" as const,
         title: b.title,
+        noteType: "",
+        tags: b.tags ?? [],
         text: [b.author, b.publisher].filter(Boolean).join(" · "),
         category: materialCategory(b.category),
         version: b.version,
@@ -165,6 +171,19 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
   const rows = materials.filter(
     (m) =>
       (p.kind === "all" || m.kind === p.kind) &&
+      (p.noteType === "all" ||
+        (m.kind === "note" &&
+          (p.noteType === "unclassified"
+            ? !m.title.trim() || m.title.trim() === "미분류 메모"
+            : m.noteType === p.noteType))) &&
+      (p.tag === "all" ||
+        (m.kind === "note" &&
+          (p.tag === "untagged"
+            ? !m.tags?.length
+            : m.tags?.includes(p.tag)))) &&
+      (p.bookId === "all" ||
+        (m.kind === "note" &&
+          (p.bookId === "unlinked" ? !m.bookId : m.bookId === p.bookId))) &&
       (p.category === "all" ||
         m.category === (p.category === "unclassified" ? "" : p.category)) &&
       (p.topic === "all" ||

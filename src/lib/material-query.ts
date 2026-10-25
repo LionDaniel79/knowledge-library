@@ -3,6 +3,24 @@ import { z } from "zod";
 export const materialPageQuery = z.object({
   q: z.string().trim().max(200).default(""),
   kind: z.enum(["all", "note", "book"]).default("all"),
+  noteType: z
+    .enum([
+      "all",
+      "unclassified",
+      "thought",
+      "note",
+      "highlight",
+      "review",
+      "claim",
+      "evidence",
+      "counterargument",
+      "reflection",
+    ])
+    .default("all"),
+  tag: z.string().trim().min(1).max(100).default("all"),
+  bookId: z
+    .union([z.enum(["all", "unlinked"]), z.string().uuid()])
+    .default("all"),
   category: z
     .string()
     .regex(/^all$|^unclassified$|^\d00$/)

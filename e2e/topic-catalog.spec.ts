@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
-test("topic browsing retrieves matching books outside the initial page", async ({
+test("note browsing retrieves matching records outside the initial page", async ({
   page,
 }) => {
   const book = {
@@ -30,7 +30,19 @@ test("topic browsing retrieves matching books outside the initial page", async (
     r.fulfill({
       json:
         new URL(r.request().url()).searchParams.get("topic") === topic
-          ? { items: [{ ...book, kind: "book", text: book.author }], total: 1 }
+          ? {
+              items: [
+                {
+                  ...book,
+                  kind: "note",
+                  noteType: "thought",
+                  text: "생각의 내용",
+                  topicIds: [topic],
+                  topicNames: ["정서"],
+                },
+              ],
+              total: 1,
+            }
           : { items: [], total: 10994 },
     }),
   );
@@ -87,16 +99,13 @@ test("topic browsing retrieves matching books outside the initial page", async (
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
   await page
-    .getByRole("combobox", { name: "자료 종류", exact: true })
-    .selectOption("book");
-  await page
     .getByRole("combobox", { name: "주제", exact: true })
     .selectOption(topic);
   await page
     .getByRole("button", { name: "주제로 찾은 책", exact: true })
     .click();
   expect(await page.evaluate(() => (window as any).opened)).toEqual({
-    kind: "book",
+    kind: "note",
     id: book.id,
   });
 });

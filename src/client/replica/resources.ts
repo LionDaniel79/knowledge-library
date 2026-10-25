@@ -431,6 +431,12 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             "created_at",
             "updated_at",
           ]),
+          id: r.id,
+          scope: {
+            model: r.task?.model ?? "gpt-6-luna",
+            focus: r.task?.payload?.focus,
+            sources: r.task?.payload?.sources?.map((s: any) => s.source) ?? [],
+          },
           result: results.find((s) => s.request_id === r.id)?.result ?? null,
           adoption:
             results.find((s) => s.request_id === r.id)?.adoption ?? null,
@@ -489,8 +495,17 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         value = (await all("library_analysis_devices"))
           .sort((a, b) => -order(a, b))
           .map(camel);
-      else if (path === "/api/assist") value = await assist();
-      else if (path === "/api/curation")
+      else if (path === "/api/assist") {
+        const assistState = await assist();
+        value = p.has("id")
+          ? {
+              ...assistState,
+              requests: assistState.requests.filter(
+                (r) => r.id === z.string().uuid().parse(p.get("id")),
+              ),
+            }
+          : assistState;
+      } else if (path === "/api/curation")
         value = await curation(p.get("kind") ?? "", p.get("id") ?? "");
       else if (path === "/api/book-introduction") {
         const id = z.string().uuid().parse(p.get("id")),

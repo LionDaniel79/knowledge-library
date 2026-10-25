@@ -2,21 +2,27 @@
 import { libraryRequest } from "@/client/replica/request";
 import { useMemo, useRef, useState } from "react";
 import { usePagedResource } from "../use-paged-resource";
-import type { Library } from "@/lib/domain";
+import type { Library, Command } from "@/lib/domain";
 import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
 import { TopicBrowser } from "./topic-browser";
-import { AssistLauncher } from "../assist-panel";
+import type { NewNoteContext } from "@/lib/note-context";
 export function ThoughtMapPanel({
   view,
   library,
   onOpen,
   ownerId = "",
+  onUpdated = async () => {},
+  onSaveNote,
+  onNewNote,
   revision = 0,
 }: {
   view: string;
   library: Library;
   onOpen: (kind: string, id: string) => void;
   ownerId?: string;
+  onUpdated?: () => Promise<void>;
+  onSaveNote?: (c: Command) => Promise<void>;
+  onNewNote?: (c: NewNoteContext) => void;
   revision?: number;
 }) {
   const refresh = useMemo(
@@ -71,7 +77,6 @@ export function ThoughtMapPanel({
           지도 새로고침
         </button>
       </div>
-      <AssistLauncher library={library} onAdopt={resource.reload} />
       {(error || resource.error) && (
         <p className="error" role="alert">
           {error || resource.error} 입력 중인 내용은 유지됩니다.
@@ -84,6 +89,9 @@ export function ThoughtMapPanel({
       {state && (
         <TopicBrowser
           ownerId={ownerId}
+          onUpdated={onUpdated}
+          onSaveNote={onSaveNote}
+          onNewNote={onNewNote}
           library={library}
           state={state}
           send={send}

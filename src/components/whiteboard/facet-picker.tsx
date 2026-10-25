@@ -10,11 +10,17 @@ export function FacetPicker({
   options,
   values,
   onChange,
+  multiple = true,
+  onSearch,
+  compact = false,
 }: {
   label: string;
   options: FacetOption[];
   values: string[];
   onChange: (values: string[]) => void;
+  multiple?: boolean;
+  onSearch?: (query: string) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false),
     [q, setQ] = useState("");
@@ -81,7 +87,7 @@ export function FacetPicker({
         }}
         onClick={() => setOpen(!open)}
       >
-        <small>{label}</small>
+        {!compact && <small>{label}</small>}
         <span>{summary}</span>
         <span aria-hidden="true">⌄</span>
       </button>
@@ -100,18 +106,24 @@ export function FacetPicker({
               aria-label={`${label} 검색`}
               placeholder={`${label} 검색`}
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                onSearch?.(e.target.value);
+              }}
             />
             <div
               role="listbox"
               aria-label={`${label} 목록`}
-              aria-multiselectable="true"
+              aria-multiselectable={multiple}
             >
               <button
                 type="button"
                 role="option"
                 aria-selected={!values.length}
-                onClick={() => onChange([])}
+                onClick={() => {
+                  onChange([]);
+                  if (!multiple) setOpen(false);
+                }}
               >
                 전체 {!values.length && "✓"}
               </button>
@@ -121,13 +133,18 @@ export function FacetPicker({
                   role="option"
                   key={o.value}
                   aria-selected={values.includes(o.value)}
-                  onClick={() =>
+                  onClick={() => {
+                    if (!multiple) {
+                      onChange([o.value]);
+                      setOpen(false);
+                      return;
+                    }
                     onChange(
                       values.includes(o.value)
                         ? values.filter((v) => v !== o.value)
                         : [...values, o.value],
-                    )
-                  }
+                    );
+                  }}
                 >
                   <span>{o.label}</span>
                   {values.includes(o.value) && (

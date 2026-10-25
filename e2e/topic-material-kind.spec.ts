@@ -35,6 +35,8 @@ async function mount(page: Page) {
   const notes = Array.from({ length: 18 }, (_, i) => ({
     id: crypto.randomUUID(),
     kind: "note",
+    noteType: "thought",
+    tags: ["독서"],
     title: `내 생각 ${i + 1}`,
     text: "책을 읽고 내가 남긴 생각",
     category: i < 2 ? "200" : "100",
@@ -98,17 +100,14 @@ async function mount(page: Page) {
   return { requests, topics };
 }
 
-test("topic materials start with my notes and reset the page when switching kind or library field", async ({
+test("my notes reset pagination when record kind or library field changes", async ({
   page,
 }) => {
   const f = await mount(page);
   await expect(
-    page.getByRole("combobox", { name: "자료 종류", exact: true }),
-  ).toHaveValue("note");
+    page.getByRole("combobox", { name: "종류", exact: true }),
+  ).toHaveValue("all");
   await expect(page.locator(".thought-card")).toHaveCount(15);
-  await expect(page.locator(".topic-material-count")).toHaveText(
-    "내 기록 18개",
-  );
   await page.getByRole("button", { name: "2페이지", exact: true }).click();
   await expect(page.locator(".thought-card")).toHaveCount(3);
   await page
@@ -116,28 +115,17 @@ test("topic materials start with my notes and reset the page when switching kind
     .selectOption("200");
   await expect(page.locator(".thought-card")).toHaveCount(2);
   await expect(page.locator(".topic-material-count")).toHaveText("내 기록 2개");
-  await expect(page.locator(".thought-card > small")).toHaveText([
-    "내 기록 · 종교",
-    "내 기록 · 종교",
-  ]);
-  await page
-    .getByRole("combobox", { name: "도서 분야", exact: true })
-    .selectOption("all");
-  await page
-    .getByRole("combobox", { name: "자료 종류", exact: true })
-    .selectOption("book");
-  await expect(page.locator(".topic-material-count")).toHaveText("책 35권");
-  await expect(page.locator(".thought-card")).toHaveCount(15);
-  await expect(page.locator(".thought-card > small").first()).toHaveText(
-    "소장 도서 · 철학·심리학",
-  );
   expect(f.requests.at(-1)?.get("offset")).toBe("0");
   await page
-    .getByRole("combobox", { name: "자료 종류", exact: true })
-    .selectOption("all");
-  await expect(page.locator(".topic-material-count")).toHaveText(
-    "책과 내 기록 53개",
-  );
+    .getByRole("combobox", { name: "종류", exact: true })
+    .selectOption("note");
+  await expect(page.locator(".thought-card")).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "종류", exact: true })
+    .selectOption("thought");
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  expect(f.requests.at(-1)?.get("kind")).toBe("note");
+  expect(f.requests.at(-1)?.get("noteType")).toBe("thought");
 });
 test("new search narrows the full note list and resets its page while preserving other filters", async ({
   page,
@@ -150,7 +138,9 @@ test("new search narrows the full note list and resets its page while preserving
   await expect(page.locator(".thought-card")).toHaveCount(10);
   expect(f.requests.at(-1)?.get("offset")).toBe("0");
   expect(f.requests.at(-1)?.get("q")).toBe("내 생각 1");
-  await page.getByRole("combobox", { name:"정렬", exact: true }).selectOption("oldest");
+  await page
+    .getByRole("combobox", { name: "정렬", exact: true })
+    .selectOption("oldest");
   await expect(page.locator(".thought-card").first()).toContainText(
     "내 생각 1",
   );
@@ -172,24 +162,12 @@ test("topic filter and five global sort options apply with kind and category", a
     .getByRole("combobox", { name: "도서 분야", exact: true })
     .selectOption("200");
   await expect(page.locator(".topic-material-count")).toHaveText("내 기록 1개");
-  await page
-    .getByRole("combobox", { name: "자료 종류", exact: true })
-    .selectOption("book");
-  await expect(page.locator(".thought-card")).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "도서 분야", exact: true })
-    .selectOption("all");
-  await expect(page.locator(".topic-material-count")).toHaveText("책 1권");
-  await page
-    .getByRole("combobox", { name: "자료 종류", exact: true })
-    .selectOption("all");
-  await expect(page.locator(".thought-card")).toHaveCount(2);
   for (const sort of ["oldest", "newest", "category", "topic", "book"]) {
     await page
       .getByRole("combobox", { name: "정렬", exact: true })
       .selectOption(sort);
     await expect.poll(() => f.requests.at(-1)?.get("sort")).toBe(sort);
-    await expect(page.locator(".thought-card")).toHaveCount(2);
+    await expect(page.locator(".thought-card")).toHaveCount(1);
   }
 });
 
@@ -232,25 +210,28 @@ for (const width of [390, 1440])
     await mount(page);
     await expect(page.locator(".thought-card")).toHaveCount(15);
     const controls = page.locator(".topic-material-filters select");
-    await expect(controls).toHaveCount(5);
+    await expect(controls).toHaveCount(4);
     const heights = await controls.evaluateAll((es) =>
       es.map((e) => e.getBoundingClientRect().height),
     );
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
-    const boxes = await controls.evaluateAll((es) =>
-      es.map((e) => {
-        const b = e.getBoundingClientRect();
-        return { x: b.x, y: b.y };
-      }),
-    );
-    expect(Math.abs(boxes[1].y - boxes[2].y)).toBeLessThanOrEqual(1);
-    expect(boxes[1].x).toBeLessThan(boxes[2].x);
-    const searchBox = (await page
-      .getByPlaceholder("제목·내용 검색", { exact: true })
+    const field = (await controls.nth(1).boundingBox())!;
+    const book = (await page
+      .locator(".note-book-filter .wb-facet-toggle")
       .boundingBox())!;
-    expect(Math.abs(searchBox.y - boxes[4].y)).toBeLessThanOrEqual(1);
-    expect(searchBox.x).toBeLessThan(boxes[4].x);
+    expect(Math.abs(field.y - book.y)).toBeLessThanOrEqual(1);
+    expect(field.x).toBeLessThan(book.x);
+    const topic = (await controls.nth(2).boundingBox())!;
+    const tag = (await page.locator(".tag-filter summary").boundingBox())!;
+    expect(Math.abs(topic.y - tag.y)).toBeLessThanOrEqual(1);
+    expect(topic.x).toBeLessThan(tag.x);
+    const size = (await page
+      .getByRole("combobox", { name: "내 기록 표시 개수", exact: true })
+      .boundingBox())!;
+    expect(size.y).toBeGreaterThan(
+      (await page.locator(".thought-card").last().boundingBox())!.y,
+    );
     expect(
       await page.locator("body").evaluate((e) => e.scrollWidth),
     ).toBeLessThanOrEqual(width);
@@ -290,5 +271,5 @@ for (const width of [390, 1440])
     const filter = (await page
       .locator(".topic-material-filters")
       .boundingBox())!;
-    expect(first.y - (filter.y + filter.height)).toBeLessThan(30);
+    expect(first.y - (filter.y + filter.height)).toBeLessThan(100);
   });

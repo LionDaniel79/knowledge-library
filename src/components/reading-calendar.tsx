@@ -18,6 +18,7 @@ export function ReadingCalendar({
   selected,
   setSelected,
   onEdit,
+  onOpenBook,
   today,
 }: {
   library: Library;
@@ -26,6 +27,7 @@ export function ReadingCalendar({
   selected: string;
   setSelected: (d: string) => void;
   onEdit: (c: ReadingCycle) => void;
+  onOpenBook?: (bookId: string) => void;
   today: string;
 }) {
   const remote = !!library.readingSummary;
@@ -160,6 +162,14 @@ export function ReadingCalendar({
               <button className="text-button" onClick={() => onEdit(c)}>
                 날짜 수정
               </button>
+              {onOpenBook && (
+                <button
+                  className="text-button"
+                  onClick={() => onOpenBook(c.bookId)}
+                >
+                  세부정보
+                </button>
+              )}
             </div>
           ))
         ) : (

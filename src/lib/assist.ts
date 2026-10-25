@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { sourceRefSchema } from "./curation";
 import { comparisonSchema } from "./thought-map/types";
-export const ASSIST_PROMPT_VERSION = "human-assist-v1";
-export const ASSIST_SCHEMA_VERSION = "assist-v1";
+import {
+  assistModelSchema,
+  synthesisFocusSchema,
+  synthesisTopicSchema,
+  synthesisResultSchema,
+} from "./assist-synthesis";
+export const ASSIST_PROMPT_VERSION = "human-assist-v2";
+export const ASSIST_SCHEMA_VERSION = "assist-v2";
 export const ASSIST_COMPARISON_ENABLED = true;
 export const assistPurposeSchema = z.enum([
+  "synthesis",
   "organize_note",
   "tag_suggestion",
   "excerpt_explanation",
@@ -49,6 +56,14 @@ const compareInput = z
 export const assistInputSchema = z.discriminatedUnion("purpose", [
   z
     .object({
+      purpose: z.literal("synthesis"),
+      focus: synthesisFocusSchema,
+      sources: z.array(assistSourceSchema).min(2).max(24),
+      topics: z.array(synthesisTopicSchema).max(30),
+    })
+    .strict(),
+  z
+    .object({
       purpose: z.literal("organize_note"),
       sources: z.tuple([assistSourceSchema]),
     })
@@ -60,7 +75,11 @@ export const assistInputSchema = z.discriminatedUnion("purpose", [
 export type AssistInput = z.infer<typeof assistInputSchema>;
 export const aiTaskSchema = z.discriminatedUnion("phase", [
   z
-    .object({ phase: z.literal("runtime"), payload: assistInputSchema })
+    .object({
+      phase: z.literal("runtime"),
+      payload: assistInputSchema,
+      model: assistModelSchema.optional(),
+    })
     .strict(),
   z
     .object({
@@ -131,13 +150,15 @@ export const organizationResultSchema = z
 export function resultSchema(task: AiTask) {
   return task.phase === "development"
     ? developmentResultSchema
-    : task.payload.purpose === "organize_note"
-      ? organizationResultSchema
-      : task.payload.purpose === "tag_suggestion"
-        ? tagsResultSchema
-        : task.payload.purpose === "excerpt_explanation"
-          ? explanationResultSchema
-          : comparisonSchema.strict();
+    : task.payload.purpose === "synthesis"
+      ? synthesisResultSchema
+      : task.payload.purpose === "organize_note"
+        ? organizationResultSchema
+        : task.payload.purpose === "tag_suggestion"
+          ? tagsResultSchema
+          : task.payload.purpose === "excerpt_explanation"
+            ? explanationResultSchema
+            : comparisonSchema.strict();
 }
 export interface UsageReservation {
   id: string;

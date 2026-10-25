@@ -1,6 +1,6 @@
 "use client";
 import { lazy, Suspense, useState } from "react";
-import type { Library } from "@/lib/domain";
+import type { Library, Command } from "@/lib/domain";
 import type { NewNoteContext } from "@/lib/note-context";
 import { ThoughtMapPanel } from "./thought-map/panel";
 import { ThoughtMapHelp } from "./thought-map/help";
@@ -20,11 +20,15 @@ export function KnowledgePanel({
   onOpen,
   onNewNote = () => {},
   ownerId = "",
+  onUpdated = async () => {},
+  onSaveNote,
 }: {
   library: Library;
   onOpen: (kind: string, id: string) => void;
   onNewNote?: (c: NewNoteContext) => void;
   ownerId?: string;
+  onUpdated?: () => Promise<void>;
+  onSaveNote?: (c: Command) => Promise<void>;
 }) {
   const [tab, setTab] = useState("topics"),
     [help, setHelp] = useState(false),
@@ -33,7 +37,7 @@ export function KnowledgePanel({
     <section className="knowledge-panel">
       <div className="knowledge-tabs">
         {[
-          ["topics", "주제별 자료"],
+          ["topics", "내 기록"],
           ["whiteboard", "화이트보드"],
           ["memo-box", "메모 상자"],
           ["research", "설교·논문 자료"],
@@ -56,6 +60,9 @@ export function KnowledgePanel({
         {tab === "topics" ? (
           <ThoughtMapPanel
             view="topics"
+            onUpdated={onUpdated}
+            onSaveNote={onSaveNote}
+            onNewNote={onNewNote}
             library={library}
             ownerId={ownerId}
             onOpen={onOpen}

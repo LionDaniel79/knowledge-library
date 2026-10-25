@@ -1,10 +1,16 @@
 import { withSyncWrite, syncQuery } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  assistModelSchema,
+  synthesisFocusSchema,
+} from "../lib/assist-synthesis";
+import { adoptSynthesis } from "./assist-synthesis";
 import { sourceRefSchema, type CurationItem } from "../lib/curation";
 import {
   assistPurposeSchema,
   usdUnits,
+  unitsUsd,
   ASSIST_PROMPT_VERSION,
   ASSIST_SCHEMA_VERSION,
   ASSIST_COMPARISON_ENABLED,
@@ -14,6 +20,7 @@ import {
 import {
   assistModel,
   pricingVersion,
+  legacyPricingVersion,
   estimateAiTask,
   validateAiTaskResult,
   costForUsage,
@@ -49,7 +56,10 @@ const chosen = z
 export const assistSelectionSchema = z
   .object({
     purpose: assistPurposeSchema,
-    sources: z.array(chosen).min(1).max(3),
+    sources: z.array(chosen).min(1).max(24),
+    model: assistModelSchema.optional(),
+    focus: synthesisFocusSchema.optional(),
+    topicIds: z.array(z.string().uuid()).max(30).optional(),
   })
   .strict();
 const requestSchema = assistSelectionSchema
@@ -92,10 +102,10 @@ const resultInput = z
     provenance: z
       .object({
         provider: z.literal("openai"),
-        model: z.literal(assistModel),
-        promptVersion: z.literal(ASSIST_PROMPT_VERSION),
-        schemaVersion: z.literal(ASSIST_SCHEMA_VERSION),
-        pricingVersion: z.literal(pricingVersion),
+        model: assistModelSchema,
+        promptVersion: z.enum([ASSIST_PROMPT_VERSION, "human-assist-v1"]),
+        schemaVersion: z.enum([ASSIST_SCHEMA_VERSION, "assist-v1"]),
+        pricingVersion: z.enum([pricingVersion, legacyPricingVersion]),
         providerRequestId: z.string().max(200).nullable(),
         responseId: z.string().max(200).nullable(),
       })
@@ -137,7 +147,7 @@ async function buildTask(
   input: z.infer<typeof assistSelectionSchema>,
   lock = false,
 ): Promise<AiTask> {
-  const sources = [];
+  const sources: AiTask["payload"]["sources"][number][] = [];
   for (const selected of input.sources) {
     const s = await readCurationSource(tx, owner, selected.source, lock);
     if (s.version !== selected.source.version)
@@ -170,9 +180,34 @@ async function buildTask(
         : {}),
     });
   }
+  const topics =
+    input.purpose === "synthesis"
+      ? (
+          await tx.query(
+            `SELECT t.id,t.name,left(t.description,120) AS description,t.version,array_agg(DISTINCT n.id::text) AS note_ids FROM library_topics t JOIN library_topic_memberships m ON m.owner_id=t.owner_id AND m.topic_id=t.id AND m.status='accepted' JOIN library_active_notes n ON n.owner_id=t.owner_id AND ((m.source_kind='note' AND m.source_id=n.id::text) OR (m.source_kind='book' AND m.source_id=n.book_id::text AND NOT EXISTS(SELECT 1 FROM library_topic_memberships r WHERE r.owner_id=t.owner_id AND r.topic_id=t.id AND r.source_kind='note' AND r.source_id=n.id::text AND r.status='rejected'))) WHERE t.owner_id=$1 AND t.archived_at IS NULL AND n.id=ANY($2::uuid[]) AND ($3::uuid[] IS NULL OR t.id=ANY($3::uuid[])) GROUP BY t.id ORDER BY t.name,t.id LIMIT 20`,
+            [owner, sources.map((s) => s.source.id), input.topicIds ?? null],
+          )
+        ).rows.map((t) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          version: t.version,
+          noteIndices: t.note_ids
+            .map((id: string) => sources.findIndex((s) => s.source.id === id))
+            .filter((i: number) => i >= 0)
+            .sort((a: number, b: number) => a - b),
+        }))
+      : [];
   const task = {
     phase: "runtime" as const,
-    payload: { purpose: input.purpose, sources },
+    ...(input.model ? { model: input.model } : {}),
+    payload: {
+      purpose: input.purpose,
+      sources,
+      ...(input.purpose === "synthesis"
+        ? { focus: input.focus ?? "all", topics }
+        : {}),
+    },
   } as AiTask;
   estimateAiTask(task);
   return task;
@@ -187,6 +222,13 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
           owner,
           {
             purpose: task.payload.purpose,
+            ...(task.model ? { model: task.model } : {}),
+            ...(task.payload.purpose === "synthesis"
+              ? {
+                  focus: task.payload.focus,
+                  topicIds: task.payload.topics.map((t) => t.id),
+                }
+              : {}),
             sources: task.payload.sources.map((s) => ({
               source: s.source,
               ...(s.selection ? { selection: s.selection } : {}),
@@ -227,6 +269,50 @@ export function createAssistStore(
       scopeHash: hash(task),
       comparisonEnabled: !!options.compareEnabled,
     };
+  }
+  async function allowRequest(owner: string, raw: unknown) {
+    const p = z
+      .object({
+        expectedPolicyVersion: z.number().int().nonnegative(),
+        maxCostUsd: z.string().regex(/^\d{1,2}(?:\.\d{1,9})?$/),
+      })
+      .strict()
+      .parse(raw);
+    return withSyncWrite(db, owner, async (tx) => {
+      const policy = await lockPolicy(tx, owner),
+        amount = usdUnits(p.maxCostUsd);
+      if (
+        !policy.requestsEnabled ||
+        policy.version !== p.expectedPolicyVersion ||
+        !policy.runtimeMonthlyLimitUsd ||
+        amount <= 0n ||
+        amount > usdUnits(policy.runtimeMonthlyLimitUsd) ||
+        amount > 1000000000n
+      )
+        throw new LibraryError(
+          409,
+          "현재 월 사용 한도 안에서만 요청 한도를 조정할 수 있습니다.",
+        );
+      if (
+        (
+          await tx.query(
+            "SELECT id FROM library_assist_requests WHERE owner_id=$1 AND status IN ('queued','claimed','sending','cost_unknown') LIMIT 1",
+            [owner],
+          )
+        ).rows.length
+      )
+        throw new LibraryError(
+          409,
+          "진행 중인 요청이나 비용 확인을 마친 뒤 다시 시도해 주세요.",
+        );
+      if (policy.requestLimitUsd && amount <= usdUnits(policy.requestLimitUsd))
+        return policy;
+      await tx.query(
+        "UPDATE library_ai_policy SET request_limit_usd=$2,version=version+1,updated_at=now() WHERE owner_id=$1",
+        [owner, unitsUsd(((amount + 999n) / 1000n) * 1000n)],
+      );
+      return getLibraryAiPolicy(tx, owner);
+    });
   }
   async function configure(owner: string, raw: unknown) {
     const p = policySchema.parse(raw);
@@ -507,7 +593,10 @@ export function createAssistStore(
           !u ||
           u.cachedTokens + u.cacheWriteTokens > u.inputTokens ||
           u.reasoningTokens > u.outputTokens ||
-          result.costUsd !== costForUsage(u)
+          result.costUsd !== costForUsage(u, row.task.model ?? assistModel) ||
+          result.provenance.model !== (row.task.model ?? assistModel) ||
+          (row.task.model === "gpt-6.1-sol" &&
+            result.provenance.pricingVersion !== pricingVersion)
         )
           throw new LibraryError(400, "사용량과 비용이 일치하지 않습니다.");
         await settleInTransaction(tx, d.ownerId, row.reservation_id, {
@@ -602,12 +691,15 @@ export function createAssistStore(
       return { ok: true };
     });
   }
-  async function status(owner: string) {
+  async function status(
+    owner: string,
+    queryOptions: { compact?: boolean; id?: string } = {},
+  ) {
     const policy = await getLibraryAiPolicy(db, owner);
     const requests = (
       await db.query(
-        "SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,s.result,s.adoption FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.hidden_at IS NULL ORDER BY r.created_at DESC,r.id LIMIT 30",
-        [owner],
+        `SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,${queryOptions.compact ? "jsonb_build_object('valid',s.result->'valid','costUsd',s.result->'costUsd','provenance',s.result->'provenance','suggestionCount',coalesce(jsonb_array_length(s.result->'output'->'suggestions'),0))" : "s.result"} AS result,s.adoption,jsonb_build_object('model',coalesce(r.task->>'model','gpt-6-luna'),'focus',r.task->'payload'->>'focus','sources',(SELECT jsonb_agg(source.value->'source' ORDER BY source.position) FROM jsonb_array_elements(r.task->'payload'->'sources') WITH ORDINALITY AS source(value,position))) AS scope FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.hidden_at IS NULL AND ($2::uuid IS NULL OR r.id=$2::uuid) ORDER BY r.created_at DESC,r.id LIMIT 30`,
+        [owner, queryOptions.id ?? null],
       )
     ).rows;
     const workers = (
@@ -631,7 +723,7 @@ export function createAssistStore(
     };
   }
   async function adopt(owner: string, id: string, index: number) {
-    if (!Number.isInteger(index) || index < 0 || index > 4)
+    if (!Number.isInteger(index) || index < 0 || index > 7)
       throw new LibraryError(400, "제안을 선택해 주세요.");
     return withSyncWrite(db, owner, async (tx) => {
       const r = (
@@ -646,7 +738,14 @@ export function createAssistStore(
         throw new LibraryError(409, "원자료가 변경되었습니다.");
       if (r.adoption.some((a: any) => a.index === index)) return { ok: true };
       let adoptedId: string;
-      if (r.purpose === "tag_suggestion" || r.purpose === "organize_note") {
+      if (r.purpose === "synthesis") {
+        if (!validateAiTaskResult(r.task, r.result.output).valid)
+          throw new LibraryError(409, "제안의 근거를 확인할 수 없습니다.");
+        adoptedId = await adoptSynthesis(tx, owner, r, index);
+      } else if (
+        r.purpose === "tag_suggestion" ||
+        r.purpose === "organize_note"
+      ) {
         const tag =
           r.purpose === "organize_note"
             ? r.result.output.items[index]
@@ -749,6 +848,7 @@ export function createAssistStore(
     return { ok: true };
   }
   return {
+    allowRequest,
     hide,
     preview,
     configure,

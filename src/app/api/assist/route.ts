@@ -14,10 +14,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const headers = { "Cache-Control": "private, no-store" };
 const store = () => createAssistStore(database);
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const owner = await requireOwner(),
-      state = await store().status(owner),
+      id = new URL(request.url).searchParams.get("id"),
+      state = await store().status(owner, {
+        compact: !id,
+        ...(id ? { id: z.string().uuid().parse(id) } : {}),
+      }),
       server = serverAssistConfig().ready;
     if (
       server &&
@@ -55,6 +59,7 @@ export async function POST(request: Request) {
             "preview",
             "request",
             "configure",
+            "allowRequest",
             "cancel",
             "adopt",
             "resolveCost",
@@ -70,6 +75,8 @@ export async function POST(request: Request) {
     else if (p.action === "request") result = await s.request(owner, p.payload);
     else if (p.action === "configure")
       result = await s.configure(owner, p.payload);
+    else if (p.action === "allowRequest")
+      result = await s.allowRequest(owner, p.payload);
     else if (p.action === "hide")
       result = await s.hide(
         owner,
@@ -90,7 +97,7 @@ export async function POST(request: Request) {
       const v = z
         .object({
           id: z.string().uuid(),
-          index: z.number().int().min(0).max(4),
+          index: z.number().int().min(0).max(7),
         })
         .strict()
         .parse(p.payload);

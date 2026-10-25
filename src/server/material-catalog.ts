@@ -23,12 +23,12 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
 ), sources AS (
   SELECT n.id::text AS id,'note'::text AS kind,n.title,left(n.content,350) AS text,coalesce(b.category,'') AS raw_category,n.version,n.created_at,n.updated_at,
     n.book_id::text AS book_id,coalesce(b.title,'') AS book_title,coalesce(tm.ids,ARRAY[]::text[]) AS topic_ids,coalesce(tm.names,ARRAY[]::text[]) AS topic_names,
-    concat_ws(' ',n.title,n.content,array_to_string(n.tags,' '),b.title) AS search_text
+    concat_ws(' ',n.title,n.content,array_to_string(n.tags,' '),b.title) AS search_text,n.kind AS note_type,n.tags
   FROM library_active_notes n LEFT JOIN library_books b ON b.owner_id=n.owner_id AND b.id=n.book_id
   LEFT JOIN note_topics tm ON tm.source_id=n.id::text WHERE n.owner_id=$1
   UNION ALL
   SELECT b.id::text,'book',b.title,concat_ws(' · ',nullif(b.author,''),nullif(b.publisher,'')),coalesce(b.category,''),b.version,b.created_at,b.created_at,
-    b.id::text,b.title,coalesce(bt.ids,ARRAY[]::text[]),coalesce(bt.names,ARRAY[]::text[]),concat_ws(' ',b.title,b.author,b.publisher,b.isbn,b.shelf,array_to_string(b.bookshelves,' '),array_to_string(b.tags,' '))
+    b.id::text,b.title,coalesce(bt.ids,ARRAY[]::text[]),coalesce(bt.names,ARRAY[]::text[]),concat_ws(' ',b.title,b.author,b.publisher,b.isbn,b.shelf,array_to_string(b.bookshelves,' '),array_to_string(b.tags,' ')),''::text,b.tags
   FROM library_active_books b LEFT JOIN book_topics bt ON bt.source_id=b.id::text WHERE b.owner_id=$1
 ), normalized AS (
   SELECT *,CASE WHEN btrim(raw_category) ~ '^[0-9]{3}([.]|$)' THEN left(btrim(raw_category),1)||'00' ELSE '' END AS category FROM sources
@@ -38,6 +38,9 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
     AND ($5='' OR strpos(lower(search_text),lower($5))>0 OR (kind='book' AND (
       category=ANY($6::text[]) OR strpos(regexp_replace(lower(title||' '||text),'[[:space:]　 ]+','','g'),regexp_replace(lower($5),'[[:space:]　 ]+','','g'))>0
     )))
+    AND ($7='all' OR (kind='note' AND (($7='unclassified' AND btrim(title) IN ('','미분류 메모')) OR note_type=$7)))
+    AND ($8='all' OR (kind='note' AND (($8='untagged' AND cardinality(tags)=0) OR $8=ANY(tags))))
+    AND ($9='all' OR (kind='note' AND (($9='unlinked' AND book_id IS NULL) OR book_id=$9)))
 )`;
 const orders = {
   default: `CASE WHEN kind='note' THEN 0 ELSE 1 END,CASE WHEN kind='note' THEN updated_at END DESC,CASE WHEN kind='book' THEN title END COLLATE "C",id COLLATE "C"`,
@@ -63,6 +66,9 @@ export async function readMaterialPage(
       categories
         .filter(([, name]) => name.toLowerCase().includes(p.q.toLowerCase()))
         .map(([id]) => id),
+      p.noteType,
+      p.tag,
+      p.bookId,
     ];
   const total = Number(
     (
@@ -76,7 +82,7 @@ export async function readMaterialPage(
   const rows = (
     await db.query(
       sourceSql +
-        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames" FROM filtered ORDER BY ${orders[p.sort]} LIMIT $8 OFFSET $7`,
+        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames",note_type AS "noteType",tags FROM filtered ORDER BY ${orders[p.sort]} LIMIT $11 OFFSET $10`,
       [...args, p.offset, p.limit],
     )
   ).rows;

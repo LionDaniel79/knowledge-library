@@ -83,7 +83,6 @@ type View =
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
-  { id: "notes", label: "기록과 생각", icon: NotebookPen },
   { id: "search", label: "통합 검색", icon: Search },
   { id: "pdf", label: "PDF 원문 검색", icon: FileText },
   { id: "knowledge", label: "사유의 지도", icon: Feather },
@@ -395,7 +394,7 @@ export function LibraryApp({
         );
   const matchedCount = remote ? catalog.total : matchedBooks.length;
   const navigate = (next: View) => {
-    setView(next);
+    setView(next === "notes" ? "knowledge" : next);
     setMenuOpen(false);
     setCategory("all");
     setShelfFilter("all");
@@ -828,17 +827,14 @@ export function LibraryApp({
               {view === "home" && !preview && (
                 <SyncButton onError={(e) => setFailure(e.message)} />
               )}
-              <button
-                className="primary"
-                onClick={() =>
-                  setEditor(
-                    view === "notes" ? { kind: "note" } : { kind: "book" },
-                  )
-                }
-              >
-                <Plus size={17} />
-                {view === "notes" ? "새 기록" : "책 추가"}
-              </button>
+              {(view === "home" || view === "books") && (
+                <button
+                  className="primary"
+                  onClick={() => setEditor({ kind: "book" })}
+                >
+                  <Plus size={17} />책 추가
+                </button>
+              )}
               {view === "home" && !preview && <SyncSummary />}
             </div>
           </div>
@@ -1030,7 +1026,7 @@ export function LibraryApp({
                 busy={catalog.loading || !!catalog.error}
               />
               <h2 className="section-space">
-                기록과 생각{" "}
+                내 기록{" "}
                 <span className="count">
                   {remote ? notePage.total : matchedNotes.length}
                 </span>
@@ -1097,7 +1093,7 @@ export function LibraryApp({
                     <CalendarDays />
                   </div>
                   <div className="stat-card">
-                    <span>쌓인 기록과 생각</span>
+                    <span>쌓인 내 기록</span>
                     <strong>
                       {data.notes.length}
                       <small>개</small>
@@ -1160,6 +1156,7 @@ export function LibraryApp({
                     selected={selected}
                     setSelected={setSelected}
                     onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                    onOpenBook={setDetail}
                     today={today}
                   />
                 </div>
@@ -1297,7 +1294,7 @@ export function LibraryApp({
                 </>
               )}
               {view === "notes" && (
-                <PageSizeSelect label="기록과 생각" paging={notePaging} />
+                <PageSizeSelect label="내 기록" paging={notePaging} />
               )}
               {view === "notes" &&
                 (data.notes.length || remote ? (
@@ -1336,6 +1333,7 @@ export function LibraryApp({
                     selected={selected}
                     setSelected={setSelected}
                     onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                    onOpenBook={setDetail}
                     today={today}
                   />
                   <div className="panel calendar-summary">
@@ -1463,6 +1461,8 @@ export function LibraryApp({
                 ) : (
                   <KnowledgePanel
                     ownerId={ownerId}
+                    onUpdated={refresh}
+                    onSaveNote={save}
                     onNewNote={(context) =>
                       setEditor({ kind: "note", ...context })
                     }
@@ -1504,7 +1504,7 @@ export function LibraryApp({
           )}
           {!needle && view === "notes" && (
             <PageNavigation
-              label="기록과 생각"
+              label="내 기록"
               paging={notePaging}
               total={remote ? notePage.total : matchedNotes.length}
               busy={notePage.loading || !!notePage.error}

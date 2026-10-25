@@ -50,6 +50,7 @@ const notes = [
   note("종교 기록", books[2].id, "2025-01-01T00:00:00.000Z"),
   note("", null, "2026-04-01T00:00:00.000Z"),
 ];
+notes[0].tags = ["관계"];
 const topics = [
   { id: topic, name: "감정" },
   { id: archived, name: "지운 주제", archivedAt: "2026-01-01" },
@@ -86,7 +87,7 @@ beforeAll(async () => {
     );
   for (const n of notes)
     await f.db.query(
-      "INSERT INTO library_notes(id,owner_id,title,content,kind,book_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      "INSERT INTO library_notes(id,owner_id,title,content,kind,book_id,created_at,updated_at,tags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
       [
         n.id,
         owner,
@@ -96,6 +97,7 @@ beforeAll(async () => {
         n.bookId,
         n.createdAt,
         n.updatedAt,
+        n.tags ?? [],
       ],
     );
   for (const t of topics)
@@ -115,6 +117,43 @@ const local = (q: unknown) =>
     buildTopicMaterials({ books, notes, topics, memberships }),
     q,
   );
+it("combines note kind, tag and linked book before paging on the server and device", async () => {
+  const q = {
+    kind: "note",
+    noteType: "thought",
+    tag: "없던태그",
+    bookId: books[0].id,
+    limit: 10,
+  };
+  expect(local(q).total).toBe(0);
+  expect((await readMaterialPage(f.db, owner, q)).total).toBe(0);
+  const match = {
+    kind: "note",
+    noteType: "thought",
+    category: "100",
+    tag: "관계",
+    bookId: books[0].id,
+    topic,
+  };
+  expect(local(match).items.map((n) => n.id)).toEqual([notes[0].id]);
+  expect(
+    (await readMaterialPage(f.db, owner, match)).items.map((n) => n.id),
+  ).toEqual([notes[0].id]);
+  expect(
+    local({ kind: "note", noteType: "unclassified" }).items.map((n) => n.id),
+  ).toEqual([notes[3].id]);
+  expect(
+    (
+      await readMaterialPage(f.db, owner, {
+        kind: "note",
+        noteType: "unclassified",
+      })
+    ).items.map((n) => n.id),
+  ).toEqual([notes[3].id]);
+  expect(
+    local({ kind: "note", bookId: "unlinked" }).items.map((n) => n.id),
+  ).toEqual([notes[3].id]);
+});
 
 it("the device materials query uses the same classifications and removes trashed records and excluded books", () => {
   const data: LocalIndex = {

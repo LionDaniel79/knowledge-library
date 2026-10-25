@@ -13,6 +13,8 @@ export type Material = {
   bookTitle?: string;
   topicIds?: string[];
   topicNames?: string[];
+  noteType?: string;
+  tags?: string[];
 };
 export function useMaterialPage(
   enabled: boolean,

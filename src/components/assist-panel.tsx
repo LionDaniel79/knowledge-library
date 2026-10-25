@@ -1,32 +1,33 @@
 "use client";
-import { libraryRequest } from "@/client/replica/request";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Library } from "@/lib/domain";
-import { DeviceSettings } from "./thought-map/device-settings";
-import { AssistHelp } from "./assist-help";
-import { McpConnections } from "./mcp-connections";
+import { libraryRequest } from "@/client/replica/request";
+import type { Library, Note } from "@/lib/domain";
+import type { TopicMaterial } from "@/lib/topic-materials";
+import {
+  assistModels,
+  assistModelSchema,
+  type AssistModel,
+} from "@/lib/assist-synthesis";
+import { analysisExcerpt, representativeNotes } from "@/lib/assist-selection";
 import { useReplicaOptional } from "./replica/provider";
-const purposes = {
-  organize_note: "AI 정리 · 태그와 주제",
-  tag_suggestion: "태그 제안",
-  excerpt_explanation: "선택 구절 설명",
-  compare_notes: "두 기록 비교 도움",
-};
-const statusNames: Record<string, string> = {
-  queued: "PC 처리 대기",
-  claimed: "실행 준비 중",
-  sending: "선택한 자료 처리 중",
-  completed: "검토할 제안",
-  failed: "확인이 필요한 요청",
-  cancelled: "취소됨",
-  stale: "원문 또는 설정 변경으로 채택 불가",
-  cost_unknown: "호출·비용 확인 필요 · 자동 재전송 안 함",
-};
-export function AssistLauncher(props: {
+import { AssistHelp } from "./assist-help";
+import { AssistRequestCard } from "./assist-request-card";
+export type AssistProps = {
   library: Library;
   noteId?: string;
   onAdopt?: () => void;
-}) {
+  onOpen?: (kind: string, id: string) => void;
+  scope?: Record<string, string | number>;
+  ownerId?: string;
+};
+export const focusNames = {
+  all: "종합 검토",
+  note_connection: "메모끼리의 연결",
+  topic_connection: "주제끼리의 연결",
+  new_topic: "새 주제 제안",
+  writing_idea: "글감·목차 방향",
+};
+export function AssistLauncher(props: AssistProps) {
   const [open, setOpen] = useState(false);
   return (
     <details
@@ -44,49 +45,79 @@ export function AssistPanel({
   library,
   noteId,
   onAdopt,
-}: {
-  library: Library;
-  noteId?: string;
-  onAdopt?: () => void;
-}) {
-  const replica = useReplicaOptional();
+  onOpen,
+  scope,
+  ownerId,
+}: AssistProps) {
+  const replica = useReplicaOptional(),
+    key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
   const [state, setState] = useState<any>(null),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [purpose, setPurpose] = useState<keyof typeof purposes>("organize_note"),
-    [first, setFirst] = useState(noteId ?? ""),
-    [second, setSecond] = useState(""),
-    [excerpt, setExcerpt] = useState(""),
+    [model, setModel] = useState<AssistModel>("gpt-6-luna"),
+    [focus, setFocus] = useState<keyof typeof focusNames>("all"),
+    [maximum, setMaximum] = useState(24),
     [preview, setPreview] = useState<any>(null);
-  const requestId = useRef("");
+  const running = useRef(false),
+    requestId = useRef(""),
+    hidden = useRef(new Set<string>());
+  const hiddenKey = key.replace(":assist-model:", ":assist-hidden:");
+  useEffect(() => {
+    hidden.current = new Set();
+    try {
+      const v = assistModelSchema.safeParse(localStorage.getItem(key));
+      setModel(v.success ? v.data : "gpt-6-luna");
+      const values = JSON.parse(localStorage.getItem(hiddenKey) ?? "[]");
+      hidden.current = new Set(
+        Array.isArray(values)
+          ? values.filter((v: unknown) => typeof v === "string").slice(-1000)
+          : [],
+      );
+    } catch {}
+  }, [key, hiddenKey]);
+  const query = {
+    kind: "note",
+    category: scope?.category ?? "all",
+    topic: scope?.topic ?? "all",
+    tag: scope?.tag ?? "all",
+    bookId: scope?.bookId ?? "all",
+    noteType: scope?.noteType ?? "all",
+    q: scope?.q ?? "",
+    sort: "newest",
+  };
+  const context = JSON.stringify([query, model, focus, maximum, noteId]),
+    contextRef = useRef(context);
+  contextRef.current = context;
   const load = useCallback(async () => {
-    const r = await libraryRequest("/api/assist", { cache: "no-store" }),
-      j = await r.json();
-    if (!r.ok) throw Error(j.error ?? "도움 설정을 불러오지 못했습니다.");
-    setState(j);
+    const r = await libraryRequest(
+      "/api/assist",
+      { cache: "no-store" },
+      { preferServer: typeof navigator === "undefined" || navigator.onLine },
+    );
+    const j = await r.json();
+    if (!r.ok) throw Error(j.error ?? "도움 요청 목록을 불러오지 못했습니다.");
+    setState({
+      ...j,
+      requests: j.requests.filter((r: any) => !hidden.current.has(r.id)),
+    });
   }, []);
   useEffect(() => {
     void load().catch((e) => setError(e.message));
   }, [load, replica?.revision]);
-  const active = state?.requests.some((r: any) =>
+  const active = state?.requests?.some((r: any) =>
     ["queued", "claimed", "sending"].includes(r.status),
   );
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => {
-      void (async () => {
-        if (replica?.ready)
-          await replica.runtime.sync({ reason: "requested-ai-result" });
-        await load();
-      })().catch((e) => setError(e.message));
+      void load().catch((e) => setError(e.message));
     }, 5000);
     return () => clearInterval(timer);
-  }, [active, load, replica?.ready, replica?.runtime]);
-  useEffect(() => {
-    setPreview(null);
-  }, [first, second, purpose, excerpt]);
-  async function act(action: string, payload: unknown) {
+  }, [active, load]);
+  async function act(action: string, payload: any) {
+    if (running.current) return null;
+    running.current = true;
     setBusy(true);
     setError("");
     setMessage("");
@@ -97,406 +128,327 @@ export function AssistPanel({
           body: JSON.stringify({ action, payload }),
         }),
         j = await r.json();
-      if (!r.ok) throw Error(j.error ?? "요청하지 못했습니다.");
-      if (action === "preview") {
-        setPreview(j);
-        requestId.current = crypto.randomUUID();
-      } else {
-        void load().catch((e) => setError(e.message));
-        if (action === "request") {
-          setPreview(null);
-          setMessage(
-            state?.execution === "server"
-              ? "요청을 저장했습니다. 처리 결과를 기다려 주세요."
-              : "선택한 요청을 저장했습니다. PC가 연결되면 처리합니다.",
+      if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
+      if (action === "hide") {
+        hidden.current.add(payload.id);
+        try {
+          localStorage.setItem(
+            hiddenKey,
+            JSON.stringify([...hidden.current].slice(-1000)),
           );
-        } else if (action === "adopt") {
-          setMessage("확인한 제안을 보관했습니다. 내 원문은 그대로입니다.");
-          onAdopt?.();
-        } else setMessage("저장했습니다.");
+        } catch {}
+        setState((old: any) => ({
+          ...old,
+          requests: old.requests.filter((r: any) => r.id !== payload.id),
+        }));
       }
+      if (action === "adopt") {
+        setMessage("확인한 제안을 저장했습니다.");
+        onAdopt?.();
+      }
+      if (action !== "preview") void load().catch((e) => setError(e.message));
       return j;
     } catch (e) {
       setError((e as Error).message);
+      return null;
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }
-  async function selection() {
-    let n = library.notes.find((n) => n.id === first);
-    if (n?.summary && purpose === "excerpt_explanation") {
-      const r = await libraryRequest("/api/notes/" + n.id, {
-          cache: "no-store",
+  async function prepare() {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const ticket = context;
+    try {
+      if (typeof navigator !== "undefined" && !navigator.onLine)
+        throw Error("AI 분석에는 인터넷 연결이 필요합니다.");
+      const candidates: TopicMaterial[] = [];
+      let total = 0;
+      for (let offset = 0; offset < 200; offset += 50) {
+        const params = new URLSearchParams(
+            Object.entries({ ...query, offset, limit: 50 }).map(([k, v]) => [
+              k,
+              String(v),
+            ]),
+          ),
+          r = await libraryRequest("/api/library-materials?" + params, {
+            cache: "no-store",
+          }),
+          j = await r.json();
+        if (!r.ok) throw Error(j.error ?? "분석할 기록을 찾지 못했습니다.");
+        total = j.total;
+        candidates.push(...j.items);
+        if (candidates.length >= total || !j.items.length) break;
+      }
+      if (noteId && !scope && !candidates.some((n) => n.id === noteId)) {
+        const r = await libraryRequest("/api/notes/" + noteId, {
+            cache: "no-store",
+          }),
+          n = await r.json();
+        if (!r.ok) throw Error(n.error);
+        candidates.unshift({
+          id: n.id,
+          kind: "note",
+          title: n.title,
+          text: n.content,
+          category: "",
+          version: n.version,
+          bookId: n.bookId,
+          bookTitle: "",
+          topicIds: [],
+          topicNames: [],
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+        });
+      }
+      const chosen = representativeNotes(candidates, maximum, noteId);
+      if (chosen.length < 2)
+        throw Error(
+          "함께 검토할 기록이 두 개 이상 필요합니다. 필터를 넓혀 주세요.",
+        );
+      const full: Note[] = [];
+      for (let i = 0; i < chosen.length; i += 4)
+        full.push(
+          ...(await Promise.all(
+            chosen.slice(i, i + 4).map(async (c) => {
+              const local = library.notes.find(
+                (n) => n.id === c.id && !n.summary && n.version === c.version,
+              );
+              if (local) return local;
+              const r = await libraryRequest("/api/notes/" + c.id, {
+                  cache: "no-store",
+                }),
+                n = await r.json();
+              if (!r.ok) throw Error(n.error);
+              if (n.version !== c.version)
+                throw Error("기록이 변경됐습니다. 다시 확인해 주세요.");
+              return n;
+            }),
+          )),
+        );
+      const budget = Math.min(1200, Math.floor(10000 / full.length)),
+        sources = full.map((n) => {
+          const selection = analysisExcerpt(n.content, String(query.q), budget);
+          return {
+            source: { kind: "note", id: n.id, version: String(n.version) },
+            ...(selection ? { selection } : {}),
+          };
+        });
+      const selection = { purpose: "synthesis", model, focus, sources },
+        r = await libraryRequest("/api/assist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "preview", payload: selection }),
         }),
-        full = await r.json();
-      if (!r.ok) throw Error(full.error);
-      if (full.version !== n.version)
-        throw Error("기록이 변경되었습니다. 새로고침 후 다시 선택하세요.");
-      n = full;
-    }
-    if (!n) throw Error("저장한 기록을 선택해 주세요.");
-    const sources: any[] = [
-      { source: { kind: "note", id: n.id, version: String(n.version) } },
-    ];
-    if (purpose === "excerpt_explanation") {
-      const start = n.content.indexOf(excerpt);
-      if (!excerpt.trim() || start < 0)
-        throw Error("저장된 기록에 있는 구절을 그대로 선택해 주세요.");
-      sources[0].selection = { start, end: start + excerpt.length };
-    }
-    if (purpose === "compare_notes") {
-      const other = library.notes.find((n) => n.id === second);
-      if (!other || other.id === first)
-        throw Error("다른 기록을 선택해 주세요.");
-      sources.push({
-        source: { kind: "note", id: other.id, version: String(other.version) },
+        j = await r.json();
+      if (!r.ok) throw Error(j.error ?? "전송 내용을 확인하지 못했습니다.");
+      if (contextRef.current !== ticket) return;
+      requestId.current = crypto.randomUUID();
+      setPreview({
+        ...j,
+        selection,
+        titles: full.map((n) => n.title || n.content.slice(0, 50)),
+        total,
+        candidateCount: candidates.length,
+        context: ticket,
       });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      running.current = false;
+      setBusy(false);
     }
-    return { purpose, sources };
   }
-  const online =
-    state?.execution === "server" ||
-    state?.workers.some(
-      (w: any) => w.key_ready && Date.now() - Date.parse(w.last_seen) < 120000,
-    );
+  const currentPreview = preview?.context === context ? preview : null;
+  const exceeds =
+    currentPreview &&
+    Number(currentPreview.estimate.maxCostUsd) >
+      Number(currentPreview.policy.requestLimitUsd ?? 0);
+  const allowance = currentPreview
+    ? (
+        Math.ceil(Number(currentPreview.estimate.maxCostUsd) * 1000000) /
+        1000000
+      ).toFixed(6)
+    : "0";
   return (
-    <section className="assist-panel">
+    <section className="assist-panel assist-synthesis">
       <div className="assist-heading">
-        <h3>선택한 기록만 도움받기</h3>
+        <h3>생각을 넓히는 AI 도움</h3>
         <AssistHelp />
       </div>
-      <p>저장한 글을 선택하고, 필요한 제안만 채택하세요.</p>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {state && (
-        <>
-          <details className="assist-settings">
-            <summary>
-              {state.execution === "server"
-                ? "AI 사용·비용 설정"
-                : "AI 사용·비용·PC 설정"}
-            </summary>
-            <form
-              className="thought-form"
-              key={state.policy.version}
-              onSubmit={(e) => {
-                e.preventDefault();
-                const d = new FormData(e.currentTarget);
-                void act("configure", {
-                  expectedPolicyVersion: state.policy.version,
-                  requestsEnabled: d.get("enabled") === "on",
-                  requestLimitUsd: String(d.get("request") || "") || null,
-                  runtimeMonthlyLimitUsd:
-                    String(d.get("monthly") || "") || null,
-                  developmentLimitUsd: state.policy.developmentLimitUsd,
-                });
+      <div className="assist-synthesis-controls">
+        <label>
+          도움 방향
+          <select
+            aria-label="도움 방향"
+            value={focus}
+            onChange={(e) =>
+              setFocus(e.target.value as keyof typeof focusNames)
+            }
+          >
+            {Object.entries(focusNames).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button disabled={busy} onClick={() => void prepare()}>
+          {busy ? "처리 중…" : "분석할 기록 확인"}
+        </button>
+        <details className="assist-model-choice">
+          <summary>모델 선택</summary>
+          <label>
+            AI 모델
+            <select
+              aria-label="AI 모델"
+              value={model}
+              onChange={(e) => {
+                const v = assistModelSchema.parse(e.target.value);
+                setModel(v);
+                try {
+                  localStorage.setItem(key, v);
+                } catch {}
               }}
             >
-              <label>
-                <input
-                  name="enabled"
-                  type="checkbox"
-                  defaultChecked={state.policy.requestsEnabled}
-                />{" "}
-                내가 실행한 요청에만 GPT 사용 허용
-              </label>
-              <label>
-                요청당 상한 (미국 달러)
-                <input
-                  name="request"
-                  inputMode="decimal"
-                  placeholder="예: 0.01"
-                  defaultValue={state.policy.requestLimitUsd ?? ""}
-                />
-              </label>
-              <label>
-                월 상한 (미국 달러)
-                <input
-                  name="monthly"
-                  inputMode="decimal"
-                  placeholder="예: 1.00"
-                  defaultValue={state.policy.runtimeMonthlyLimitUsd ?? ""}
-                />
-              </label>
-              <button disabled={busy}>AI 설정 저장</button>
-            </form>
-            {state.execution !== "server" && <DeviceSettings />}
-            <McpConnections />
-            <details>
-              <summary>사용량 보기</summary>
-              {state.usage.map((u: any, i: number) => (
-                <p key={i}>
-                  {u.phase === "runtime" ? "이번 달 사용" : "개발 정비"} · 확인
-                  비용 ${u.spent} · 예약 ${u.reserved}
-                </p>
+              {Object.entries(assistModels).map(([id, m]) => (
+                <option key={id} value={id}>
+                  {m.name}
+                </option>
               ))}
-            </details>
-          </details>
-          {!state.policy.requestsEnabled && (
-            <p className="notice">AI 도움 꺼짐 · 설정에서 켤 수 있습니다.</p>
-          )}
-          <p className="form-hint">
-            {state.execution === "server"
-              ? "온라인 AI 연결됨 · PC 없이 요청할 수 있습니다."
-              : online
-                ? "PC가 연결되어 있습니다."
-                : "PC 연결 대기 · 요청은 연결 후 처리합니다."}
-          </p>
-          <form
-            className="thought-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await act("preview", await selection());
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-          >
-            <label>
-              도움 종류
-              <select
-                value={purpose}
-                onChange={(e) =>
-                  setPurpose(e.target.value as keyof typeof purposes)
-                }
-              >
-                {Object.entries(purposes).map(([id, label]) => (
-                  <option
-                    key={id}
-                    value={id}
-                    disabled={
-                      id === "compare_notes" && !state.comparisonEnabled
-                    }
-                  >
-                    {label}
-                    {id === "compare_notes" && !state.comparisonEnabled
-                      ? " · 성능 검수 대기"
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              도움을 받을 기록
-              <select
-                required
-                value={first}
-                onChange={(e) => {
-                  setFirst(e.target.value);
-                  setExcerpt("");
-                }}
-              >
-                <option value="">기록 선택</option>
-                {library.notes.map((n) => (
-                  <option value={n.id} key={n.id}>
-                    {n.title} · {n.content.slice(0, 32)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {purpose === "excerpt_explanation" && (
-              <label>
-                설명을 요청할 구절
-                <textarea
-                  required
-                  value={excerpt}
-                  onChange={(e) => setExcerpt(e.target.value)}
-                  maxLength={12000}
-                  placeholder="저장한 기록에서 필요한 구절을 그대로 붙여 넣으세요."
-                />
-              </label>
-            )}
-            {purpose === "compare_notes" && (
-              <label>
-                비교할 두 번째 기록
-                <select
-                  required
-                  value={second}
-                  onChange={(e) => setSecond(e.target.value)}
-                >
-                  <option value="">기록 선택</option>
-                  {library.notes
-                    .filter((n) => n.id !== first)
-                    .map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.title}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
-            <button disabled={busy || !first}>전송 내용 미리보기</button>
-          </form>
-          {preview && (
-            <div className="assist-preview">
-              <h4>전송할 내용 확인</h4>
+            </select>
+          </label>
+          <label>
+            대표 기록 수
+            <select
+              value={maximum}
+              onChange={(e) => setMaximum(Number(e.target.value))}
+            >
+              <option value={24}>최대 24개</option>
+              <option value={12}>최대 12개</option>
+              <option value={6}>최대 6개</option>
+            </select>
+          </label>
+        </details>
+      </div>
+      <small>
+        현재 선택한 조건의 기록을 바탕으로 검토합니다. 확인한 제안만 저장합니다.
+      </small>
+      {currentPreview && (
+        <section className="assist-preview">
+          <strong>
+            조건에 맞는 {currentPreview.total}개 중{" "}
+            {currentPreview.task.payload.sources.length}개 검토
+          </strong>
+          <small>예상 비용 상한 US${currentPreview.estimate.maxCostUsd}</small>
+          <details>
+            <summary>전송할 기록 확인</summary>
+            {currentPreview.task.payload.sources.map((s: any, i: number) => (
+              <div key={s.source.id}>
+                <strong>{currentPreview.titles[i]}</strong>
+                <small>{s.coverage === "partial" ? "발췌" : "전체 기록"}</small>
+                <blockquote>{s.text}</blockquote>
+              </div>
+            ))}
+            {currentPreview.total > 200 && (
               <p>
-                아래 내용만 OpenAI API로 전송합니다. 이번 요청의 예상 비용
-                상한은 US${preview.estimate.maxCostUsd}입니다.
+                최대 200개 후보에서 대표 기록을 골랐습니다. 범위를 좁히면 다른
+                기록도 검토할 수 있습니다.
               </p>
-              {preview.task.payload.sources.map((s: any, i: number) => (
-                <blockquote key={i}>{s.text}</blockquote>
-              ))}
+            )}
+          </details>
+          {exceeds && (
+            <div className="notice">
+              <p>
+                기존 건당 한도를 넘습니다. 모델이나 기록 수를 줄이거나 아래
+                한도를 직접 확인해 주세요.
+              </p>
               <button
-                className="primary"
-                disabled={busy || !state.policy.requestsEnabled}
+                disabled={
+                  busy ||
+                  active ||
+                  !currentPreview.policy.requestsEnabled ||
+                  Number(currentPreview.estimate.maxCostUsd) >
+                    Math.min(
+                      1,
+                      Number(currentPreview.policy.runtimeMonthlyLimitUsd ?? 0),
+                    )
+                }
                 onClick={async () => {
-                  try {
-                    await act("request", {
-                      ...(await selection()),
-                      requestId: requestId.current,
-                      expectedPolicyVersion: preview.policy.version,
-                      scopeHash: preview.scopeHash,
-                    });
-                  } catch (e) {
-                    setError((e as Error).message);
+                  if (
+                    await act("allowRequest", {
+                      expectedPolicyVersion: currentPreview.policy.version,
+                      maxCostUsd: allowance,
+                    })
+                  ) {
+                    setPreview(null);
+                    await prepare();
                   }
                 }}
               >
-                이 내용으로 AI 도움 요청
+                건당 한도를 US${allowance}로 조정 · 월 한도 유지
               </button>
             </div>
           )}
-          <div className="assist-results">
-            <h4>내가 요청한 도움</h4>
-            {!state.requests.length && <p>요청한 기록이 없습니다.</p>}
-            {state.requests.map((r: any) => (
-              <article key={r.id}>
-                <h4>
-                  {purposes[r.purpose as keyof typeof purposes]} ·{" "}
-                  {r.status === "queued" && state.execution === "server"
-                    ? "처리 대기"
-                    : (statusNames[r.status] ?? r.status)}
-                </h4>
-                {r.status === "failed" && (
-                  <p>
-                    원문·사용 한도·연결을 확인해 주세요. 자동 재호출은 하지
-                    않습니다.
-                  </p>
-                )}
-                {!["queued", "claimed", "sending", "cost_unknown"].includes(
-                  r.status,
-                ) && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    aria-label="도움 요청 기록 삭제"
-                    onClick={() => void act("hide", { id: r.id })}
-                  >
-                    삭제
-                  </button>
-                )}
-                {["queued", "claimed"].includes(r.status) && (
-                  <button
-                    disabled={busy}
-                    onClick={() => void act("cancel", { id: r.id })}
-                  >
-                    요청 취소
-                  </button>
-                )}
-                {r.result?.valid && r.status === "completed" && (
-                  <>
-                    <p className="form-hint">
-                      AI가 제안한 내용 · 내 기록과 별도로 보관합니다.
-                    </p>
-                    {r.purpose === "organize_note" &&
-                      !r.result.output.items?.length && (
-                        <p>이 기록에서 추가할 태그·주제를 찾지 못했습니다.</p>
-                      )}
-                    {(r.result.output.items ?? r.result.output.tags)?.map(
-                      (t: any, i: number) => (
-                        <p key={i}>
-                          {t.kind === "topic" ? "주제 · " : "태그 · "}
-                          {t.value ?? t.tag}{" "}
-                          <button
-                            disabled={
-                              busy ||
-                              r.adoption?.some((a: any) => a.index === i)
-                            }
-                            onClick={() =>
-                              void act("adopt", { id: r.id, index: i })
-                            }
-                          >
-                            {r.adoption?.some((a: any) => a.index === i)
-                              ? "채택함"
-                              : t.kind === "topic"
-                                ? "검색 주제로 채택"
-                                : "검색 태그로 채택"}
-                          </button>
-                        </p>
-                      ),
-                    )}
-                    {r.result.output.explanation && (
-                      <p>{r.result.output.explanation}</p>
-                    )}
-                    {r.purpose === "compare_notes" && (
-                      <button
-                        disabled={busy || r.adoption?.length > 0}
-                        onClick={() =>
-                          void act("adopt", { id: r.id, index: 0 })
-                        }
-                      >
-                        변화 후보로 보내서 검토
-                      </button>
-                    )}
-                    <details>
-                      <summary>근거 보기</summary>
-                      <pre>
-                        {JSON.stringify(
-                          {
-                            evidence: r.result.output.evidence ??
-                              (
-                                r.result.output.items ?? r.result.output.tags
-                              )?.map((t: any) => t.evidence) ?? {
-                                before: r.result.output.before,
-                                after: r.result.output.after,
-                              },
-                            model: r.result.provenance.model,
-                            costUsd: r.result.costUsd,
-                          },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </details>
-                  </>
-                )}
-                {r.status === "cost_unknown" && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const d = new FormData(e.currentTarget);
-                      void act("resolveCost", {
-                        id: r.id,
-                        costUsd: String(d.get("cost")),
-                      });
-                    }}
-                  >
-                    <p>
-                      OpenAI 사용 내역에서 비용을 확인하면 다음 요청을 진행할 수
-                      있습니다. 다시 요청하면 추가 비용이 들 수 있습니다.
-                    </p>
-                    <label>
-                      확인한 비용 (미국 달러)
-                      <input name="cost" required inputMode="decimal" />
-                    </label>
-                    <label>
-                      <input type="checkbox" required /> API 사용 내역에서
-                      확인했습니다.
-                    </label>
-                    <button disabled={busy}>확인한 비용 기록</button>
-                  </form>
-                )}
-              </article>
-            ))}
-          </div>
-        </>
+          {!currentPreview.policy.requestsEnabled && (
+            <p role="alert">현재 AI 요청이 꺼져 있습니다.</p>
+          )}
+          <button
+            className="primary"
+            disabled={busy || exceeds || !currentPreview.policy.requestsEnabled}
+            onClick={async () => {
+              const j = await act("request", {
+                ...currentPreview.selection,
+                requestId: requestId.current,
+                expectedPolicyVersion: currentPreview.policy.version,
+                scopeHash: currentPreview.scopeHash,
+              });
+              if (j) {
+                setPreview(null);
+                setMessage(
+                  "요청을 저장했습니다. 결과가 준비되면 아래에 표시합니다.",
+                );
+              }
+            }}
+          >
+            이 기록으로 AI 도움 요청
+          </button>
+        </section>
       )}
+      <div className="assist-results">
+        <div className="section-heading">
+          <h4>내가 요청한 도움</h4>
+          <button
+            className="text-button"
+            aria-label="요청 목록 새로고침"
+            onClick={() => void load().catch((e) => setError(e.message))}
+          >
+            새로고침
+          </button>
+        </div>
+        {!state && <p role="status">요청 목록을 불러오는 중…</p>}
+        {state && !state.requests?.length && <p>요청한 기록이 없습니다.</p>}
+        {state?.requests?.map((r: any) => (
+          <AssistRequestCard
+            key={r.id}
+            request={r}
+            busy={busy}
+            act={act}
+            library={library}
+            onOpen={onOpen}
+          />
+        ))}
+      </div>
     </section>
   );
 }

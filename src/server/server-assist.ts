@@ -5,6 +5,7 @@ import {
   runOpenAiTask,
   assistModel,
   pricingVersion,
+  normalizePricingVersion,
   type OpenAiConfig,
 } from "../local/ai/openai";
 import {
@@ -98,8 +99,9 @@ export function serverAssistConfig() {
   const config: OpenAiConfig = {
     apiKey: process.env.OPENAI_API_KEY ?? "",
     model: process.env.LIBRARY_ASSIST_MODEL ?? assistModel,
-    pricingVersion:
+    pricingVersion: normalizePricingVersion(
       process.env.LIBRARY_ASSIST_PRICING_VERSION ?? pricingVersion,
+    ),
     timeoutMs: 90000,
   };
   return {
