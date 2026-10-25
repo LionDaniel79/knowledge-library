@@ -3,6 +3,31 @@ import { failure } from "../src/server/http";
 import { LibraryError } from "../src/server/library-store";
 
 afterEach(() => vi.restoreAllMocks());
+it("identifies a permission failure only for exact known application objects", () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  failure(
+    Object.assign(
+      new Error("permission denied for view library_active_books"),
+      { code: "42501" },
+    ),
+  );
+  expect(log).toHaveBeenLastCalledWith("Library request failed", {
+    name: "Error",
+    code: "42501",
+    object: "library_active_books",
+  });
+  for (const message of [
+    "permission denied for table library_private_note_text",
+    "permission denied for view library_active_books: private note text",
+    "private SQL mentions library_active_books",
+  ]) {
+    failure(Object.assign(new Error(message), { code: "42501" }));
+    expect(log).toHaveBeenLastCalledWith("Library request failed", {
+      name: "Error",
+      code: "42501",
+    });
+  }
+});
 it("logs safe database diagnostics without exposing SQL or personal record content", async () => {
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const error = Object.assign(
