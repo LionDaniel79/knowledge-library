@@ -2,6 +2,7 @@
 import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
 import { Modal } from "./modal";
+import { containsSearchField } from "@/lib/search-fields";
 type Tag = {
   tag: string;
   count: number;
@@ -79,11 +80,7 @@ export function NoteTagFilter({
       ...items.map((t) => t.tag),
     ]),
   ]
-    .filter(
-      (t) =>
-        !searchable ||
-        t.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-    )
+    .filter((t) => !searchable || containsSearchField(t, query))
     .sort((a, b) => a.localeCompare(b, "ko"));
   function choose(tag: string) {
     onChange(tag);
@@ -96,13 +93,17 @@ export function NoteTagFilter({
         ref={details}
         onToggle={(e) => {
           if (e.target === e.currentTarget && e.currentTarget.open) {
-            setQuery("");
-            setPending(null);
             void load();
           }
         }}
       >
         <summary
+          onClick={() => {
+            if (!details.current?.open) {
+              setQuery("");
+              setPending(null);
+            }
+          }}
           role={searchable ? "button" : undefined}
           aria-label={searchable ? "태그 선택" : "기록 태그 필터 · 태그 관리"}
         >

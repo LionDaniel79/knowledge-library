@@ -4,6 +4,8 @@ import { LibraryError, type Executor } from "./library-store";
 import type { SourceRef } from "../lib/curation";
 import { searchContext, type TopicRelation } from "./library-search-context";
 import { currentOutlineDocumentSql } from "./curation-freshness";
+import { containsSearchField, searchWords } from "../lib/search-fields";
+import { searchFieldSql } from "./search-sql";
 export interface SearchHit {
   id: string;
   source: SourceRef;
@@ -36,7 +38,7 @@ export async function searchLibrary(
     context = await searchContext(db, owner, q),
     fingerprint = contentHash(
       JSON.stringify([
-        "title-spacing/v2",
+        "search-words/v3",
         owner,
         q.text,
         q.layer,
@@ -102,8 +104,8 @@ export async function searchLibrary(
   )
  ), scored AS (
   SELECT *,CASE WHEN aux=1 THEN 'auxiliary' WHEN voice='self' THEN 'mine' ELSE 'source' END AS layer,
-   CASE WHEN aux=1 THEN 10 WHEN voice='self' AND EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(lower(term) in lower(body))>0) THEN 100 WHEN EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(regexp_replace(lower(term),'[[:space:]　 ]+','','g') in regexp_replace(lower(title),'[[:space:]　 ]+','','g'))>0) THEN 80 ELSE 60 END AS score
-  FROM entries WHERE EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE position(lower(term) in lower(concat_ws(' ',title,body,tags)))>0 OR position(regexp_replace(lower(term),'[[:space:]　 ]+','','g') in regexp_replace(lower(title),'[[:space:]　 ]+','','g'))>0)
+   CASE WHEN aux=1 THEN 10 WHEN voice='self' AND EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE ${searchFieldSql("body", "term")}) THEN 100 WHEN EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE ${searchFieldSql("title", "term")}) THEN 80 ELSE 60 END AS score
+  FROM entries WHERE EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE ${searchFieldSql("concat_ws(' ',title,body,tags)", "term")})
    AND ($4::uuid[] IS NULL OR EXISTS(SELECT 1 FROM library_topic_memberships m WHERE m.owner_id=$1 AND m.topic_id=ANY($4) AND m.source_kind=entries.kind AND m.source_id=entries.source_id AND m.source_version=entries.version AND m.status='accepted'))
  ), filtered AS (SELECT * FROM scored WHERE ($3='all' OR layer=$3))`;
   const sql =
@@ -136,26 +138,17 @@ export async function searchLibrary(
     items: rows.slice(0, q.limit).map((r) => {
       const body = r.body ?? "";
       const matchedTerms = context.terms.filter(
-        (t) =>
-          !!t &&
-          (`${r.title} ${body} ${r.tags}`
-            .toLowerCase()
-            .includes(t.toLowerCase()) ||
-            String(r.title ?? "")
-              .replace(/\s+/g, "")
-              .toLowerCase()
-              .includes(t.replace(/\s+/g, "").toLowerCase())),
+        (t) => !!t && containsSearchField(`${r.title} ${body} ${r.tags}`, t),
       );
       const start = Math.max(
         0,
         body
           .toLowerCase()
           .indexOf(
-            (
-              matchedTerms.find((t) =>
-                body.toLowerCase().includes(t.toLowerCase()),
-              ) ?? q.text
-            ).toLowerCase(),
+            matchedTerms
+              .flatMap(searchWords)
+              .find((t) => body.toLowerCase().includes(t)) ??
+              q.text.toLowerCase(),
           ) - 100,
       );
       return {

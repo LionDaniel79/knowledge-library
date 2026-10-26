@@ -13,17 +13,28 @@ export const memoSearchFields = {
 };
 export const compactSearchText = (value: string) =>
   value.toLowerCase().replace(/[\s　 ]+/g, "");
-export const containsSearchField = (value: string | undefined, query: string) =>
-  !query || compactSearchText(value ?? "").includes(compactSearchText(query));
 export const compactBookTitleSearch = (value: string) =>
   compactSearchText(value).replace(/[,，、]/g, "");
-export const containsBookTitleSearch = (
+export function searchWords(query: string): string[] {
+  const words = query
+    .trim()
+    .split(/[\s　 ]+/u)
+    .map(compactBookTitleSearch)
+    .filter(Boolean);
+  return words.length
+    ? [...new Set(words)]
+    : [compactSearchText(query)].filter(Boolean);
+}
+export const containsSearchField = (
   value: string | undefined,
   query: string,
 ) => {
-  const compact = compactBookTitleSearch(query);
-  return (
-    containsSearchField(value, query) ||
-    (!!compact && compactBookTitleSearch(value ?? "").includes(compact))
+  const words = searchWords(query);
+  if (!words.length) return true;
+  const literal = compactSearchText(value ?? ""),
+    compact = literal.replace(/[,，、]/g, "");
+  return words.every(
+    (word) => compact.includes(word) || literal.includes(word),
   );
 };
+export const containsBookTitleSearch = containsSearchField;

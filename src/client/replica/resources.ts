@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { containsSearchField } from "../../lib/search-fields";
 import type { ReplicaStorage } from "./storage";
 import type { SyncEntity } from "../../lib/replica/entities";
 import type { RawRecord } from "../../lib/replica/projections";
@@ -586,7 +587,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
           const b = books.get(e.id);
           if (
             !b ||
-            ![b.title, b.author, b.isbn].join(" ").toLowerCase().includes(q)
+            !containsSearchField([b.title, b.author, b.isbn].join(" "), q)
           )
             continue;
           items.push({
@@ -751,13 +752,8 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             .filter(
               (r) =>
                 r.status === status &&
-                (!q ||
-                  String(r.title ?? "")
-                    .toLowerCase()
-                    .includes(q) ||
-                  String(r.candidate_title ?? "")
-                    .toLowerCase()
-                    .includes(q)),
+                (containsSearchField(String(r.title ?? ""), q) ||
+                  containsSearchField(String(r.candidate_title ?? ""), q)),
             )
             .sort(order);
           if (group === "book") {

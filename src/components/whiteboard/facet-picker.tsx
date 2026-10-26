@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { containsSearchField } from "@/lib/search-fields";
 export interface FacetOption {
   value: string;
   label: string;
@@ -69,9 +70,7 @@ export function FacetPicker({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
-  const matches = options.filter((o) =>
-    o.label.toLocaleLowerCase().includes(q.trim().toLocaleLowerCase()),
-  );
+  const matches = options.filter((o) => containsSearchField(o.label, q));
   const summary =
     values.length === 1
       ? (options.find((o) => o.value === values[0])?.label ?? "선택 1개")

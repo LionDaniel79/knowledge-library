@@ -1,3 +1,4 @@
+import { searchFieldSql } from "./search-sql";
 import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -92,8 +93,7 @@ export function createBookExclusionStore(db: Database) {
         await tx.query(
           "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
         );
-        const from =
-          "FROM library_book_exclusions e JOIN library_books b ON b.owner_id=e.owner_id AND b.id=e.id WHERE e.owner_id=$1 AND e.state='excluded' AND ($2='' OR strpos(lower(concat_ws(' ',b.title,b.author,b.isbn)),lower($2))>0)";
+        const from = `FROM library_book_exclusions e JOIN library_books b ON b.owner_id=e.owner_id AND b.id=e.id WHERE e.owner_id=$1 AND e.state='excluded' AND ${searchFieldSql("concat_ws(' ',b.title,b.author,b.isbn)", "$2")}`;
         const total = (
           await tx.query("SELECT count(*)::int AS total " + from, [owner, p.q])
         ).rows[0].total;

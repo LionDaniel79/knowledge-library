@@ -32,6 +32,13 @@ it("keeps indexed quotations searchable when the external drive is disconnected"
     },
   ]);
 });
+it("requires both words on the same PDF page even when they are separated and reversed", () => {
+  process.env.LIBRARY_PDF_INDEX = file;
+  expect(searchPdfPages("이야기를 관계")).toMatchObject([
+    { documentId: "doc", pageNumber: 7 },
+  ]);
+  expect(searchPdfPages("관계 없는단어")).toEqual([]);
+});
 it("streams FTS hits in page order without computing ranks for the entire match set", () => {
   process.env.LIBRARY_PDF_INDEX = file;
   const fixture = new DatabaseSync(file);

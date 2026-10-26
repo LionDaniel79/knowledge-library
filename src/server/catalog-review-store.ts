@@ -1,3 +1,4 @@
+import { searchFieldSql } from "./search-sql";
 import { syncQuery, withSyncWrite } from "./sync/write";
 import { catalogPrecheck } from "../lib/catalog-precheck";
 import { createHash, randomUUID } from "node:crypto";
@@ -165,8 +166,7 @@ export async function readCatalogReviews(
     return { ...row, current: snapshot(b), alternatives };
   }
   const params = [owner, q.status, q.q];
-  const where =
-    "owner_id=$1 AND status=$2 AND ($3='' OR strpos(lower(book_snapshot->>'title'),lower($3))>0 OR strpos(lower(record->>'title'),lower($3))>0)";
+  const where = `owner_id=$1 AND status=$2 AND (${searchFieldSql("book_snapshot->>'title'", "$3")} OR ${searchFieldSql("record->>'title'", "$3")})`;
   const count = (
     await db.query(
       `SELECT count(${q.groupBy === "book" ? "DISTINCT book_id" : "*"})::int AS n FROM library_catalog_reviews WHERE ${where}`,

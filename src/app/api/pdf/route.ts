@@ -7,6 +7,7 @@ import { readVisiblePdfSummary } from "@/server/pdf-visible-summary";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { pcPdfSearchUrl, privatePcOrigin } from "@/lib/pc-access";
+import { searchFieldSql } from "@/server/search-sql";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -76,14 +77,14 @@ export async function GET(request: Request) {
         .default(30)
         .parse(params.get("limit") ?? undefined);
       const docs = await database.query(
-        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3) ORDER BY b.title,d.id LIMIT $5 OFFSET $4`,
-        [owner, query, "%" + query + "%", Math.floor(page) * limit, limit],
+        `SELECT d.id,d.book_id AS "bookId",b.title,b.author,d.relative_path AS "relativePath",d.bytes::float8 AS bytes,d.processing_scope AS "processingScope",d.material_kind AS "materialKind" FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ${searchFieldSql("concat_ws(' ',b.title,b.author,d.relative_path)", "$2")} ORDER BY b.title,d.id LIMIT $4 OFFSET $3`,
+        [owner, query, Math.floor(page) * limit, limit],
       );
       const total = Number(
         await database
           .query(
-            "SELECT count(*) n FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ($2='' OR b.title ILIKE $3 OR d.relative_path ILIKE $3)",
-            [owner, query, "%" + query + "%"],
+            `SELECT count(*) n FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND ${searchFieldSql("concat_ws(' ',b.title,b.author,d.relative_path)", "$2")}`,
+            [owner, query],
           )
           .then((r) => r.rows[0].n),
       );

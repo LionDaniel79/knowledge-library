@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { buildMemoBox } from "@/lib/memo-box";
+import { containsSearchField } from "@/lib/search-fields";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import type { Library } from "@/lib/domain";
 import type { NewNoteContext, NoteTopicSnapshot } from "@/lib/note-context";
@@ -48,19 +49,19 @@ export function MemoBox({
   const shown = useMemo(
     () =>
       model?.connected.filter((n) =>
-        [n.title, n.content]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(query.toLocaleLowerCase()),
+        containsSearchField([n.title, n.content].join(" "), query),
       ) ?? [],
     [model, query],
   );
   const active = model?.notes.get(selected),
     pairs = (model?.topicPairs ?? []).filter((p) =>
-      [model?.topics.get(p.source)?.name, model?.topics.get(p.target)?.name]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
+      containsSearchField(
+        [
+          model?.topics.get(p.source)?.name,
+          model?.topics.get(p.target)?.name,
+        ].join(" "),
+        query,
+      ),
     );
   return (
     <section className="memo-box">

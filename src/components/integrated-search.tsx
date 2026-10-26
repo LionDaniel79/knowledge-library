@@ -2,6 +2,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { Book, Note, Library } from "@/lib/domain";
 import { categoryName } from "@/lib/catalog";
+import { containsSearchField } from "@/lib/search-fields";
 import { BookCover } from "./book-cover";
 import { useBookCatalog } from "./use-book-catalog";
 import { useNotePage } from "./use-note-page";
@@ -50,30 +51,30 @@ export function IntegratedSearch({
     const byBook = new Map(library.books.map((b) => [b.id, b]));
     return {
       books: library.books.filter((b) =>
-        [
-          b.title,
-          b.author,
-          b.publisher,
-          b.isbn,
-          b.shelf,
-          categoryName(b.category),
-          ...(b.bookshelves ?? []),
-          ...b.tags,
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(needle),
+        containsSearchField(
+          [
+            b.title,
+            b.author,
+            b.publisher,
+            b.isbn,
+            b.shelf,
+            categoryName(b.category),
+            ...(b.bookshelves ?? []),
+            ...b.tags,
+          ].join(" "),
+          needle,
+        ),
       ),
       notes: library.notes.filter((n) =>
-        [
-          n.title,
-          n.content,
-          ...(n.tags ?? []),
-          byBook.get(n.bookId ?? "")?.title ?? "",
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(needle),
+        containsSearchField(
+          [
+            n.title,
+            n.content,
+            ...(n.tags ?? []),
+            byBook.get(n.bookId ?? "")?.title ?? "",
+          ].join(" "),
+          needle,
+        ),
       ),
     };
   }, [library, remote, needle]);

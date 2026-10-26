@@ -1,5 +1,5 @@
 import { materialPageQuery } from "@/lib/material-query";
-import { categories } from "@/lib/catalog";
+import { searchFieldSql, categorySearchTextSql } from "./search-sql";
 import type { TopicMaterial } from "@/lib/topic-materials";
 import { LibraryError, type Executor } from "./library-store";
 
@@ -35,12 +35,10 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
 ), filtered AS (
   SELECT * FROM normalized WHERE ($2='all' OR kind=$2) AND ($3='all' OR category=CASE WHEN $3='unclassified' THEN '' ELSE $3 END)
     AND ($4='all' OR ($4='unclassified' AND cardinality(topic_ids)=0) OR $4=ANY(topic_ids))
-    AND ($5='' OR strpos(lower(search_text),lower($5))>0 OR (kind='book' AND (
-      category=ANY($6::text[]) OR strpos(regexp_replace(lower(title||' '||text),'[[:space:]　 ]+','','g'),regexp_replace(lower($5),'[[:space:]　 ]+','','g'))>0
-    )))
-    AND ($7='all' OR (kind='note' AND (($7='unclassified' AND btrim(title) IN ('','미분류 메모')) OR note_type=$7)))
-    AND ($8='all' OR (kind='note' AND (($8='untagged' AND cardinality(tags)=0) OR $8=ANY(tags))))
-    AND ($9='all' OR (kind='note' AND (($9='unlinked' AND book_id IS NULL) OR book_id=$9)))
+    AND ${searchFieldSql(`concat_ws(' ',search_text,CASE WHEN kind='book' THEN ${categorySearchTextSql("category")} ELSE '' END)`, "$5")}
+    AND ($6='all' OR (kind='note' AND (($6='unclassified' AND btrim(title) IN ('','미분류 메모')) OR note_type=$6)))
+    AND ($7='all' OR (kind='note' AND (($7='untagged' AND cardinality(tags)=0) OR $7=ANY(tags))))
+    AND ($8='all' OR (kind='note' AND (($8='unlinked' AND book_id IS NULL) OR book_id=$8)))
 )`;
 const orders = {
   default: `CASE WHEN kind='note' THEN 0 ELSE 1 END,CASE WHEN kind='note' THEN updated_at END DESC,CASE WHEN kind='book' THEN title END COLLATE "C",id COLLATE "C"`,
@@ -63,9 +61,6 @@ export async function readMaterialPage(
       p.category,
       p.topic,
       p.q,
-      categories
-        .filter(([, name]) => name.toLowerCase().includes(p.q.toLowerCase()))
-        .map(([id]) => id),
       p.noteType,
       p.tag,
       p.bookId,
@@ -82,7 +77,7 @@ export async function readMaterialPage(
   const rows = (
     await db.query(
       sourceSql +
-        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames",note_type AS "noteType",tags FROM filtered ORDER BY ${orders[p.sort]} LIMIT $11 OFFSET $10`,
+        ` SELECT id,kind,title,text,category,version,created_at AS "createdAt",updated_at AS "updatedAt",book_id AS "bookId",book_title AS "bookTitle",topic_ids AS "topicIds",topic_names AS "topicNames",note_type AS "noteType",tags FROM filtered ORDER BY ${orders[p.sort]} LIMIT $10 OFFSET $9`,
       [...args, p.offset, p.limit],
     )
   ).rows;

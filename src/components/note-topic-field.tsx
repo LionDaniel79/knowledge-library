@@ -3,6 +3,7 @@ import { forwardRef, useImperativeHandle, useState } from "react";
 import { usePagedResource } from "./use-paged-resource";
 import { topicChangesFor, type NoteTopicSnapshot } from "@/lib/note-context";
 import type { Membership } from "@/lib/thought-map/types";
+import { containsSearchField } from "@/lib/search-fields";
 
 export type NoteTopicHandle = {
   changes: () => ReturnType<typeof topicChangesFor> | undefined;
@@ -55,9 +56,7 @@ export const NoteTopicField = forwardRef<
             }}
           />
           {topics
-            .filter((t) =>
-              t.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-            )
+            .filter((t) => containsSearchField(t.name, query))
             .map((t) => (
               <label key={t.id}>
                 <input

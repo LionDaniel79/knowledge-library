@@ -4,12 +4,13 @@ import {
   materialCategory,
   pageTopicMaterials,
 } from "../../lib/topic-materials";
-import { categories } from "../../lib/catalog";
+import { categoryName } from "../../lib/catalog";
 import {
   bookSearchFields,
   memoSearchFields,
   containsSearchField,
   containsBookTitleSearch,
+  searchWords,
 } from "../../lib/search-fields";
 import {
   monthCells,
@@ -178,12 +179,7 @@ export async function queryBooks(
     statusIds = new Set(
       cycles.filter((c) => c.status === q.filter).map((c) => c.bookId),
     ),
-    matchesTopic = topicMatcher(data, q.topic),
-    needle = q.q.toLowerCase(),
-    compact = needle.replace(/\s+/g, "");
-  const categoryIds = categories
-    .filter(([, name]) => name.toLowerCase().includes(needle))
-    .map(([id]) => id as string);
+    matchesTopic = topicMatcher(data, q.topic);
   let rows = activeBooks(data).filter(
     ({ book: b }) =>
       b.id !== q.exclude &&
@@ -193,7 +189,7 @@ export async function queryBooks(
           q[field as keyof typeof bookSearchFields],
         ),
       ) &&
-      (!q.q ||
+      containsSearchField(
         [
           b.title,
           b.author,
@@ -202,13 +198,10 @@ export async function queryBooks(
           b.shelf,
           ...b.tags,
           ...(b.bookshelves ?? []),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(needle) ||
-        containsBookTitleSearch(b.title, q.q) ||
-        b.author.replace(/\s+/g, "").toLowerCase().includes(compact) ||
-        categoryIds.includes(b.category ?? "")) &&
+          categoryName(b.category),
+        ].join(" "),
+        q.q,
+      ) &&
       (q.category === "all" ||
         (q.category === "unclassified"
           ? !b.category
@@ -223,7 +216,7 @@ export async function queryBooks(
       matchesTopic("book", b.id),
   );
   const total = rows.length,
-    fingerprint = await digest(["catalog-title/v3", owner, q]);
+    fingerprint = await digest(["catalog-words/v4", owner, q]);
   const keys = (r: IndexedBook) =>
     q.sort === "title"
       ? [r.book.title, r.book.id]
@@ -287,7 +280,6 @@ export function queryNotes(data: LocalIndex, input: unknown) {
         ...paging,
       })
       .parse(input),
-    needle = p.q.toLowerCase(),
     books = new Map(data.books.map((b) => [b.book.id, b.book])),
     matchesTopic = topicMatcher(data, p.topic);
   const rows = activeNotes(data)
@@ -295,11 +287,10 @@ export function queryNotes(data: LocalIndex, input: unknown) {
       const b = n.bookId ? books.get(n.bookId) : undefined,
         date = localDay(n.createdAt);
       return (
-        (!needle ||
-          [n.title, n.content, ...(n.tags ?? []), b?.title ?? ""]
-            .join(" ")
-            .toLowerCase()
-            .includes(needle)) &&
+        containsSearchField(
+          [n.title, n.content, ...(n.tags ?? []), b?.title ?? ""].join(" "),
+          p.q,
+        ) &&
         (p.tag === "all" ||
           (p.tag === "untagged" ? !n.tags?.length : n.tags?.includes(p.tag))) &&
         containsSearchField(n.title, p.title) &&
@@ -517,7 +508,7 @@ export async function querySearch(
       .parse(input),
     context = searchContext(data, q),
     fingerprint = await digest([
-      "title-spacing/v2",
+      "search-words/v3",
       owner,
       q.text,
       q.layer,
@@ -538,15 +529,12 @@ export async function querySearch(
       throw new ReplicaQueryError(400, "검색 조건이 바뀌었습니다.");
     offset = c.offset;
   }
-  const lower = (s: string) => s.toLowerCase(),
-    compact = (s: string) => lower(s).replace(/\s+/g, "");
+  const lower = (s: string) => s.toLowerCase();
   const rows = data.entries
     .flatMap((e) => {
       const terms = context.terms,
-        match = terms.some(
-          (t) =>
-            lower([e.title, e.body, e.tags].join(" ")).includes(lower(t)) ||
-            compact(e.title).includes(compact(t)),
+        match = terms.some((t) =>
+          containsSearchField([e.title, e.body, e.tags].join(" "), t),
         ),
         memberships = data.memberships.filter(
           (m) =>
@@ -566,9 +554,9 @@ export async function querySearch(
       const score = e.aux
         ? 10
         : e.voice === "self" &&
-            terms.some((t) => lower(e.body).includes(lower(t)))
+            terms.some((t) => containsSearchField(e.body, t))
           ? 100
-          : terms.some((t) => compact(e.title).includes(compact(t)))
+          : terms.some((t) => containsSearchField(e.title, t))
             ? 80
             : 60;
       return [{ ...e, layer, score, memberships }];
@@ -579,16 +567,15 @@ export async function querySearch(
     items: rows.slice(offset, offset + q.limit).map((r) => {
       const matchedTerms = context.terms.filter(
           (t) =>
-            !!t &&
-            (lower([r.title, r.body, r.tags].join(" ")).includes(lower(t)) ||
-              compact(r.title).includes(compact(t))),
+            !!t && containsSearchField([r.title, r.body, r.tags].join(" "), t),
         ),
         start = Math.max(
           0,
           lower(r.body).indexOf(
             lower(
-              matchedTerms.find((t) => lower(r.body).includes(lower(t))) ??
-                q.text,
+              matchedTerms
+                .flatMap(searchWords)
+                .find((t) => lower(r.body).includes(t)) ?? q.text,
             ),
           ) - 100,
         );

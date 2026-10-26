@@ -34,6 +34,17 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => f?.pg.close());
+it("finds separated and reversed words in PDF titles without matching just one word", async () => {
+  for (const q of ["PDF 00", "00 PDF"]) {
+    const response = await GET(
+      new Request("https://library.test/api/pdf?q=" + encodeURIComponent(q)),
+    );
+    expect(response.status).toBe(200);
+    const page = await response.json();
+    expect(page.total).toBe(1);
+    expect(page.documents[0].title).toBe("PDF 00");
+  }
+});
 it("paginates PDF lists at all four sizes and never returns another owner's files", async () => {
   const fetchPage = async (q: string) => {
     const r = await GET(new Request("https://library.test/api/pdf?" + q));

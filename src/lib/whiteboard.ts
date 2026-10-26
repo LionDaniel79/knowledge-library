@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Book, Note } from "./domain";
 import { contentHash } from "./thought-map/records";
+import { containsSearchField } from "./search-fields";
 
 export const WHITEBOARD_ID = "00000000-0000-4000-8000-000000000001";
 export const NOTE_WIDTH = 220,
@@ -126,7 +127,12 @@ export interface WhiteboardSnapshot {
     status: string;
   }[];
   connections: BoardConnection[];
-  topicLinks?: {id:string;sourceTopicId:string;targetTopicId:string;status:string}[];
+  topicLinks?: {
+    id: string;
+    sourceTopicId: string;
+    targetTopicId: string;
+    status: string;
+  }[];
 }
 // JSONB may reorder object keys; known own saves must match their later reads.
 export function boardStamp(row: WhiteboardSnapshot["board"]): string {
@@ -187,8 +193,7 @@ export function noteTopics(source: WhiteboardSnapshot, n: Note) {
   ];
 }
 export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
-  const books = new Map(source.books.map((b) => [b.id, b])),
-    terms = normalized(f.q).split(/\s+/).filter(Boolean);
+  const books = new Map(source.books.map((b) => [b.id, b]));
   return source.notes.filter((n) => {
     const book = n.bookId ? books.get(n.bookId) : undefined,
       text = normalized(n.title + "\n" + n.content);
@@ -199,7 +204,7 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
       (!f.books.length || (!!n.bookId && f.books.includes(n.bookId))) &&
       (!f.categories.length ||
         f.categories.includes(book?.category || "unclassified")) &&
-      terms.every((t) => text.includes(t))
+      containsSearchField(text, normalized(f.q))
     );
   });
 }

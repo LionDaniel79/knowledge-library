@@ -59,7 +59,7 @@ import { BookRelations } from "./book-relations";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
-import { containsBookTitleSearch } from "@/lib/search-fields";
+import { containsSearchField } from "@/lib/search-fields";
 const ImportPanel = lazy(() =>
   import("./import-panel").then((m) => ({ default: m.ImportPanel })),
 );
@@ -320,8 +320,7 @@ export function LibraryApp({
     : data.books
         .filter(
           (b) =>
-            (!needle ||
-              containsBookTitleSearch(b.title, needle) ||
+            containsSearchField(
               [
                 b.title,
                 b.author,
@@ -331,10 +330,9 @@ export function LibraryApp({
                 categoryName(b.category),
                 ...(b.bookshelves ?? []),
                 ...b.tags,
-              ]
-                .join(" ")
-                .toLocaleLowerCase()
-                .includes(needle)) &&
+              ].join(" "),
+              needle,
+            ) &&
             (category === "all" ||
               (category === "unclassified"
                 ? !b.category

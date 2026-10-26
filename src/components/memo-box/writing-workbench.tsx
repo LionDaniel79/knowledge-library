@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import type { Library, Note } from "@/lib/domain";
+import { containsSearchField } from "@/lib/search-fields";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import {
   exportResearchMarkdown,
@@ -64,10 +65,7 @@ export function WritingWorkbench({
   const available = bank.filter(
     (n) =>
       !items.some((i) => i.snapshot.note.id === n.id) &&
-      [n.title, n.content]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
+      containsSearchField([n.title, n.content].join(" "), query),
   );
   function download(format: "md" | "txt") {
     if (!project) return;

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Book, Library } from "@/lib/domain";
+import { containsSearchField } from "@/lib/search-fields";
 import {
   useListPagination,
   PageSizeSelect,
@@ -46,11 +47,10 @@ export function BookPicker({
   const local = library.books.filter(
     (b) =>
       b.id !== excludeId &&
-      (!query ||
-        [b.title, b.author, b.publisher, b.isbn]
-          .join(" ")
-          .toLowerCase()
-          .includes(query.toLowerCase())),
+      containsSearchField(
+        [b.title, b.author, b.publisher, b.isbn].join(" "),
+        query,
+      ),
   );
   const options = [
     ...new Map(

@@ -1,6 +1,7 @@
 import type { Book, Note } from "./domain";
 import { materialPageQuery } from "./material-query";
-import { categories } from "./catalog";
+import { categoryName } from "./catalog";
+import { containsSearchField } from "./search-fields";
 import { binaryCompare as compare, timestampKey } from "./replica/projections";
 export interface TopicMaterial {
   id: string;
@@ -160,14 +161,7 @@ export function buildTopicMaterials({
   ];
 }
 export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
-  const p = materialPageQuery.parse(raw),
-    needle = p.q.toLowerCase(),
-    compact = needle.replace(/\s+/g, ""),
-    categoryIds = new Set<string>(
-      categories
-        .filter(([, name]) => name.toLowerCase().includes(needle))
-        .map(([id]) => id),
-    );
+  const p = materialPageQuery.parse(raw);
   const rows = materials.filter(
     (m) =>
       (p.kind === "all" || m.kind === p.kind) &&
@@ -190,17 +184,13 @@ export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
         (p.topic === "unclassified"
           ? !m.topicIds.length
           : m.topicIds.includes(p.topic))) &&
-      (!needle ||
-        (m.searchText ?? [m.title, m.text, m.bookTitle].join(" "))
-          .toLowerCase()
-          .includes(needle) ||
-        (m.kind === "book" &&
-          (categoryIds.has(m.category) ||
-            [m.title, m.text]
-              .join(" ")
-              .replace(/\s+/g, "")
-              .toLowerCase()
-              .includes(compact)))),
+      containsSearchField(
+        [
+          m.searchText ?? [m.title, m.text, m.bookTitle].join(" "),
+          m.kind === "book" ? categoryName(m.category) : "",
+        ].join(" "),
+        p.q,
+      ),
   );
   const date = (value: string) =>
     Number.isFinite(Date.parse(value)) ? timestampKey(value) : "";
