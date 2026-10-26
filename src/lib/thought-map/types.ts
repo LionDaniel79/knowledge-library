@@ -2,12 +2,6 @@ import { z } from "zod";
 import type { Note } from "../domain";
 // Includes inference settings so queued work cannot reuse an older runtime profile.
 export const THOUGHT_PROMPT_VERSION = "compare-v3-defined-relations";
-export const TEXT_COMPARISON_TAG = "knowledge-library-gemma4-text:e2b";
-export const COMPARISON_TAGS = [
-  "gemma4:e2b",
-  TEXT_COMPARISON_TAG,
-  "qwen3.5:2b",
-] as const;
 export const relationSchema = z.enum([
   "maintains",
   "expands",
@@ -70,40 +64,12 @@ export interface CompareInput {
   context: ContextExcerpt[];
   examples: Comparison[];
 }
-export interface ModelManifest {
-  tag: string;
-  digest: string;
-  sourceUrl: string;
-  license: string;
-  quantization: string;
-  runtimeVersion: string;
-  supportsThinking?: boolean;
-  derivedFrom?: {
-    tag: string;
-    digest: string | null;
-    omitted: string[];
-    verification: "unverified";
-  };
-}
 export interface RunMetrics {
   wallMs: number;
   loadMs: number;
   promptTokens: number;
   outputTokens: number;
   modelDigest: string;
-}
-export interface LocalAiConfig {
-  origin: string;
-  embedding: ModelManifest;
-  comparison: ModelManifest;
-}
-export interface LocalAi {
-  embed(texts: string[], signal?: AbortSignal): Promise<number[][]>;
-  compare(
-    input: CompareInput,
-    signal?: AbortSignal,
-  ): Promise<{ raw: unknown; metrics: RunMetrics }>;
-  unload(): Promise<void>;
 }
 export const topicSchema = z.object({
   archivedAt: z.string().nullable().optional(),

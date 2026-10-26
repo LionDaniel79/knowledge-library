@@ -1,45 +1,44 @@
-import { withSyncWrite, syncQuery } from "./sync/write";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  ASSIST_COMPARISON_ENABLED,
+  ASSIST_PROMPT_VERSION,
+  ASSIST_SCHEMA_VERSION,
+  assistPurposeSchema,
+  unitsUsd,
+  usdUnits,
+  type AiTask,
+} from "../lib/assist";
 import {
   assistModelSchema,
   synthesisFocusSchema,
 } from "../lib/assist-synthesis";
-import { adoptSynthesis } from "./assist-synthesis";
 import { sourceRefSchema, type CurationItem } from "../lib/curation";
 import {
-  assistPurposeSchema,
-  usdUnits,
-  unitsUsd,
-  ASSIST_PROMPT_VERSION,
-  ASSIST_SCHEMA_VERSION,
-  ASSIST_COMPARISON_ENABLED,
-  type AiTask,
-  type AiTaskResult,
-} from "../lib/assist";
-import {
   assistModel,
-  pricingVersion,
-  legacyPricingVersion,
-  estimateAiTask,
-  validateAiTaskResult,
-  costForUsage,
   compareInput,
+  costForUsage,
+  estimateAiTask,
+  legacyPricingVersion,
+  pricingVersion,
+  validateAiTaskResult,
 } from "../local/ai/openai";
 import {
-  contentHash,
-  readCurationSource,
-  createCurationStore,
-} from "./curation-store";
-import { getLibraryAiPolicy } from "./library-ai-policy";
-import {
-  reserveInTransaction,
   markSendingInTransaction,
+  reserveInTransaction,
   settleInTransaction,
 } from "./ai-usage-store";
+import { adoptSynthesis } from "./assist-synthesis";
+import {
+  contentHash,
+  createCurationStore,
+  readCurationSource,
+} from "./curation-store";
+import { getLibraryAiPolicy } from "./library-ai-policy";
 import { LibraryError, type Database, type Executor } from "./library-store";
-import { currentRecord } from "./thought-map-store";
+import { syncQuery, withSyncWrite } from "./sync/write";
 import { insertCandidate } from "./thought-candidates";
+import { currentRecord } from "./thought-map-store";
 export type AssistDevice = { ownerId: string; deviceId: string };
 const chosen = z
   .object({

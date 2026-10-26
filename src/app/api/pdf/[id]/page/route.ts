@@ -1,14 +1,14 @@
-import { connectedPdf } from "@/server/pdf-reconnect";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { resolve } from "node:path";
-import { stat } from "node:fs/promises";
-import { z } from "zod";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
-import { resolvePdfPath, verifyCitationSignature } from "@/server/pdf-access";
 import { failure } from "@/server/http";
 import { LibraryError } from "@/server/library-store";
+import { verifyCitationSignature } from "@/server/pdf-access";
+import { connectedPdf } from "@/server/pdf-reconnect";
+import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
+import { promisify } from "node:util";
+import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 let active = 0;
@@ -52,8 +52,7 @@ export async function GET(
     } catch {
       throw new LibraryError(404, "원문을 열려면 외장하드를 연결해 주세요.");
     }
-    const info = await stat(path, { bigint: true }),
-      signature = originalSignature!;
+    const signature = originalSignature!;
     verifyCitationSignature(url.searchParams.get("signature"), signature);
     verifyCitationSignature(`${doc.bytes}:${doc.mtime_ns}`, signature);
     if (active >= 2)

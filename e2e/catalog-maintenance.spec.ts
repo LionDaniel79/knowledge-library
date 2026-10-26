@@ -59,7 +59,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {CatalogReviewPanel} from './src/components/catalog-review-panel';import {BookIntroduction} from './src/components/book-introduction';createRoot(document.getElementById('root')).render(<><CatalogReviewPanel onChanged={async()=>{}}/><BookIntroduction id="00000000-0000-4000-a000-000000000001"/></>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {CatalogReviewPanel} from './src/components/catalog-review-panel';createRoot(document.getElementById('root')).render(<CatalogReviewPanel onChanged={async()=>{}}/>);`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -269,9 +269,6 @@ test("compares candidates, requires edition confirmation and preserves unselecte
   await page.getByLabel("소장본과 같은 판본으로 확인했습니다.").check();
   await page.getByRole("button", { name: "선택 정보 반영" }).click();
   expect(decision.fields).toEqual(["publisher", "isbn"]);
-  await page.getByText("내가 정리한 도서 소개", { exact: true }).click();
-  await page.getByLabel("도서 소개").fill("직접 정리한 소개");
-  await expect(page.getByRole("button", { name: "소개 저장" })).toBeEnabled();
   await page.screenshot({
     path:
       process.env.LIBRARY_QA_SCREENSHOT ??

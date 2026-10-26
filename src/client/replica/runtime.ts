@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SyncStatus } from "../../lib/replica/contracts";
+import { syncEntities } from "../../lib/replica/entities";
 import type { ReplicaStorage, ReplicaGeneration } from "./storage";
 import { createReplicaRepository } from "./repository";
 import { createReplicaCoordinator } from "./coordinator";
@@ -46,6 +47,24 @@ export interface RuntimeSnapshot {
   authRequired: boolean;
   accessDenied: boolean;
 }
+const checkpointToken = (cp: ReplicaGeneration | null) =>
+  cp
+    ? JSON.stringify([
+        cp.generation,
+        cp.cursor,
+        cp.localRevision ?? 0,
+        cp.complete,
+        ...Object.keys(syncEntities).map((entity) => {
+          const e = entity as keyof typeof syncEntities;
+          return [
+            e,
+            cp.entityRevisions?.[e] ?? "0",
+            cp.entityWrites?.[e] ?? 0,
+            cp.localEntityRevisions?.[e] ?? 0,
+          ];
+        }),
+      ])
+    : "";
 export function createLibraryRuntime(
   owner: string,
   storage: ReplicaStorage,
@@ -59,8 +78,7 @@ export function createLibraryRuntime(
     }),
     abort = new AbortController(),
     listeners = new Set<() => void>();
-  let verified = false,
-    closed = false,
+  let closed = false,
     active: Promise<SyncStatus> | null = null;
   let capabilitiesAt = 0;
   let followup: Promise<SyncStatus> | null = null;
@@ -83,10 +101,13 @@ export function createLibraryRuntime(
       entries = await storage.listOutbox(),
       partial = !cp ? await storage.deviceCopies() : null;
     if (closed) return;
-    repository.invalidate();
+    const token = checkpointToken(cp),
+      changed = token !== dataToken;
+    if (changed) repository.invalidate();
+    dataToken = token;
     emit({
       ready: !!cp?.complete,
-      revision: snapshot.revision + 1,
+      revision: snapshot.revision + (changed ? 1 : 0),
       status: {
         ...snapshot.status,
         rows: cp?.rows ?? partial?.resumableRows ?? 0,
@@ -108,9 +129,7 @@ export function createLibraryRuntime(
   if (channel) channel.onmessage = onChanged;
   else if (typeof window !== "undefined")
     window.addEventListener("storage", onStorage);
-  let dataToken = checkpoint
-    ? checkpoint.generation + "\0" + checkpoint.cursor
-    : "";
+  let dataToken = checkpointToken(checkpoint);
   let snapshot: RuntimeSnapshot = Object.freeze({
     ready: !!checkpoint?.complete,
     revision: 0,
@@ -141,7 +160,6 @@ export function createLibraryRuntime(
   function verifyOwner(actual: string) {
     if (actual !== owner)
       throw new SyncHttpError(403, "로그인한 서재 계정이 변경되었습니다.");
-    verified = true;
     emit({ authRequired: false });
   }
   function sync(options: {
@@ -204,9 +222,7 @@ export function createLibraryRuntime(
             /* Original legacy drafts remain available if their store cannot be read. */
           }
           const cp = await storage.checkpoint(),
-            token = cp
-              ? cp.generation + "\0" + cp.cursor + ":" + (cp.localRevision ?? 0)
-              : "";
+            token = checkpointToken(cp);
           emit({
             ready: !!cp?.complete,
             status,
@@ -260,7 +276,6 @@ export function createLibraryRuntime(
             error instanceof SyncHttpError && error.status === 403;
           const authRequired =
             error instanceof SyncHttpError && error.status === 401;
-          if (authRequired) verified = false;
           emit({
             authRequired,
             accessDenied,
@@ -293,6 +308,7 @@ export function createLibraryRuntime(
     async notifyLocalChange() {
       repository.invalidate();
       const entries = await storage.listOutbox();
+      dataToken = checkpointToken(await storage.checkpoint());
       emit({
         revision: snapshot.revision + 1,
         status: {
@@ -377,7 +393,6 @@ export function createLibraryRuntime(
       };
     },
     requireAuthentication() {
-      verified = false;
       emit({ authRequired: true });
     },
     close() {

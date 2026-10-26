@@ -66,7 +66,7 @@ export function createDeviceAuth(db: Database) {
     await syncQuery(
       db,
       String(row.owner_id),
-      "UPDATE library_analysis_devices SET last_seen=$2 WHERE id=$1",
+      "UPDATE library_analysis_devices SET last_seen=$2 WHERE id=$1 AND (last_seen IS NULL OR last_seen<=$2::timestamptz-interval '1 minute')",
       [row.id, now],
     );
     return { ownerId: String(row.owner_id), deviceId: String(row.id) };

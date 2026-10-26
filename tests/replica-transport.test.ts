@@ -1,8 +1,5 @@
 import { expect, it } from "vitest";
-import {
-  createSyncTransport,
-  SyncHttpError,
-} from "../src/client/replica/transport";
+import { createSyncTransport } from "../src/client/replica/transport";
 import { MAX_JSON_RESPONSE_BYTES } from "../src/lib/replica/contracts";
 it("keeps session credentials on the same origin, uses uncached requests and classifies an expired session", async () => {
   let init: RequestInit | undefined;

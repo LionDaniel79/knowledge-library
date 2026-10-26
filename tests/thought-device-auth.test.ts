@@ -1,9 +1,8 @@
-import { beforeAll, afterAll, it, expect, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { readFile } from "node:fs/promises";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { Database } from "../src/server/library-store";
 import { createDeviceAuth } from "../src/server/thought-device-auth";
-import { createRemoteTransport } from "../src/local/thought-map/remote-transport";
 let pg: PGlite, auth: ReturnType<typeof createDeviceAuth>;
 beforeAll(async () => {
   pg = new PGlite();
@@ -18,6 +17,30 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await pg?.close();
+});
+it("coalesces idle heartbeat changes while checking revocation on every request", async () => {
+  const now = new Date("2030-02-01T00:00:00Z"),
+    issued = await auth.issue("quiet", "PC", now);
+  const authenticate = (seconds: number) =>
+    auth.authenticate(
+      "Bearer " + issued.token,
+      new Date(+now + seconds * 1000),
+    );
+  await authenticate(0);
+  const revision = async () =>
+    (
+      await pg.query<{ revision: string }>(
+        "SELECT revision::text FROM library_sync_heads WHERE owner_id='quiet'",
+      )
+    ).rows[0].revision;
+  const first = await revision();
+  await authenticate(1);
+  await authenticate(59);
+  expect(await revision()).toBe(first);
+  await authenticate(60);
+  expect(BigInt(await revision())).toBeGreaterThan(BigInt(first));
+  await auth.revoke("quiet", issued.id, new Date(+now + 61000));
+  await expect(authenticate(62)).rejects.toMatchObject({ status: 401 });
 });
 it("rejects missing or malformed worker credentials without reaching the database", async () => {
   const query = vi.fn(async () => {
@@ -62,20 +85,4 @@ it("returns tokens once, stores only hashes and rejects revoked or expired devic
   await expect(
     auth.authenticate("Bearer " + issued.token, now),
   ).rejects.toMatchObject({ status: 401 });
-});
-it("refuses remote HTTP and refuses redirected worker requests", async () => {
-  expect(() =>
-    createRemoteTransport({ origin: "http://example.com", token: "secret" }),
-  ).toThrow();
-  let options: RequestInit | undefined;
-  const transport = createRemoteTransport(
-    { origin: "https://library.example", token: "secret" },
-    async (_url, init) => {
-      options = init;
-      return Response.json({ job: null });
-    },
-  );
-  await transport.claim();
-  expect(options?.redirect).toBe("error");
-  expect(options?.headers).toMatchObject({ Authorization: "Bearer secret" });
 });

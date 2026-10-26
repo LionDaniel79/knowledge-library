@@ -17,6 +17,7 @@ export function KnowledgePanel({
   ownerId = "",
   onUpdated = async () => {},
   onSaveNote,
+  initialTag = "all",
 }: {
   library: Library;
   onOpen: (kind: string, id: string) => void;
@@ -24,6 +25,7 @@ export function KnowledgePanel({
   ownerId?: string;
   onUpdated?: () => Promise<void>;
   onSaveNote?: (c: Command) => Promise<void>;
+  initialTag?: string;
 }) {
   const [tab, setTab] = useState("topics"),
     [help, setHelp] = useState(false);
@@ -51,7 +53,7 @@ export function KnowledgePanel({
       <Suspense fallback={<p role="status">자료를 여는 중…</p>}>
         {tab === "topics" ? (
           <ThoughtMapPanel
-            view="topics"
+            initialTag={initialTag}
             onUpdated={onUpdated}
             onSaveNote={onSaveNote}
             onNewNote={onNewNote}

@@ -1,17 +1,17 @@
-import { withSyncWrite } from "./sync/write";
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
+import { proposeConnections, type KnowledgeNode } from "../lib/knowledge";
 import {
   researchSource,
   researchSourceSchema,
 } from "../lib/replica/research-source";
-import { createHash, randomUUID } from "node:crypto";
-import { z } from "zod";
-import { LibraryError, type Database, type Executor } from "./library-store";
-import { proposeConnections, type KnowledgeNode } from "../lib/knowledge";
 import {
   boardNoteLinkSchema,
   publicBoardConnection as publicConnection,
   type BoardConnection,
 } from "../lib/whiteboard";
+import { LibraryError, type Database } from "./library-store";
+import { withSyncWrite } from "./sync/write";
 import { saveWhiteboard } from "./whiteboard-store";
 
 const uuid = z.string().uuid(),
@@ -388,7 +388,7 @@ export function createKnowledgeStore(db: Database) {
           throw new LibraryError(400, "서로 다른 두 자료를 선택해 주세요.");
         const locked = (
           await tx.query(
-            "SELECT * FROM library_research_items WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+            "SELECT id,research_id FROM library_research_items WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
             [owner, p.items.map((i) => i.itemId)],
           )
         ).rows;
@@ -399,13 +399,16 @@ export function createKnowledgeStore(db: Database) {
             400,
             "같은 글감 묶음 안에서만 순서를 바꿀 수 있습니다.",
           );
-        for (const item of p.items) {
-          const before = (
+        const placements = new Map(
+          (
             await tx.query(
-              "SELECT * FROM library_research_placements WHERE owner_id=$1 AND id=$2",
-              [owner, item.itemId],
+              "SELECT * FROM library_research_placements WHERE owner_id=$1 AND id=ANY($2::uuid[])",
+              [owner, p.items.map((i) => i.itemId)],
             )
-          ).rows[0];
+          ).rows.map((row) => [row.id, row]),
+        );
+        for (const item of p.items) {
+          const before = placements.get(item.itemId);
           if ((before?.version ?? 0) !== item.expectedVersion)
             throw new LibraryError(
               409,

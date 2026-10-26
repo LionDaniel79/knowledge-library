@@ -132,8 +132,14 @@ export function createBookExclusionStore(db: Database) {
             )
           ).rows;
           const versions = new Map(books.map((x) => [x.id, x.version]));
+          const documentsByBook = new Map<string, typeof docs>();
+          for (const doc of docs) {
+            const linked = documentsByBook.get(doc.book_id) ?? [];
+            linked.push(doc);
+            documentsByBook.set(doc.book_id, linked);
+          }
           for (const item of items) {
-            const linked = docs.filter((d) => d.book_id === item.id);
+            const linked = documentsByBook.get(item.id) ?? [];
             if (
               versions.get(item.id) !== item.expectedVersion ||
               !linked.length ||

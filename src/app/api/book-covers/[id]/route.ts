@@ -4,18 +4,21 @@ import { createCoverStore } from "@/server/book-covers";
 import { failure } from "@/server/http";
 export const runtime = "nodejs";
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const image = await createCoverStore(database).read(
+    const image = await createCoverStore(database).readConditional(
       await requireOwner(),
       (await context.params).id,
+      request.headers.get("If-None-Match") ?? "",
     );
-    return new Response(new Uint8Array(image.bytes), {
+    return new Response(image.bytes ? new Uint8Array(image.bytes) : null, {
+      status: image.bytes ? 200 : 304,
       headers: {
         "Content-Type": image.mime,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": "private, no-cache",
+        ETag: image.etag,
         "X-Content-Type-Options": "nosniff",
       },
     });

@@ -1,8 +1,7 @@
-import { expect, it, vi, afterEach } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { verifiedSyncOwner } from "../src/client/replica/runtime";
 import { noteInput } from "../src/lib/domain";
 import { resourceFixture } from "./helpers/replica-resources";
-import { verifiedSyncOwner } from "../src/client/replica/runtime";
-import { queryBooks, queryNotes } from "../src/client/replica/queries";
 it("accepts a body-only memo and marks it for later classification", () => {
   expect(noteInput.parse({ content: "나중에 더 생각해 볼 질문" }).title).toBe(
     "미분류 메모",

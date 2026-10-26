@@ -1,8 +1,8 @@
-import { it, expect } from "vitest";
-import { mkdtemp, writeFile, mkdir, stat, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { expect, it } from "vitest";
 import { verifyRelocatedPdf } from "../src/server/pdf-reconnect";
 it("requires identical bytes for relocated originals; rejects replacement and root escape", async () => {
   const root = await mkdtemp(join(tmpdir(), "reconnect-"));

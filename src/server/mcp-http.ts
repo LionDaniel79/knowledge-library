@@ -27,6 +27,11 @@ export const mcpReadDatabase: Executor = {
         // Read-only and timeout defaults belong to the dedicated database role.
         // Neon pooled connections reject statement_timeout in startup options.
       });
+      readPool.on("error", (error: Error & { code?: string }) => {
+        console.warn("Library idle MCP database connection closed", {
+          code: error.code ?? "unknown",
+        });
+      });
       attachDatabasePool(readPool);
     }
     return readPool.query(s, p);

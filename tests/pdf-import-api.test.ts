@@ -1,8 +1,9 @@
-import { vi, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { afterEach, expect, it, vi } from "vitest";
+import { GET as connection } from "../src/app/api/pdf/connection/route";
+import { GET, POST } from "../src/app/api/pdf/import/route";
 import { PdfImportJobs } from "../src/local/pdf-import/jobs";
 let owner = "reader";
 vi.mock("@/server/auth", () => ({ requireOwner: async () => owner }));
@@ -13,8 +14,6 @@ vi.mock("@/server/pdf-import", async (importOriginal) => ({
   ...(await importOriginal<any>()),
   startPdfImportWorker: vi.fn(),
 }));
-import { GET, POST } from "../src/app/api/pdf/import/route";
-import { GET as connection } from "../src/app/api/pdf/connection/route";
 const restore = { ...process.env };
 afterEach(() => {
   for (const key of [

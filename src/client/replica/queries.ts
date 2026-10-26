@@ -115,15 +115,6 @@ export function activeCycles(data: LocalIndex) {
   const excluded = new Set(data.excluded);
   return data.cycles.filter((c) => !excluded.has(c.bookId));
 }
-const encode = (value: unknown) =>
-  btoa(encodeURIComponent(JSON.stringify(value)))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-const decode = (value: string) =>
-  JSON.parse(
-    decodeURIComponent(atob(value.replace(/-/g, "+").replace(/_/g, "/"))),
-  );
 // Server cursors are UTF-8 base64url, not URI-encoded strings.
 export function encodeQueryCursor(value: unknown) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -143,38 +134,34 @@ function decodeCursor(value: string) {
 }
 const digest = (value: unknown) =>
   sha256Bytes(new TextEncoder().encode(JSON.stringify(value)));
-function topicMatch(
-  data: LocalIndex,
-  kind: string,
-  id: string,
-  topic: string,
-  bookId?: string | null,
-) {
-  if (topic === "all") return true;
+function topicMatcher(data: LocalIndex, topic: string) {
+  if (topic === "all") return () => true;
   const active = new Set(
     data.topics.filter((t) => !t.archived_at).map((t) => t.id),
   );
-  const direct = data.memberships.filter(
-    (m) =>
-      m.source_kind === kind && m.source_id === id && active.has(m.topic_id),
-  );
-  const rejected = new Set(
-    direct.filter((m) => m.status === "rejected").map((m) => m.topic_id),
-  );
-  const assigned = [
-    ...direct,
-    ...(kind === "note" && bookId
-      ? data.memberships.filter(
-          (m) =>
-            m.source_kind === "book" &&
-            m.source_id === bookId &&
-            active.has(m.topic_id),
-        )
-      : []),
-  ].filter((m) => m.status !== "rejected" && !rejected.has(m.topic_id));
-  return topic === "unclassified"
-    ? !assigned.length
-    : assigned.some((m) => m.topic_id === topic);
+  const bySource = new Map<string, RawRecord[]>();
+  for (const m of data.memberships) {
+    if (!active.has(m.topic_id)) continue;
+    const key = m.source_kind + "\0" + m.source_id;
+    const values = bySource.get(key) ?? [];
+    values.push(m);
+    bySource.set(key, values);
+  }
+  return (kind: string, id: string, bookId?: string | null) => {
+    const direct = bySource.get(kind + "\0" + id) ?? [];
+    const rejected = new Set(
+      direct.filter((m) => m.status === "rejected").map((m) => m.topic_id),
+    );
+    const assigned = [
+      ...direct,
+      ...(kind === "note" && bookId
+        ? (bySource.get("book\0" + bookId) ?? [])
+        : []),
+    ].filter((m) => m.status !== "rejected" && !rejected.has(m.topic_id));
+    return topic === "unclassified"
+      ? !assigned.length
+      : assigned.some((m) => m.topic_id === topic);
+  };
 }
 export async function queryBooks(
   data: LocalIndex,
@@ -188,6 +175,10 @@ export async function queryBooks(
       "페이지 조회 방법을 하나만 선택해 주세요.",
     );
   const cycles = activeCycles(data),
+    statusIds = new Set(
+      cycles.filter((c) => c.status === q.filter).map((c) => c.bookId),
+    ),
+    matchesTopic = topicMatcher(data, q.topic),
     needle = q.q.toLowerCase(),
     compact = needle.replace(/\s+/g, "");
   const categoryIds = categories
@@ -227,9 +218,9 @@ export async function queryBooks(
       (q.shelf === "all" || b.bookshelves?.includes(q.shelf)) &&
       (q.filter === "all" ||
         (q.filter === "reading" || q.filter === "completed"
-          ? cycles.some((c) => c.bookId === b.id && c.status === q.filter)
+          ? statusIds.has(b.id)
           : b.formats.includes(q.filter))) &&
-      topicMatch(data, "book", b.id, q.topic),
+      matchesTopic("book", b.id),
   );
   const total = rows.length,
     fingerprint = await digest(["catalog-title/v3", owner, q]);
@@ -297,7 +288,8 @@ export function queryNotes(data: LocalIndex, input: unknown) {
       })
       .parse(input),
     needle = p.q.toLowerCase(),
-    books = new Map(data.books.map((b) => [b.book.id, b.book]));
+    books = new Map(data.books.map((b) => [b.book.id, b.book])),
+    matchesTopic = topicMatcher(data, p.topic);
   const rows = activeNotes(data)
     .filter((n) => {
       const b = n.bookId ? books.get(n.bookId) : undefined,
@@ -323,7 +315,7 @@ export function queryNotes(data: LocalIndex, input: unknown) {
         (!p.to || date <= p.to) &&
         (p.category === "all" ||
           materialCategory(b?.category) === p.category) &&
-        topicMatch(data, "note", n.id, p.topic, n.bookId)
+        matchesTopic("note", n.id, n.bookId)
       );
     })
     .sort(

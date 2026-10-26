@@ -4,7 +4,6 @@ import {
   type ReplicaBackend,
   type ReplicaIO,
   type ReplicaKey,
-  type ReplicaStore,
   type StoredEntry,
 } from "./storage";
 export const REPLICA_DB_NAME = "knowledge-library-replica";

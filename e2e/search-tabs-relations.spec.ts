@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
 let bundle: string;
@@ -222,7 +222,7 @@ for (const width of [390, 1280])
     page,
   }) => {
     await page.setViewportSize({ width, height: 844 });
-    const f = await mount(page, "app");
+    await mount(page, "app");
     await expect(page.locator(".topbar input")).toHaveCount(0);
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page.getByRole("button", { name: /^소장 도서/ }).click();

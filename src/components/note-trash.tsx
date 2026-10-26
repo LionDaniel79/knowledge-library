@@ -1,7 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
+import type { Command, Library } from "@/lib/domain";
 import { useRef, useState } from "react";
-import type { Command, Library, Note } from "@/lib/domain";
 export function NoteTrash({
   library,
   onSave,

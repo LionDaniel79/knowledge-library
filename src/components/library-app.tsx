@@ -3,16 +3,12 @@ import { libraryRequest } from "@/client/replica/request";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
-import { SyncSettings } from "./replica/sync-settings";
 import { useReplicaOptional } from "./replica/provider";
 import { writeStartup } from "@/client/replica/startup-cache";
 import { ConflictReviewPanel } from "./replica/conflict-review";
-import { NoteTagFilter } from "./note-tag-filter";
-import { NoteTrash } from "./note-trash";
-import { BookExclusions } from "./book-exclusions";
 import { OfflineDrafts } from "./offline-drafts";
 import { newDraft, writeDraft, offlineOwnerKey } from "@/lib/offline-drafts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Menu,
@@ -20,7 +16,6 @@ import {
   LayoutDashboard,
   CalendarDays,
   ChartNoAxesCombined,
-  NotebookPen,
   Search,
   Plus,
   ArrowUpRight,
@@ -50,37 +45,51 @@ import { ReadingCalendar } from "./reading-calendar";
 import { LibraryForm, type Editor } from "./library-forms";
 import { Modal } from "./modal";
 import { RevisionContent } from "./revision-content";
-import { ImportPanel } from "./import-panel";
-import { PdfLibraryPanel } from "./pdf-library-panel";
-import { KnowledgePanel } from "./knowledge-panel";
 import { NavigationDrawer } from "./navigation-drawer";
 import { BookShelves } from "./shelf-picker";
-import { LibrarySearchPanel } from "./library-search-panel";
 import { BookRecords } from "./book-records";
-import { useNotePage } from "./use-note-page";
 import {
   useListPagination,
   PageSizeSelect,
   PageNavigation,
 } from "./list-pagination";
 
-import { CatalogReviewPanel } from "./catalog-review-panel";
 import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
-import { BackupPanel } from "./backup-panel";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
 import { containsBookTitleSearch } from "@/lib/search-fields";
+const ImportPanel = lazy(() =>
+  import("./import-panel").then((m) => ({ default: m.ImportPanel })),
+);
+const BackupPanel = lazy(() =>
+  import("./backup-panel").then((m) => ({ default: m.BackupPanel })),
+);
+const SyncSettings = lazy(() =>
+  import("./replica/sync-settings").then((m) => ({ default: m.SyncSettings })),
+);
+const BookExclusions = lazy(() =>
+  import("./book-exclusions").then((m) => ({ default: m.BookExclusions })),
+);
+const CatalogReviewPanel = lazy(() =>
+  import("./catalog-review-panel").then((m) => ({
+    default: m.CatalogReviewPanel,
+  })),
+);
+const PdfLibraryPanel = lazy(() =>
+  import("./pdf-library-panel").then((m) => ({ default: m.PdfLibraryPanel })),
+);
+const KnowledgePanel = lazy(() =>
+  import("./knowledge-panel").then((m) => ({ default: m.KnowledgePanel })),
+);
+const LibrarySearchPanel = lazy(() =>
+  import("./library-search-panel").then((m) => ({
+    default: m.LibrarySearchPanel,
+  })),
+);
 type View =
-  | "home"
-  | "books"
-  | "notes"
-  | "calendar"
-  | "stats"
-  | "pdf"
-  | "knowledge"
-  | "search";
+  "home" | "books" | "calendar" | "stats" | "pdf" | "knowledge" | "search";
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
@@ -144,8 +153,6 @@ export function LibraryApp({
   const [category, setCategory] = useState("all");
   const [shelfFilter, setShelfFilter] = useState("all");
   const [noteTag, setNoteTag] = useState("all");
-  const [noteType, setNoteType] = useState("all");
-  const [noteBook, setNoteBook] = useState("all");
 
   const [importing, setImporting] = useState(false);
   const [catalogReviewOpen, setCatalogReviewOpen] = useState(false);
@@ -197,10 +204,7 @@ export function LibraryApp({
     "books",
     JSON.stringify([view, needle, sort, category, shelfFilter, filter]),
   );
-  const notePaging = useListPagination(
-    "notes",
-    JSON.stringify([view, needle, noteTag, noteType, noteBook]),
-  );
+
   const catalog = useBookCatalog({
     enabled: remote && view === "books" && bookPaging.ready,
     query: {
@@ -355,57 +359,17 @@ export function LibraryApp({
                   a.id.localeCompare(b.id)),
         );
 
-  const notePage = useNotePage(
-    remote && notePaging.ready && view === "notes",
-    {
-      q: needle,
-      tag: noteTag,
-      kind: noteType,
-      book: noteBook,
-      limit: notePaging.size,
-      offset: notePaging.offset,
-    },
-    data,
-  );
-  const matchedNotes =
-    remote && view === "notes"
-      ? notePage.items
-      : data.notes.filter(
-          (n) =>
-            (!needle ||
-              [
-                n.title,
-                n.content,
-                ...(n.tags ?? []),
-                n.bookId ? booksById.get(n.bookId)?.title : "",
-              ]
-                .join(" ")
-                .toLocaleLowerCase()
-                .includes(needle)) &&
-            (noteTag === "all" ||
-              (noteTag === "untagged"
-                ? !(n.tags ?? []).length
-                : n.tags?.includes(noteTag))) &&
-            (noteType === "all" ||
-              (noteType === "unclassified"
-                ? n.title === "미분류 메모"
-                : n.kind === noteType)) &&
-            (noteBook === "all" ||
-              (noteBook === "unlinked" ? !n.bookId : n.bookId === noteBook)),
-        );
   const matchedCount = remote ? catalog.total : matchedBooks.length;
-  const navigate = (next: View) => {
+  const navigate = (next: View | "notes") => {
     setView(next === "notes" ? "knowledge" : next);
     setMenuOpen(false);
     setCategory("all");
     setShelfFilter("all");
     setNoteTag("all");
-    setNoteType("all");
-    setNoteBook("all");
+
     setQuery("");
     setFilter("all");
     bookPaging.setPage(0);
-    notePaging.setPage(0);
   };
   async function openNote(id: string) {
     if (preview || !remote) {
@@ -846,7 +810,6 @@ export function LibraryApp({
                   onChange={(e) => {
                     setCategory(e.target.value);
                     bookPaging.setPage(0);
-                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">전체 분야</option>
@@ -869,7 +832,6 @@ export function LibraryApp({
                   onChange={(e) => {
                     setShelfFilter(e.target.value);
                     bookPaging.setPage(0);
-                    notePaging.setPage(0);
                   }}
                 >
                   <option value="all">모든 책장</option>
@@ -909,100 +871,24 @@ export function LibraryApp({
               </label>
             </div>
           )}
-          {view === "notes" && (
-            <div className="catalog-controls note-controls">
-              <NoteTagFilter
-                tags={data.notes.flatMap((n) => n.tags ?? [])}
-                value={noteTag}
-                onChange={(tag) => {
-                  setNoteTag(tag);
-                  bookPaging.setPage(0);
-                  notePaging.setPage(0);
-                }}
-                onUpdated={refresh}
-                preview={preview}
-              />
-              <label>
-                종류
-                <select
-                  value={noteType}
-                  onChange={(e) => {
-                    setNoteType(e.target.value);
-                    bookPaging.setPage(0);
-                    notePaging.setPage(0);
-                  }}
-                >
-                  <option value="all">모든 기록</option>
-                  <option value="unclassified">미분류 메모</option>
-                  {Object.entries(kindName).map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                연결된 책
-                <select
-                  value={noteBook}
-                  onChange={(e) => {
-                    setNoteBook(e.target.value);
-                    bookPaging.setPage(0);
-                    notePaging.setPage(0);
-                  }}
-                >
-                  <option value="all">모든 책</option>
-                  <option value="unlinked">책과 연결하지 않은 생각</option>
-                  {[
-                    ...new Set(
-                      data.notes.flatMap((n) => (n.bookId ? [n.bookId] : [])),
-                    ),
-                  ].map((id) => (
-                    <option key={id} value={id}>
-                      {booksById.get(id)?.title ?? "책"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span>
-                {remote ? notePage.total : matchedNotes.length}개 기록
-              </span>
-              <button
-                className="text-button"
-                onClick={() => {
-                  setNoteTag("all");
-                  setNoteType("all");
-                  setNoteBook("all");
-                  setQuery("");
-                }}
-              >
-                필터 초기화
-              </button>
-            </div>
-          )}
-          {remote && (view === "notes" || needle) && notePage.error && (
-            <p role="alert" className="error">
-              {notePage.error}
-            </p>
-          )}
-          {remote && view === "notes" && notePage.loading && (
-            <p role="status">기록을 불러오는 중…</p>
-          )}
+
           {view === "search" ? (
-            <LibrarySearchPanel
-              library={data}
-              ownerId={ownerId}
-              preview={preview}
-              onUpdated={refresh}
-              renderBook={bookCard}
-              renderNote={noteCard}
-              onOpen={(kind, id) => {
-                if (kind === "book") setDetail(id);
-                else {
-                  void openNote(id);
-                }
-              }}
-            />
+            <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+              <LibrarySearchPanel
+                library={data}
+                ownerId={ownerId}
+                preview={preview}
+                onUpdated={refresh}
+                renderBook={bookCard}
+                renderNote={noteCard}
+                onOpen={(kind, id) => {
+                  if (kind === "book") setDetail(id);
+                  else {
+                    void openNote(id);
+                  }
+                }}
+              />
+            </Suspense>
           ) : (
             <>
               {(view === "home" || view === "stats") && (
@@ -1159,7 +1045,6 @@ export function LibraryApp({
                           onClick={() => {
                             setFilter(id);
                             bookPaging.setPage(0);
-                            notePaging.setPage(0);
                           }}
                         >
                           {label}
@@ -1241,37 +1126,7 @@ export function LibraryApp({
                   )}
                 </>
               )}
-              {view === "notes" && (
-                <PageSizeSelect label="내 기록" paging={notePaging} />
-              )}
-              {view === "notes" &&
-                (data.notes.length || remote ? (
-                  <div className="notes-grid">
-                    {(remote
-                      ? matchedNotes
-                      : matchedNotes.slice(
-                          notePaging.offset,
-                          notePaging.offset + notePaging.size,
-                        )
-                    ).map(noteCard)}
-                    {!matchedNotes.length && (
-                      <p className="empty-state">
-                        조건에 맞는 기록이 없습니다. 필터를 바꾸어 보세요.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="panel empty-state">
-                    <Feather />
-                    <p>떠오른 생각을 첫 기록으로 남겨 보세요.</p>
-                    <button
-                      className="primary"
-                      onClick={() => setEditor({ kind: "note" })}
-                    >
-                      새 기록
-                    </button>
-                  </div>
-                ))}
+
               {view === "calendar" && (
                 <div className="calendar-full">
                   <ReadingCalendar
@@ -1407,21 +1262,24 @@ export function LibraryApp({
                 (preview ? (
                   <p>내 서재에서 책과 생각을 연결해 보세요.</p>
                 ) : (
-                  <KnowledgePanel
-                    ownerId={ownerId}
-                    onUpdated={refresh}
-                    onSaveNote={save}
-                    onNewNote={(context) =>
-                      setEditor({ kind: "note", ...context })
-                    }
-                    library={data}
-                    onOpen={(kind, id) => {
-                      if (kind === "book") setDetail(id);
-                      else {
-                        void openNote(id);
+                  <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+                    <KnowledgePanel
+                      initialTag={noteTag}
+                      ownerId={ownerId}
+                      onUpdated={refresh}
+                      onSaveNote={save}
+                      onNewNote={(context) =>
+                        setEditor({ kind: "note", ...context })
                       }
-                    }}
-                  />
+                      library={data}
+                      onOpen={(kind, id) => {
+                        if (kind === "book") setDetail(id);
+                        else {
+                          void openNote(id);
+                        }
+                      }}
+                    />
+                  </Suspense>
                 ))}
               {view === "pdf" &&
                 (preview ? (
@@ -1429,10 +1287,12 @@ export function LibraryApp({
                     내 서재에 로그인하면 등록한 PDF를 검색할 수 있습니다.
                   </div>
                 ) : (
-                  <PdfLibraryPanel
-                    onSaved={refresh}
-                    initialOperationsOpen={initialOperationsOpen}
-                  />
+                  <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+                    <PdfLibraryPanel
+                      onSaved={refresh}
+                      initialOperationsOpen={initialOperationsOpen}
+                    />
+                  </Suspense>
                 ))}
             </>
           )}
@@ -1450,14 +1310,7 @@ export function LibraryApp({
               busy={catalog.loading || !!catalog.error}
             />
           )}
-          {!needle && view === "notes" && (
-            <PageNavigation
-              label="내 기록"
-              paging={notePaging}
-              total={remote ? notePage.total : matchedNotes.length}
-              busy={notePage.loading || !!notePage.error}
-            />
-          )}
+
           {!preview && ownerId && (
             <OfflineDrafts
               ownerId={ownerId}
@@ -1466,9 +1319,7 @@ export function LibraryApp({
             />
           )}
           {!preview && <ConflictReviewPanel />}
-          {view === "notes" && !preview && (
-            <NoteTrash library={data} onSave={save} />
-          )}
+
           <footer className="workspace-footer">
             <span>당신의 책, 당신의 생각.</span>
             <div>
@@ -1524,16 +1375,25 @@ export function LibraryApp({
         </main>
       </div>
       {importing && (
-        <ImportPanel onClose={() => setImporting(false)} onImported={refresh} />
+        <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+          <ImportPanel
+            onClose={() => setImporting(false)}
+            onImported={refresh}
+          />
+        </Suspense>
       )}
       {backupOpen && (
-        <BackupPanel
-          onClose={() => setBackupOpen(false)}
-          onRestored={refresh}
-        />
+        <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+          <BackupPanel
+            onClose={() => setBackupOpen(false)}
+            onRestored={refresh}
+          />
+        </Suspense>
       )}
       {syncSettingsOpen && (
-        <SyncSettings onClose={() => setSyncSettingsOpen(false)} />
+        <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+          <SyncSettings onClose={() => setSyncSettingsOpen(false)} />
+        </Suspense>
       )}
       {openingNote && (
         <Modal
@@ -1564,17 +1424,21 @@ export function LibraryApp({
         />
       )}
       {exclusionsOpen && (
-        <BookExclusions
-          onClose={() => setExclusionsOpen(false)}
-          onChanged={refresh}
-        />
+        <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+          <BookExclusions
+            onClose={() => setExclusionsOpen(false)}
+            onChanged={refresh}
+          />
+        </Suspense>
       )}
       {catalogReviewOpen && (
         <Modal
           title="도서정보 후보 검토"
           onClose={() => setCatalogReviewOpen(false)}
         >
-          <CatalogReviewPanel onChanged={refresh} />
+          <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+            <CatalogReviewPanel onChanged={refresh} />
+          </Suspense>
         </Modal>
       )}
       {detail && remote && !detailBook && !editor && (
@@ -1722,10 +1586,12 @@ export function LibraryApp({
               >
                 PDF 원문 열기
               </a>
-              <PdfLibraryPanel
-                documentId={detailBook.sourceData.recordId}
-                onSaved={refresh}
-              />
+              <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
+                <PdfLibraryPanel
+                  documentId={detailBook.sourceData.recordId}
+                  onSaved={refresh}
+                />
+              </Suspense>
             </>
           )}
           {!preview && remote ? (

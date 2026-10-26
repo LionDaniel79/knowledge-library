@@ -31,6 +31,7 @@ export function TopicBrowser({
   onUpdated = async () => {},
   onSaveNote,
   onNewNote,
+  initialTag = "all",
 }: {
   library: Library;
   state: ThoughtMapSnapshot;
@@ -42,11 +43,12 @@ export function TopicBrowser({
   onUpdated?: () => Promise<void>;
   onSaveNote?: (c: Command) => Promise<void>;
   onNewNote?: (c: NewNoteContext) => void;
+  initialTag?: string;
 }) {
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState("all"),
     [noteType, setNoteType] = useState("all"),
-    [tag, setTag] = useState("all"),
+    [tag, setTag] = useState(initialTag),
     [bookId, setBookId] = useState("all"),
     [search, setSearch] = useState(""),
     [sort, setSort] = useState("newest");

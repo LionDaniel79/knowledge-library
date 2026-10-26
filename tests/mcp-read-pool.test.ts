@@ -1,7 +1,11 @@
 import { expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+const pools = vi.hoisted(() => [] as EventEmitter[]);
 vi.mock("pg", () => ({
-  Pool: class {
+  Pool: class extends EventEmitter {
     constructor(config: { options?: string }) {
+      super();
+      pools.push(this);
       // Neon PgBouncer rejects this at connection startup (SQLSTATE 08P01).
       if (config.options?.includes("statement_timeout"))
         throw Object.assign(new Error("unsupported startup parameter"), {
@@ -26,6 +30,31 @@ it("can use the Neon pooler without unsupported startup parameters", async () =>
     );
     expect(r.rows).toEqual([{ read_only: "on", timeout: "15s" }]);
   } finally {
+    vi.unstubAllEnvs();
+  }
+});
+it("survives idle reader disconnections without logging credentials", async () => {
+  vi.stubEnv(
+    "LIBRARY_MCP_DATABASE_URL",
+    "postgresql://reader:example@library-pooler.invalid/library",
+  );
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await mcpReadDatabase.query("SELECT 1");
+    expect(() =>
+      pools
+        .at(-1)!
+        .emit(
+          "error",
+          Object.assign(Error("private connection URL"), { code: "08P01" }),
+        ),
+    ).not.toThrow();
+    expect(JSON.stringify(warning.mock.calls)).not.toContain(
+      "private connection URL",
+    );
+    expect((await mcpReadDatabase.query("SELECT 1")).rows).toHaveLength(1);
+  } finally {
+    warning.mockRestore();
     vi.unstubAllEnvs();
   }
 });

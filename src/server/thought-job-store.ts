@@ -1,37 +1,31 @@
-import { withSyncWrite, syncQuery } from "./sync/write";
-import { mutateTopics } from "./thought-topics";
-import { readSourcePage } from "./thought-source-pages";
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
+import type {
+  AnalysisJob,
+  AnalysisStatus,
+  JobInput,
+  JobResult,
+  WorkerSources,
+} from "../lib/thought-map/jobs";
 import {
   collectSourcePages,
   type SourcePageRequest,
 } from "../lib/thought-map/jobs";
 import {
-  resolveThoughtRecord,
   noteFromRow,
+  resolveThoughtRecord,
   withEvent,
 } from "../lib/thought-map/records";
-import { randomUUID, createHash } from "node:crypto";
-import { z } from "zod";
-import { LibraryError, type Database, type Executor } from "./library-store";
-import {
-  assertOwner,
-  ownRow,
-  currentRecord,
-  dto,
-  createThoughtMapStore,
-} from "./thought-map-store";
-import { insertCandidate } from "./thought-candidates";
-import type {
-  AnalysisJob,
-  JobInput,
-  JobResult,
-  AnalysisStatus,
-  WorkerSources,
-} from "../lib/thought-map/jobs";
 import {
   THOUGHT_PROMPT_VERSION,
   type AnalysisProvenance,
 } from "../lib/thought-map/types";
+import { LibraryError, type Database, type Executor } from "./library-store";
+import { syncQuery, withSyncWrite } from "./sync/write";
+import { insertCandidate } from "./thought-candidates";
+import { assertOwner, currentRecord, dto, ownRow } from "./thought-map-store";
+import { readSourcePage } from "./thought-source-pages";
+import { mutateTopics } from "./thought-topics";
 const hash = (x: unknown) =>
   createHash("sha256").update(JSON.stringify(x)).digest("hex");
 export async function sourceVersion(tx: Executor, owner: string, id: string) {

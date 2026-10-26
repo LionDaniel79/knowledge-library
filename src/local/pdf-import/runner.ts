@@ -1,28 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Database } from "../../server/library-store";
+import { importPdfCatalog } from "../../server/pdf-catalog-import";
 import {
-  importPdfCatalog,
-  type PdfCatalogDocument,
-} from "../../server/pdf-catalog-import";
-import {
-  previewPdfConnection,
   applyPdfConnection,
+  previewPdfConnection,
   verifiedPdfRoot,
 } from "../../server/pdf-reconnect";
-import { PdfImportJobs, type ImportItem } from "./jobs";
-import {
-  extractPdfIdentity,
-  resolvePdfIdentity,
-  importMetadataCandidates,
-  applyImportMetadata,
-  type PdfIdentity,
-  type IdentityPage,
-} from "./metadata";
 import type { CollectedBook } from "../curation/catalog";
+import { PdfImportJobs } from "./jobs";
+import {
+  applyImportMetadata,
+  extractPdfIdentity,
+  importMetadataCandidates,
+  resolvePdfIdentity,
+  type IdentityPage,
+  type PdfIdentity,
+} from "./metadata";
 import type { PdfRpc } from "./python";
 
 export function localHashes(): Map<string, string> {

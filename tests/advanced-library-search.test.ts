@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
-import { testDatabase } from "./helpers/database";
+import { queryNotes } from "../src/client/replica/queries";
 import { readBookPage } from "../src/server/book-catalog";
 import { readNotePage } from "../src/server/record-catalog";
-import { queryBooks, queryNotes } from "../src/client/replica/queries";
+import { testDatabase } from "./helpers/database";
 import { resourceFixture } from "./helpers/replica-resources";
 it("combines book title, author, publisher and ISBN as AND conditions on the server and device", async () => {
   const f = await resourceFixture();

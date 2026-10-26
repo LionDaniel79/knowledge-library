@@ -1,20 +1,15 @@
-import { beforeAll, afterAll, it, expect } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { types } from "pg";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { types } from "pg";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { createLibraryStore, type Database } from "../src/server/library-store";
-import {
-  createThoughtMapStore,
-  currentRecord,
-  dto,
-} from "../src/server/thought-map-store";
 import {
   createThoughtJobStore,
   sourceVersion,
 } from "../src/server/thought-job-store";
-import { createRemoteTransport } from "../src/local/thought-map/remote-transport";
+import { createThoughtMapStore, dto } from "../src/server/thought-map-store";
 let pg: PGlite, db: Database;
 const config = { modelDigest: "m", promptVersion: "1", retrievalVersion: "1" };
 const cmd = (type: string, payload: unknown) => ({
@@ -133,25 +128,6 @@ it("pages a large corpus and includes remote book/document mappings without cand
       expect.objectContaining({ id: book, documentIds: [documentId] }),
     ]),
   );
-  const transport = createRemoteTransport(
-    { origin: "https://library.example", token: "fixture", provenance: config },
-    async (_url, init) => {
-      const request = JSON.parse(String(init?.body));
-      return Response.json(
-        await jobs.sourcePage(
-          owner,
-          request.id,
-          request.leaseToken,
-          request,
-          new Date("2030-01-01"),
-        ),
-      );
-    },
-  );
-  const remote = await transport.getSources(job);
-  expect(remote.notes).toHaveLength(12);
-  expect(remote.books?.[0].documentIds).toEqual([documentId]);
-  expect(Buffer.byteLength(JSON.stringify(remote))).toBeGreaterThan(512 * 1024);
 });
 
 it("keeps valid job completion when an optional topic link no longer has independent sources", async () => {

@@ -1,18 +1,17 @@
+import type {
+  SyncMeta,
+  SyncTransport,
+} from "../../src/client/replica/transport";
+import { syncCommandEnvelope } from "../../src/lib/replica/command-envelope";
+import type { Database } from "../../src/server/library-store";
+import { executeSyncCommand } from "../../src/server/sync/commands";
+import { readSyncCoverage } from "../../src/server/sync/coverage";
 import {
+  readSyncChanges,
   readSyncMeta,
   scanSyncRows,
-  readSyncChanges,
 } from "../../src/server/sync/read";
 import { readSyncValuePart } from "../../src/server/sync/values";
-import { readSyncCoverage } from "../../src/server/sync/coverage";
-import { executeSyncCommand } from "../../src/server/sync/commands";
-import type { Database } from "../../src/server/library-store";
-import type {
-  SyncTransport,
-  SyncMeta,
-} from "../../src/client/replica/transport";
-import type { QueuedChange } from "../../src/client/replica/optimistic";
-import { syncCommandEnvelope } from "../../src/lib/replica/command-envelope";
 export function sqlSyncTransport(db: Database, owner: string): SyncTransport {
   return {
     meta: async (inventory) =>

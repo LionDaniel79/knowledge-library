@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
 import {
@@ -109,10 +109,23 @@ async function mount(page: any) {
   await page.addScriptTag({ content: bundle });
   return { book, notes };
 }
+test("opens a home note tag in the active record browser", async ({ page }) => {
+  await mount(page);
+  await page.getByRole("button", { name: "#관계", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "사유의 지도", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".tag-filter summary")).toContainText("관계");
+  await expect(page.locator(".thought-card-grid")).toContainText("독서한 생각");
+  await expect(page.locator(".thought-card-grid")).not.toContainText(
+    "발췌한 문장",
+  );
+});
+
 test("calendar offers book details next to date editing and book-add appears only in home/books", async ({
   page,
 }) => {
-  const f = await mount(page);
+  await mount(page);
   await expect(
     page
       .locator(".page-heading")

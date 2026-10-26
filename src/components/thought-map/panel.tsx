@@ -7,7 +7,7 @@ import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
 import { TopicBrowser } from "./topic-browser";
 import type { NewNoteContext } from "@/lib/note-context";
 export function ThoughtMapPanel({
-  view,
+  initialTag = "all",
   library,
   onOpen,
   ownerId = "",
@@ -16,7 +16,7 @@ export function ThoughtMapPanel({
   onNewNote,
   revision = 0,
 }: {
-  view: string;
+  initialTag?: string;
   library: Library;
   onOpen: (kind: string, id: string) => void;
   ownerId?: string;
@@ -84,6 +84,7 @@ export function ThoughtMapPanel({
       )}
       {state && (
         <TopicBrowser
+          initialTag={initialTag}
           ownerId={ownerId}
           onUpdated={onUpdated}
           onSaveNote={onSaveNote}

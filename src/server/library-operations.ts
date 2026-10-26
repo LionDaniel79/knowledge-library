@@ -1,13 +1,13 @@
+import { execFile, spawn } from "node:child_process";
 import {
+  closeSync,
   existsSync,
-  readFileSync,
-  statSync,
   mkdirSync,
   openSync,
-  closeSync,
+  readFileSync,
+  statSync,
 } from "node:fs";
-import { join, dirname, resolve } from "node:path";
-import { spawn, execFile } from "node:child_process";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { LibraryError, type Executor } from "./library-store";
 import { withPdfIndex } from "./pdf-index";

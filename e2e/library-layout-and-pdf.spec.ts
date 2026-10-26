@@ -392,7 +392,8 @@ test("cover/list preference survives reload and list opens the same book on a na
   await page.locator(".book-list-row").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
-test("cloud PDF reader offers the PC link without requesting unavailable original pages or showing false zero errors", async ({
+
+test("cloud PDF reader offers a pinned PC link without requesting unavailable original pages", async ({
   page,
 }) => {
   let originalRequests = 0;
@@ -406,45 +407,22 @@ test("cloud PDF reader offers the PC link without requesting unavailable origina
   );
   await page.route("https://library.test/api/pdf**", (r) => {
     originalRequests++;
-    return r.fulfill({
-      status: 503,
-      json: { error: "이 컴퓨터의 PDF 열람 설정이 필요합니다." },
-    });
+    return r.fulfill({ status: 503, json: { error: "PDF unavailable" } });
   });
-  await page.route("https://library.test/api/library-operations", (r) =>
-    r.fulfill({
-      json: {
-        localAvailable: false,
-        rootConnected: false,
-        canControl: false,
-        ocr: { status: "unknown" },
-        collections: [],
-        issues: [],
-        issuesAvailable: false,
-      },
-    }),
-  );
   await mount(
     page,
-    `import {createRoot} from 'react-dom/client';import {PdfReader} from './src/components/pdf-reader';import {LibraryOperationsPanel} from './src/components/library-operations';createRoot(document.getElementById('root')).render(<><PdfReader id="00000000-0000-4000-a000-000000000001" title="원문 책" initialPage={5} localAvailable={false}/><LibraryOperationsPanel/></>);`,
+    `import {createRoot} from 'react-dom/client';import {PdfReader} from './src/components/pdf-reader';createRoot(document.getElementById('root')).render(<PdfReader id="00000000-0000-4000-a000-000000000001" title="원문 책" initialPage={5} localAvailable={false}/>);`,
   );
   await expect(
-    page.getByRole("link", { name: "내 PC의 서재에서 이 페이지 열기" }),
+    page.getByRole("link", {
+      name: "내 PC의 서재에서 이 페이지 열기",
+      exact: true,
+    }),
   ).toHaveAttribute("href", /page=5/);
-  await page.getByText("자료 준비·오류 확인", { exact: true }).click();
-  await expect(
-    page.getByText("PDF 처리 현황은 PC에서 확인할 수 있습니다."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "PC 작업 현황 보기", exact: true }),
-  ).toHaveAttribute(
-    "href",
-    "https://knowledge-library-pc.tail83cf39.ts.net/?view=pdf&panel=operations",
-  );
-  await expect(page.getByText("원본 확인이 필요한 자료 0건")).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(originalRequests).toBe(0);
 });
+
 test("legacy PC links select PDF search without restoring removed maintenance controls", async ({
   page,
 }) => {

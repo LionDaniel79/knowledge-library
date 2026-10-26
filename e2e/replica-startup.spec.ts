@@ -166,7 +166,7 @@ test("shows the saved library while both login and device opening are stalled, p
   page,
 }) => {
   const f = await start(page);
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "새 기록", exact: true }).click();
   const title = page.getByRole("textbox", { name: "제목", exact: true });
   await title.fill("아직 저장하지 않은 내 생각");
   await page.evaluate(() => (window as any).releaseOpen());
@@ -222,7 +222,7 @@ test("does not send a cached-account note to a different signed-in owner", async
     if (r.request().method() === "POST") writes++;
     return r.fulfill({ json: f.fixture });
   });
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "새 기록", exact: true }).click();
   await page
     .getByRole("textbox", { name: "제목", exact: true })
     .fill("이전 계정의 내 생각");

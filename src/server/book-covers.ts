@@ -7,7 +7,34 @@ function ownerRequired(owner: string) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
 }
 export function createCoverStore(db: Database) {
+  async function readConditional(owner: string, id: string, ifNoneMatch = "") {
+    ownerRequired(owner);
+    z.string().uuid().parse(id);
+    const hashes = ifNoneMatch
+      .split(",")
+      .map((tag) => tag.trim().replace(/^W\//, ""))
+      .filter((tag) => /^"[a-fA-F0-9]{64}"$/.test(tag))
+      .map((tag) => tag.slice(1, -1));
+    // Ownership is checked on every request, including cache hits. Unchanged
+    // replies do not read the large base64 value out of Postgres.
+    const row = (
+      await db.query(
+        "SELECT sha256,mime,CASE WHEN $4::boolean OR sha256=ANY($3::text[]) THEN NULL ELSE data_base64 END AS data_base64 FROM library_cover_assets WHERE owner_id=$1 AND id=$2",
+        [owner, id, hashes, ifNoneMatch.trim() === "*"],
+      )
+    ).rows[0];
+    if (!row) throw new LibraryError(404, "표지를 찾을 수 없습니다.");
+    return {
+      bytes:
+        row.data_base64 === null
+          ? null
+          : Buffer.from(row.data_base64, "base64"),
+      mime: String(row.mime),
+      etag: `"${row.sha256}"`,
+    };
+  }
   return {
+    readConditional,
     async upload(owner: string, input: Buffer) {
       ownerRequired(owner);
       if (input.length > 8 * 1024 * 1024)
@@ -85,19 +112,8 @@ export function createCoverStore(db: Database) {
       });
     },
     async read(owner: string, id: string) {
-      ownerRequired(owner);
-      z.string().uuid().parse(id);
-      const row = (
-        await db.query(
-          "SELECT data_base64,mime FROM library_cover_assets WHERE owner_id=$1 AND id=$2",
-          [owner, id],
-        )
-      ).rows[0];
-      if (!row) throw new LibraryError(404, "표지를 찾을 수 없습니다.");
-      return {
-        bytes: Buffer.from(row.data_base64, "base64"),
-        mime: String(row.mime),
-      };
+      const image = await readConditional(owner, id);
+      return { bytes: image.bytes!, mime: image.mime };
     },
   };
 }

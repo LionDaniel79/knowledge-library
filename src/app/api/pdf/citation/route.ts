@@ -1,12 +1,10 @@
-import { connectedPdf } from "@/server/pdf-reconnect";
+import { validateWriteOrigin } from "@/server/access";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
-import { validateWriteOrigin } from "@/server/access";
 import { failure } from "@/server/http";
 import { LibraryError, createLibraryStore } from "@/server/library-store";
 import { readPdfPage } from "@/server/pdf-index";
-import { resolvePdfPath } from "@/server/pdf-access";
-import { stat } from "node:fs/promises";
+import { connectedPdf } from "@/server/pdf-reconnect";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 export const runtime = "nodejs";

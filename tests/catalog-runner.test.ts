@@ -1,7 +1,7 @@
-import { afterEach, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
 import { runCatalogBatch } from "../src/local/curation/catalog-runner";
 import type { Database } from "../src/server/library-store";
 const dirs: string[] = [];

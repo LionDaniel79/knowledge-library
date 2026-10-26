@@ -123,9 +123,27 @@ it("reloads an outline from the actual store when the optional research question
     unpackOutline((await s.snapshot(owner)).research[0].question).outline,
   ).toEqual(["새 목차"]);
 });
-it("swaps two placements atomically and rolls both back on stale or foreign peer", async () => {
+it("swaps two placements atomically with bounded reads and rolls both back on stale or foreign peer", async () => {
+  let placementReads = 0,
+    lockedBytes = 0;
+  const measured: typeof f.db = {
+    query: (s, p) => f.db.query(s, p),
+    transaction: (fn) =>
+      f.db.transaction((tx) =>
+        fn({
+          query: async (s, p) => {
+            const r = await tx.query(s, p);
+            if (/^SELECT .* FROM library_research_placements /.test(s))
+              placementReads++;
+            if (/^SELECT .* FROM library_research_items /.test(s))
+              lockedBytes += Buffer.byteLength(JSON.stringify(r.rows));
+            return r;
+          },
+        }),
+      ),
+  };
   const owner = randomUUID(),
-    s = createKnowledgeStore(f.db),
+    s = createKnowledgeStore(measured),
     l = createLibraryStore(f.db),
     p = await s.mutate(
       owner,
@@ -133,7 +151,10 @@ it("swaps two placements atomically and rolls both back on stale or foreign peer
     );
   const ids = [];
   for (const content of ["a", "b"]) {
-    const n = await l.mutate(owner, cmd("addNote", { content }));
+    const n = await l.mutate(
+      owner,
+      cmd("addNote", { content: content.repeat(40000) }),
+    );
     ids.push(
       (
         await s.mutate(
@@ -151,8 +172,12 @@ it("swaps two placements atomically and rolls both back on stale or foreign peer
     })),
   };
   const request = cmd("moveResearchItems", payload);
+  placementReads = 0;
+  lockedBytes = 0;
   await s.mutate(owner, request);
   await s.mutate(owner, request);
+  expect(placementReads).toBe(1);
+  expect(lockedBytes).toBeLessThan(2000);
   expect(
     (await s.snapshot(owner)).placements.map((p) => p.position).sort(),
   ).toEqual([1, 2]);

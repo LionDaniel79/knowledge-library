@@ -1,18 +1,14 @@
-import { connectedPdf } from "@/server/pdf-reconnect";
+import { pdfDownloadDisposition } from "@/lib/pdf-download";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
 import { LibraryError } from "@/server/library-store";
-import {
-  resolvePdfPath,
-  parseByteRange,
-  verifyCitationSignature,
-} from "@/server/pdf-access";
-import { stat } from "node:fs/promises";
+import { parseByteRange, verifyCitationSignature } from "@/server/pdf-access";
+import { connectedPdf } from "@/server/pdf-reconnect";
 import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import { pdfDownloadDisposition } from "@/lib/pdf-download";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(

@@ -1,30 +1,17 @@
-import { expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { createMemoryReplica } from "../src/client/replica/memory-storage";
+import { expect, it } from "vitest";
 import { bootstrapReplica } from "../src/client/replica/bootstrap";
+import { createMemoryReplica } from "../src/client/replica/memory-storage";
+import { SyncHttpError } from "../src/client/replica/transport";
 import {
   readReplicaValue,
   resolveReplicaImage,
 } from "../src/client/replica/values";
 import { Sha256Stream } from "../src/lib/replica/codec";
-import {
-  syncEntities,
-  syncKey,
-  type SyncEntity,
-} from "../src/lib/replica/entities";
-import {
-  createSyncCursor,
-  parseSyncCursor,
-  VALUE_PART_BYTES,
-  type SyncRow,
-} from "../src/lib/replica/contracts";
-import {
-  SyncHttpError,
-  type SyncTransport,
-} from "../src/client/replica/transport";
+import { VALUE_PART_BYTES } from "../src/lib/replica/contracts";
+import { fixtureTransport } from "./helpers/replica-fixture";
 const hash = (b: Uint8Array | string) =>
   createHash("sha256").update(b).digest("hex");
-import { fixtureTransport } from "./helpers/replica-fixture";
 it("never writes another signed-in owners response into a remembered owners device store", async () => {
   const f = fixtureTransport("actual-owner", false),
     s = createMemoryReplica("remembered-owner");

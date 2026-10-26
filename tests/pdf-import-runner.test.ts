@@ -1,12 +1,12 @@
-import { it, expect } from "vitest";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
-import { testDatabase } from "./helpers/database";
+import { expect, it } from "vitest";
 import { PdfImportJobs } from "../src/local/pdf-import/jobs";
 import { runPdfImport } from "../src/local/pdf-import/runner";
 import type { PdfCatalogDocument } from "../src/server/pdf-catalog-import";
+import { testDatabase } from "./helpers/database";
 
 it("registers an empty library once, skips byte duplicates and excluded material, resumes checkpoints", async () => {
   const { db, pg } = await testDatabase(),
@@ -29,7 +29,7 @@ it("registers an empty library once, skips byte duplicates and excluded material
   });
   const files = [doc("a"), doc("duplicate"), doc("논문", "paper")];
   const rpc = {
-    call: async (action: string, p?: any, emit?: any): Promise<any> => {
+    call: async (action: string, _p?: any, emit?: any): Promise<any> => {
       if (action === "inventory") {
         files.forEach(emit);
         return true;

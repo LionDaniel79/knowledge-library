@@ -58,15 +58,24 @@ const indexEntities: SyncEntity[] = [
   "library_analysis_feedback",
   "library_cover_mirrors",
 ];
-const indexStamp = (state: {
-  localRevision?: number;
-  localEntityRevisions?: Partial<Record<SyncEntity, number>>;
-  entityRevisions?: Partial<Record<SyncEntity, string>>;
-  entityWrites?: Partial<Record<SyncEntity, number>>;
-}) =>
+const searchOnlyEntities = new Set<SyncEntity>([
+  "library_thought_events",
+  "library_evolution_candidates",
+  "library_analysis_feedback",
+]);
+const catalogEntities = indexEntities.filter((e) => !searchOnlyEntities.has(e));
+const indexStamp = (
+  state: {
+    localRevision?: number;
+    localEntityRevisions?: Partial<Record<SyncEntity, number>>;
+    entityRevisions?: Partial<Record<SyncEntity, string>>;
+    entityWrites?: Partial<Record<SyncEntity, number>>;
+  },
+  catalogOnly = false,
+) =>
   JSON.stringify([
-    "field-search-and-archives-v2",
-    ...indexEntities.map((e) => [
+    catalogOnly ? "catalog-dependencies-v3" : "field-search-and-archives-v2",
+    ...(catalogOnly ? catalogEntities : indexEntities).map((e) => [
       e,
       state.entityRevisions?.[e] ?? "0",
       state.localEntityRevisions?.[e] ?? 0,
@@ -161,25 +170,9 @@ export function createLocalReplicaRepository(
     catalogOnly = false,
   ): Promise<LocalIndex> {
     const tables = {} as Partial<Record<SyncEntity, RawRecord[]>>;
-    for (const entity of [
-      "library_books",
-      "library_notes",
-      "library_cycles",
-      "library_book_exclusions",
-      "library_note_trash",
-      "library_shelves",
-      "library_annual_metrics",
-      "library_topics",
-      "library_topic_links",
-      "library_topic_memberships",
-      "library_thought_events",
-      "library_curation_items",
-      "library_reference_sources",
-      "library_documents",
-      "library_connections",
-      "library_evolution_candidates",
-      "library_analysis_feedback",
-    ] as SyncEntity[]) {
+    for (const entity of (catalogOnly ? catalogEntities : indexEntities).filter(
+      (e) => e !== "library_cover_mirrors",
+    )) {
       const values = [];
       for await (const row of records(entity, generation)) values.push(row);
       tables[entity] = values;
@@ -194,6 +187,11 @@ export function createLocalReplicaRepository(
       previews = Object.fromEntries(
         get("library_notes").map((r) => [r.id, projectNote(r, true)]),
       );
+    const archivedTopics = new Set(
+      get("library_topics")
+        .filter((t) => t.archived_at)
+        .map((t) => t.id),
+    );
     const data: LocalIndex = {
       noteTimeKeys: Object.fromEntries(
         get("library_notes").map((r) => [
@@ -237,10 +235,7 @@ export function createLocalReplicaRepository(
       topics: get("library_topics").filter((t) => !t.archived_at),
       topicLinks: get("library_topic_links"),
       memberships: get("library_topic_memberships").filter(
-        (m) =>
-          !get("library_topics").some(
-            (t) => t.id === m.topic_id && t.archived_at,
-          ),
+        (m) => !archivedTopics.has(m.topic_id),
       ),
       entries: [],
     };
@@ -470,7 +465,7 @@ export function createLocalReplicaRepository(
       const cp = await storage.checkpoint();
       if (!cp?.complete)
         throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
-      const stamp = indexStamp(cp),
+      const stamp = indexStamp(cp, catalogOnly),
         token = cp.generation + "\0" + stamp,
         previous = catalogOnly ? catalogCached : cached;
       if (previous?.token === token) return previous.data;
@@ -485,7 +480,7 @@ export function createLocalReplicaRepository(
         const latest = await storage.checkpoint();
         if (
           latest?.generation !== cp.generation ||
-          indexStamp(latest) !== stamp
+          indexStamp(latest, catalogOnly) !== stamp
         )
           continue;
         await storage.transaction((tx) =>
@@ -502,7 +497,7 @@ export function createLocalReplicaRepository(
       const confirmed = await storage.checkpoint();
       if (
         confirmed?.generation !== cp.generation ||
-        indexStamp(confirmed) !== stamp
+        indexStamp(confirmed, catalogOnly) !== stamp
       )
         continue;
       if (catalogOnly) catalogCached = { token, data };
