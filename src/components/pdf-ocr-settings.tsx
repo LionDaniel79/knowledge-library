@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { libraryRequest } from "@/client/replica/request";
 type OcrJob = {
   id: string;
   state: string;
@@ -43,7 +44,13 @@ export function PdfOcrSettings() {
     [selected, setSelected] = useState(""),
     [page, setPage] = useState(1),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [readError, setReadError] = useState(""),
+    [loaded, setLoaded] = useState(false),
+    [loading, setLoading] = useState(false),
+    [refresh, setRefresh] = useState(0);
+  const statusVersion = useRef(0),
+    commandInFlight = useRef(false);
   const job = status.job,
     counts = status.counts ?? {},
     active =
@@ -52,36 +59,60 @@ export function PdfOcrSettings() {
   useEffect(() => {
     if (!open) return;
     let closed = false;
+    let inFlight = false;
     const controller = new AbortController();
+    setLoaded(false);
+    setLoading(true);
+    setReadError("");
     async function load() {
+      if (closed || inFlight || commandInFlight.current) return;
+      inFlight = true;
+      const version = statusVersion.current;
       try {
-        const r = await fetch(
+        const r = await libraryRequest(
             `/api/pdf/reprocess?page=${page}${selected ? `&id=${selected}` : ""}`,
             { cache: "no-store", signal: controller.signal },
+            { preferServer: true },
           ),
           j = await r.json();
-        if (!r.ok) throw Error(j.error);
-        if (!closed) setStatus(j);
+        if (!r.ok)
+          throw Error(j.error || "OCR 진행 정보를 불러오지 못했습니다.");
+        if (!j || typeof j !== "object" || !Object.hasOwn(j, "job"))
+          throw Error("OCR 진행 응답을 확인할 수 없습니다. 새로고침해 주세요.");
+        if (!closed && version === statusVersion.current) {
+          setStatus(j);
+          setReadError("");
+          setLoaded(true);
+        }
       } catch (e) {
-        if (!closed && !(e instanceof DOMException && e.name === "AbortError"))
-          setError((e as Error).message);
+        if (
+          !closed &&
+          version === statusVersion.current &&
+          !(e instanceof DOMException && e.name === "AbortError")
+        )
+          setReadError((e as Error).message);
+      } finally {
+        inFlight = false;
+        if (!closed && version === statusVersion.current) setLoading(false);
       }
     }
     void load();
-    const timer = setInterval(() => {
-      if (active) void load();
-    }, 4000);
+    // Jobs may start outside this screen. An initially empty/error response
+    // must not permanently stop status updates while the panel remains open.
+    const timer = setInterval(() => void load(), 4000);
     return () => {
       closed = true;
       controller.abort();
       clearInterval(timer);
     };
-  }, [open, page, selected, job?.id, job?.state, active]);
+  }, [open, page, selected, refresh]);
   async function command(action: string, extra: Record<string, unknown> = {}) {
+    statusVersion.current++;
+    commandInFlight.current = true;
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/pdf/reprocess", {
+      const r = await libraryRequest("/api/pdf/reprocess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, id: job?.id, ...extra }),
@@ -101,17 +132,28 @@ export function PdfOcrSettings() {
               ? "restoring"
               : "running";
       setStatus(j);
+      setLoaded(true);
       if (action === "create") setSelected("");
+      setRefresh((n) => n + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      commandInFlight.current = false;
       setBusy(false);
     }
   }
   const canStart =
+    loaded &&
+    !loading &&
+    !error &&
+    !readError &&
     !busy &&
     (!job || job.state === "complete") &&
     !status.history?.some((h) => h.state !== "complete");
+  const total = Math.max(0, status.total ?? 0),
+    pending = Math.max(0, counts.pending ?? 0),
+    processed = Math.max(0, Math.min(total, total - pending)),
+    percent = total ? ((processed / total) * 100).toFixed(1) : "0.0";
   return (
     <details
       className="pdf-ocr-settings"
@@ -121,6 +163,17 @@ export function PdfOcrSettings() {
       {open && (
         <>
           <div className="button-row">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || loading}
+              onClick={() => {
+                setError("");
+                setRefresh((n) => n + 1);
+              }}
+            >
+              진행 현황 새로고침
+            </button>
             <button
               type="button"
               className="secondary"
@@ -142,10 +195,16 @@ export function PdfOcrSettings() {
               전체 OCR 다시하기
             </button>
           </div>
-          {error && (
+          {loading && (
+            <p role={job ? undefined : "status"}>진행 현황을 불러오는 중…</p>
+          )}
+          {(error || readError) && (
             <p className="error" role="alert">
-              {error}
+              {error || readError}
             </p>
+          )}
+          {loaded && !loading && !error && !readError && !job && (
+            <p>등록된 OCR 작업이 없습니다.</p>
           )}
           {job && (
             <section aria-label="OCR 재인식 현황">
@@ -171,6 +230,15 @@ export function PdfOcrSettings() {
               <p role="status">
                 <strong>{names[job.state]}</strong>
               </p>
+              <p>
+                재인식 처리 {percent}% · {processed.toLocaleString()} /{" "}
+                {total.toLocaleString()}쪽 · 남은 {pending.toLocaleString()}쪽
+              </p>
+              <progress
+                aria-label="OCR 재인식 진행률"
+                max={Math.max(1, total)}
+                value={processed}
+              />
               <p>
                 대상 {status.total ?? 0}쪽 · 새 결과 {counts.ready ?? 0}쪽 ·
                 확인 필요 {counts.review ?? 0}쪽 · 반영 {counts.applied ?? 0}쪽
