@@ -28,6 +28,7 @@ export function useMaterialPage(
     "/api/library-materials?" + params,
     enabled,
     revision,
+    { keepPreviousData: true },
   );
   return {
     ...result,

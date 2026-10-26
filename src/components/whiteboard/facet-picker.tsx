@@ -178,8 +178,14 @@ export function FacetPicker({
                     }}
                   >
                     <span>{o.label}</span>
-                    {values.includes(o.value) && (
-                      <span aria-hidden="true">✓</span>
+                    {multiple ? (
+                      <span className="facet-check" aria-hidden="true">
+                        {values.includes(o.value) ? "☑" : "☐"}
+                      </span>
+                    ) : (
+                      values.includes(o.value) && (
+                        <span aria-hidden="true">✓</span>
+                      )
                     )}
                   </button>
                 );
@@ -210,6 +216,16 @@ export function FacetPicker({
                 <small>검색어를 입력해 범위를 좁혀 주세요.</small>
               )}
             </div>
+            {multiple && (
+              <button
+                type="button"
+                className="facet-done"
+                aria-label={`${label} 선택 완료`}
+                onClick={() => setOpen(false)}
+              >
+                선택 완료
+              </button>
+            )}
           </div>,
           document.body,
         )}

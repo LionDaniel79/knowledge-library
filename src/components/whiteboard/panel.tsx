@@ -568,6 +568,7 @@ export function WhiteboardPanel({
           <FacetPicker
             key={field}
             label={label}
+            multiple
             options={facets[field]}
             values={filter[field]}
             onChange={(values) => {
@@ -766,6 +767,12 @@ export function WhiteboardPanel({
           }}
           onRemoveConnection={removeConnection}
           onRemoveGroupConnection={removeGroupConnection}
+          onArrange={() => {
+            if (linkBusy) return;
+            const before = current.current;
+            update(arrangeSearchResults(source, before), before);
+            setSearchRevision((n) => n + 1);
+          }}
         />
       </div>
       <details className="wb-connection-list">

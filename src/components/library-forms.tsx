@@ -5,7 +5,7 @@ import { BookLookup } from "./book-lookup";
 import type { BookCandidate } from "@/lib/book-lookup";
 import { CoverInput } from "./cover-input";
 import { Modal } from "./modal";
-import { categories, parseTags } from "@/lib/catalog";
+import { categories } from "@/lib/catalog";
 import { ShelfPicker } from "./shelf-picker";
 import { CurationDetails } from "./curation-details";
 import { BookPicker } from "./book-picker";
@@ -14,6 +14,7 @@ import { AssistLauncher } from "./assist-panel";
 import { formEditBase } from "@/lib/replica/command-envelope";
 import type { NewNoteContext } from "@/lib/note-context";
 import { NoteTopicField, type NoteTopicHandle } from "./note-topic-field";
+import { NoteTagInput } from "./note-tag-input";
 export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
   | ({ kind: "note"; note?: Note } & NewNoteContext)
@@ -40,6 +41,7 @@ export function LibraryForm({
     editor.kind === "note" && editor.note?.sourceData?.app === "PDF";
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [topicBusy, setTopicBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const book = editor.kind === "book" ? editor.book : undefined;
   const [editBase, setEditBase] = useState(() =>
@@ -62,6 +64,9 @@ export function LibraryForm({
   const pending = useRef<{ signature: string; id: string } | null>(null);
   const [noteKind, setNoteKind] = useState(
     editor.kind === "note" ? (editor.note?.kind ?? "thought") : "thought",
+  );
+  const [noteTags, setNoteTags] = useState(
+    editor.kind === "note" ? (editor.note?.tags ?? []) : [],
   );
   const [conflict, setConflict] = useState(false);
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
@@ -107,7 +112,7 @@ export function LibraryForm({
       : [];
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (uploading) return;
+    if (uploading || topicBusy || busy) return;
     if (preview) {
       setError(
         "미리보기에서는 저장하지 않습니다. 내 서재에 로그인하면 사용할 수 있습니다.",
@@ -161,7 +166,7 @@ export function LibraryForm({
         content: text("content"),
         kind: text("kind"),
         page: number("page"),
-        tags: parseTags(text("tags")),
+        tags: noteTags,
         topicChanges: topicRef.current?.changes(),
         relatedNotes: editor.relatedNotes?.map((n) => ({ noteId: n.id })),
         ...(editor.note
@@ -222,7 +227,8 @@ export function LibraryForm({
     }
   }
   async function deleteNote() {
-    if (preview || busy || editor.kind !== "note" || !editor.note) return;
+    if (preview || busy || topicBusy || editor.kind !== "note" || !editor.note)
+      return;
     const type = "deleteNote",
       payload = {
         id: editor.note.id,
@@ -247,9 +253,9 @@ export function LibraryForm({
     <Modal
       title={heading}
       className={editor.kind === "note" ? "memo-editor" : ""}
-      canClose={!busy}
+      canClose={!busy && !topicBusy}
       onClose={() => {
-        if (!busy) onClose();
+        if (!busy && !topicBusy) onClose();
       }}
     >
       <form ref={formRef} className="editor-form" onSubmit={submit}>
@@ -553,6 +559,8 @@ export function LibraryForm({
                 ref={topicRef}
                 noteId={editor.note?.id}
                 initial={editor.topicIds}
+                preview={preview}
+                onCreatingChange={setTopicBusy}
               />
               {!!editor.relatedNotes?.length && (
                 <small>
@@ -560,23 +568,12 @@ export function LibraryForm({
                   {editor.relatedNotes.map((n) => n.title || "메모").join(", ")}
                 </small>
               )}
-              <label>
-                태그
-                <input
-                  name="tags"
-                  maxLength={800}
-                  defaultValue={editor.note?.tags?.join(", ") ?? ""}
-                  placeholder="쉼표로 구분: 관계, 감정, 신앙"
-                  list="note-tag-options"
-                />
-              </label>
-              <datalist id="note-tag-options">
-                {[...new Set(library.notes.flatMap((n) => n.tags ?? []))].map(
-                  (t) => (
-                    <option key={t} value={t} />
-                  ),
-                )}
-              </datalist>
+              <NoteTagInput
+                value={noteTags}
+                onChange={setNoteTags}
+                options={library.notes.flatMap((n) => n.tags ?? [])}
+                preview={preview}
+              />
 
               {noteKind === "highlight" && (
                 <p className="form-hint">
@@ -705,7 +702,7 @@ export function LibraryForm({
             <button
               type="button"
               className="secondary"
-              disabled={busy || conflict}
+              disabled={busy || topicBusy || conflict}
               onClick={() => setConfirmDelete(true)}
             >
               삭제
@@ -714,13 +711,19 @@ export function LibraryForm({
           <button
             type="button"
             className="secondary"
-            disabled={busy}
+            disabled={busy || topicBusy}
             onClick={onClose}
           >
             취소
           </button>
-          <button className="primary" disabled={busy || conflict}>
-            {busy ? "저장 중…" : preview ? "저장 안내 확인" : "저장하기"}
+          <button className="primary" disabled={busy || topicBusy || conflict}>
+            {topicBusy
+              ? "주제 생성 중…"
+              : busy
+                ? "저장 중…"
+                : preview
+                  ? "저장 안내 확인"
+                  : "저장하기"}
           </button>
         </footer>
       </form>
@@ -740,7 +743,7 @@ export function LibraryForm({
             </button>
             <button
               type="button"
-              disabled={busy || conflict}
+              disabled={busy || topicBusy || conflict}
               onClick={() => void deleteNote()}
             >
               휴지통으로 이동

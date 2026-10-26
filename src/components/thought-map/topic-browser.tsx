@@ -217,7 +217,9 @@ export function TopicBrowser({
               새 기록
             </button>
           )}
-          {catalog.loading && <p role="status">자료를 불러오고 있습니다…</p>}
+          {catalog.loading && !catalog.items.length && (
+            <p role="status">자료를 불러오고 있습니다…</p>
+          )}
           {catalog.error && (
             <p role="alert">
               {catalog.error}

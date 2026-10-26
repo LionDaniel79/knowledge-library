@@ -259,6 +259,62 @@ function connectedFixture(state: any) {
   };
 }
 
+test("arrange packs visible notes, preserves connections and can undo the layout", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    connectedFixture(state);
+    const key = `topic:${state.topics[0].id}::${state.notes[1].id}`;
+    state.board.data.positions[key] = { x: 12000, y: 12000 };
+  });
+  const original = structuredClone(f.state.board.data),
+    connections = structuredClone(f.state.connections);
+  await page.getByRole("button", { name: "메모 정렬", exact: true }).click();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBeGreaterThan(0);
+  expect(f.state.connections).toEqual(connections);
+  expect(f.state.board.data.links).toEqual(original.links);
+  expect(f.state.board.data.filter).toEqual(original.filter);
+  const key = `topic:${f.state.topics[0].id}::${f.state.notes[1].id}`;
+  expect(f.state.board.data.positions[key].x).toBeLessThan(1000);
+  expect(f.state.board.data.positions[key].y).toBeLessThan(1000);
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect
+    .poll(() => f.state.board.data.positions[key])
+    .toEqual(original.positions[key]);
+});
+
+test("all whiteboard facets keep two selected choices until Search", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  const choices: Record<string, string[]> = {
+    주제: ["정서", "신학"],
+    태그: ["상담", "철학"],
+    분야: ["철학·심리학", "종교"],
+    도서: ["상담 도서 · 상담 저자", "신학 도서 · 신학 저자"],
+  };
+  for (const [label, values] of Object.entries(choices)) {
+    for (const value of values) await choose(page, label, value);
+    await expect(
+      page.getByRole("button", { name: `${label} 선택`, exact: true }),
+    ).toContainText("2개 선택");
+    await page
+      .getByRole("button", { name: `${label} 선택 완료`, exact: true })
+      .click();
+  }
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect
+    .poll(() => f.state.board?.data.filter)
+    .toMatchObject({
+      topics: f.state.topics.map((t: any) => t.id),
+      tags: ["상담", "철학"],
+      categories: ["100", "200"],
+      books: f.state.books.map((b: any) => b.id),
+    });
+});
+
 test("line action disconnects the actual note relationship and undo restores it", async ({
   page,
 }) => {
@@ -896,7 +952,12 @@ test("mobile controls stay inside the screen while the toolbar scrolls independe
 });
 test("touch drag cancellation does not connect; releasing the touch connects the two real notes", async ({
   page,
+  browserName,
 }) => {
+  test.skip(
+    browserName !== "chromium",
+    "This touch protocol test requires Chromium CDP; other pointer and facet cases run in both browsers.",
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   const f = await mount(page);
   await choose(page, "주제", "정서");

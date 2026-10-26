@@ -49,6 +49,7 @@ export function WhiteboardCanvas({
   onSelectLine,
   onRemoveConnection,
   onRemoveGroupConnection,
+  onArrange,
 }: {
   source: WhiteboardSnapshot;
   board: Board;
@@ -74,6 +75,7 @@ export function WhiteboardCanvas({
   onSelectLine: () => void;
   onRemoveConnection: (connection: BoardConnection) => Promise<void>;
   onRemoveGroupConnection: (source: string, target: string) => void;
+  onArrange: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null),
     active = useRef<Drag | null>(null),
@@ -415,6 +417,14 @@ export function WhiteboardCanvas({
         </button>
         <button type="button" onClick={() => fit()}>
           전체 보기
+        </button>
+        <button
+          type="button"
+          aria-label="메모 정렬"
+          disabled={busy || !scene.nodes.length}
+          onClick={onArrange}
+        >
+          정렬
         </button>
       </div>
       <div
