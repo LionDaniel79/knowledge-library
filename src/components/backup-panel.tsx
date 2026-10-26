@@ -24,7 +24,7 @@ const names: Record<string, string> = {
   library_research_placements: "연구 자료 배치·해석",
   library_external_links: "과거 외부 연결",
   library_cover_assets: "업로드한 표지",
-  library_research: "설교·논문 모음",
+  library_research: "글감 묶음",
   library_curation_items: "정리 정보",
 };
 export function BackupPanel({

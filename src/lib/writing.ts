@@ -1,6 +1,8 @@
 import {
   exportResearchMarkdown,
   researchCitation,
+  researchNoteTitle,
+  researchRoles,
   sortResearchItems,
   type ResearchItem,
   type ResearchPlacement,
@@ -36,8 +38,9 @@ export function exportResearchText(
     `${research.title}\n\n${research.question}\n\n` +
     sortResearchItems(items, placements)
       .map((i) => {
-        const p = map.get(i.id);
-        return `${p?.section || "글감"} · ${i.snapshot.note.title || "메모"}\n\n${i.snapshot.note.content}\n\n${p?.comment ? `나의 해석: ${p.comment}\n\n` : ""}출처: ${researchCitation(i)}\n저장한 메모 버전: ${i.snapshot.note.version}`;
+        const p = map.get(i.id),
+          source = i.snapshot.note.sourceData;
+        return `${p?.section || "글감"} · ${researchRoles[p?.role ?? "background"]} · ${researchNoteTitle(i.snapshot.note)}\n\n${i.snapshot.note.content}\n\n${p?.comment ? `나의 해석: ${p.comment}\n\n` : ""}출처: ${researchCitation(i)}\n저장한 메모 버전: ${i.snapshot.note.version}${source?.app === "PDF" ? `\nPDF 식별자: ${source.recordId}\n원본 서명: ${source.raw.signature}` : ""}`;
       })
       .join("\n\n----------------\n\n")
   );

@@ -1,6 +1,58 @@
 import { expect, it } from "vitest";
 import { exportResearchMarkdown, sortResearchItems } from "../src/lib/research";
 import { bibliography, toRis } from "../src/lib/bibliography-exchange";
+import { exportResearchText } from "../src/lib/writing";
+it("keeps source roles, PDF identity and note versions in plain-text writing exports", () => {
+  const item = {
+    id: "frozen-note",
+    snapshot: {
+      note: {
+        title: "검토한 인용",
+        content: "담을 당시의 원문",
+        kind: "highlight",
+        page: 7,
+        version: 3,
+        sourceData: {
+          app: "PDF",
+          recordId: "document-identity",
+          raw: { pdfPage: 7, signature: "frozen-source-signature" },
+        },
+      },
+      book: {
+        title: "확인한 책",
+        author: "저자",
+        publisher: "출판사",
+        isbn: "9780140449136",
+      },
+    },
+  };
+  const text = exportResearchText(
+    { title: "논의를 위한 글감", question: "무엇을 검토하나?" },
+    [item],
+    [
+      {
+        id: item.id,
+        role: "counterargument",
+        section: "논의",
+        position: 1,
+        comment: "내가 적은 해석",
+        state: "active",
+        version: 1,
+      },
+    ],
+  );
+  for (const value of [
+    "반론",
+    "담을 당시의 원문",
+    "내가 적은 해석",
+    "확인한 책",
+    "PDF 7쪽",
+    "메모 버전: 3",
+    "PDF 식별자: document-identity",
+    "원본 서명: frozen-source-signature",
+  ])
+    expect(text).toContain(value);
+});
 it("orders human research roles while preserving a frozen quote and PDF page identity", () => {
   const snapshot = {
     note: {

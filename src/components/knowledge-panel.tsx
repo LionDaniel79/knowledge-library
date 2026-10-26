@@ -10,11 +10,6 @@ const WhiteboardPanel = lazy(() =>
 const MemoBox = lazy(() =>
   import("./memo-box/panel").then((m) => ({ default: m.MemoBox })),
 );
-const WritingWorkbench = lazy(() =>
-  import("./memo-box/writing-workbench").then((m) => ({
-    default: m.WritingWorkbench,
-  })),
-);
 export function KnowledgePanel({
   library,
   onOpen,
@@ -39,7 +34,6 @@ export function KnowledgePanel({
           ["topics", "내 기록"],
           ["whiteboard", "화이트보드"],
           ["memo-box", "메모 상자"],
-          ["research", "설교·논문 자료"],
         ].map(([id, name]) => (
           <button
             key={id}
@@ -73,15 +67,13 @@ export function KnowledgePanel({
             ownerId={ownerId}
             revision={0}
           />
-        ) : tab === "memo-box" ? (
+        ) : (
           <MemoBox
             library={library}
             onOpen={onOpen}
             onNewNote={onNewNote}
             revision={0}
           />
-        ) : (
-          <WritingWorkbench library={library} onOpen={onOpen} revision={0} />
         )}
       </Suspense>
     </section>

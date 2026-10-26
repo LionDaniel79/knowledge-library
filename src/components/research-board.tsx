@@ -6,6 +6,7 @@ import {
   researchRoles,
   sortResearchItems,
   researchCitation,
+  researchNoteTitle,
   type ResearchItem,
   type ResearchPlacement,
 } from "@/lib/research";
@@ -60,12 +61,12 @@ export function ResearchBoard({
               {researchRoles[p?.role ?? "background"]}
               {p ? ` · 순서 ${p.position}` : ""}
             </small>
-            <h3>{n.title}</h3>
+            <h3>{researchNoteTitle(n)}</h3>
             {onMove && p?.state !== "removed" && (
               <div className="form-footer">
                 <button
                   disabled={busy || activeOrder.indexOf(i) === 0}
-                  aria-label={`${n.title || "메모"} 위로`}
+                  aria-label={`${researchNoteTitle(n)} 위로`}
                   onClick={() => onMove(i.id, -1)}
                 >
                   ↑ 위로
@@ -74,7 +75,7 @@ export function ResearchBoard({
                   disabled={
                     busy || activeOrder.indexOf(i) === activeOrder.length - 1
                   }
-                  aria-label={`${n.title || "메모"} 아래로`}
+                  aria-label={`${researchNoteTitle(n)} 아래로`}
                   onClick={() => onMove(i.id, 1)}
                 >
                   ↓ 아래로

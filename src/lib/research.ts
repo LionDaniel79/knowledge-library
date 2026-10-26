@@ -41,6 +41,15 @@ export type ResearchItem = {
     } | null;
   };
 };
+export function researchNoteTitle(note: { title: string; content: string }) {
+  const title = note.title.trim();
+  if (title && title !== "미분류 메모") return title;
+  const content = note.content.trim().replace(/\s+/g, " ");
+  const preview = Array.from(content);
+  return preview.length
+    ? preview.slice(0, 70).join("") + (preview.length > 70 ? "…" : "")
+    : "제목 없는 메모";
+}
 export function sortResearchItems<T extends ResearchItem>(
   items: T[],
   placements: ResearchPlacement[],
@@ -73,7 +82,7 @@ export function exportResearchMarkdown(
       .map((i) => {
         const p = map.get(i.id),
           source = i.snapshot.note.sourceData;
-        return `## ${p?.section ? `${p.section} · ` : ""}${researchRoles[p?.role ?? "background"]} · ${i.snapshot.note.title}\n\n${i.snapshot.note.content}\n\n${p?.comment ? `나의 해석: ${p.comment}\n\n` : ""}출처: ${researchCitation(i)}\n저장한 메모 버전: ${i.snapshot.note.version}${source?.app === "PDF" ? `\nPDF 식별자: ${source.recordId}\n원본 서명: ${source.raw.signature}` : ""}`;
+        return `## ${p?.section ? `${p.section} · ` : ""}${researchRoles[p?.role ?? "background"]} · ${researchNoteTitle(i.snapshot.note)}\n\n${i.snapshot.note.content}\n\n${p?.comment ? `나의 해석: ${p.comment}\n\n` : ""}출처: ${researchCitation(i)}\n저장한 메모 버전: ${i.snapshot.note.version}${source?.app === "PDF" ? `\nPDF 식별자: ${source.recordId}\n원본 서명: ${source.raw.signature}` : ""}`;
       })
       .join("\n\n---\n\n")
   );

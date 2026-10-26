@@ -7,7 +7,9 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {useState} from 'react';import {KnowledgePanel} from './src/components/knowledge-panel';import {LibraryForm} from './src/components/library-forms';function Harness(){const[editor,setEditor]=useState(null);return <><KnowledgePanel library={window.fixture.library} onOpen={(k,id)=>{window.opened={k,id}}} onNewNote={c=>setEditor({kind:'note',...c})}/>{editor&&<LibraryForm editor={editor} library={window.fixture.library} today="2026-10-25" preview={false} onClose={()=>setEditor(null)} onSave={async c=>{window.saved=c;setEditor(null)}}/>}</>};createRoot(document.getElementById('root')).render(<Harness/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {useState} from 'react';import {KnowledgePanel} from './src/components/knowledge-panel';import {LibraryForm} from './src/components/library-forms';import {ReplicaProvider} from './src/components/replica/provider';
+let snapshot={ready:false,revision:0};const listeners=new Set();const runtime={getSnapshot:()=>snapshot,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},sync:async()=>{}};window.refreshFixture=()=>{snapshot={...snapshot,revision:snapshot.revision+1};listeners.forEach(fn=>fn())};
+function Harness(){const[editor,setEditor]=useState(null);return <ReplicaProvider runtime={runtime}><KnowledgePanel library={window.fixture.library} onOpen={(k,id)=>{window.opened={k,id}}} onNewNote={c=>setEditor({kind:'note',...c})}/>{editor&&<LibraryForm editor={editor} library={window.fixture.library} today="2026-10-25" preview={false} onClose={()=>setEditor(null)} onSave={async c=>{window.saved=c;setEditor(null)}}/>}</ReplicaProvider>};createRoot(document.getElementById('root')).render(<Harness/>);`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -136,7 +138,7 @@ async function mount(page: Page) {
           Date.UTC(2026, 9, 25, 0, 0, state.items.length),
         ).toISOString(),
         research_id: p.researchId,
-        snapshot: { note: n, book: null },
+        snapshot: { note: structuredClone(n), book: null },
       });
     }
     if (c.type === "moveResearchItems")
@@ -280,7 +282,10 @@ test("outline, ordered sources and text export work without changing the origina
   const f = await mount(page);
   await page.getByRole("button", { name: "메모 상자", exact: true }).click();
   await page.getByRole("button", { name: "글감 엮기", exact: true }).click();
-  await page.getByText("새 글감 묶음 만들기", { exact: true }).click();
+  await expect(page.getByLabel("제목", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("새 글감 묶음 만들기", { exact: true }),
+  ).toHaveCount(0);
   await page.getByLabel("제목", { exact: true }).fill("공감에 관한 글");
   await page.getByLabel("목차 · 한 줄에 한 항목").fill("첫 생각\n새 결론");
   await page
@@ -307,6 +312,12 @@ test("outline, ordered sources and text export work without changing the origina
   });
   await firstCard.getByText("역할·순서·내 해석 수정", { exact: true }).click();
   await firstCard
+    .getByRole("combobox", { name: "자료 역할", exact: true })
+    .selectOption("claim");
+  await firstCard
+    .getByRole("combobox", { name: "장·절 또는 묶음 제목", exact: true })
+    .fill("첫 생각");
+  await firstCard
     .getByRole("textbox", { name: "이 자료에 대한 나의 해석", exact: true })
     .fill("아직 저장하지 않은 해석");
   await page
@@ -331,6 +342,8 @@ test("outline, ordered sources and text export work without changing the origina
     f.commands.find((c) => c.type === "placeResearchItem").payload,
   ).toMatchObject({
     expectedVersion: 1,
+    role: "claim",
+    section: "첫 생각",
     comment: "아직 저장하지 않은 해석",
     position: 2,
   });
@@ -339,9 +352,7 @@ test("outline, ordered sources and text export work without changing the origina
     .click();
   const dialog = page.getByRole("dialog", { name: "제목·목차 수정" });
   await dialog.getByLabel("제목", { exact: true }).fill("공감과 경계");
-  await page
-    .getByRole("button", { name: "새로고침", exact: true })
-    .evaluate((e: HTMLButtonElement) => e.click());
+  await page.evaluate(() => (window as any).refreshFixture());
   await expect(dialog.getByLabel("제목", { exact: true })).toHaveValue(
     "공감과 경계",
   );
@@ -356,11 +367,73 @@ test("outline, ordered sources and text export work without changing the origina
   expect(text).toContain("공감과 경계");
   expect(text).toContain("출처: 나의 생각");
   expect(text).toContain("나의 해석: 아직 저장하지 않은 해석");
+  expect(text).toContain("첫 생각 · 주장");
   expect(text.indexOf("지금 생각에 관한")).toBeLessThan(
     text.indexOf("처음 생각에 관한"),
   );
   expect(f.notes[0].content).toBe("처음 생각에 관한 나의 문장 0");
+  // Removing a source only changes its placement; its frozen text stays restorable.
+  await firstCard
+    .getByRole("combobox", { name: "자료 상태", exact: true })
+    .selectOption("removed");
+  await firstCard
+    .getByRole("button", { name: "배치·해석 저장", exact: true })
+    .click();
+  await expect(firstCard).toHaveCount(0);
+  const removedDownload = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "글감 내려받기 (.txt)", exact: true })
+    .click();
+  expect(
+    await readFile((await (await removedDownload).path())!, "utf8"),
+  ).not.toContain("처음 생각에 관한");
+  await page.getByLabel("묶음에서 뺀 자료도 보기").check();
+  await expect(firstCard).toBeVisible();
+  await firstCard.getByText("역할·순서·내 해석 수정", { exact: true }).click();
+  await firstCard
+    .getByRole("combobox", { name: "자료 상태", exact: true })
+    .selectOption("active");
+  await firstCard
+    .getByRole("button", { name: "배치·해석 저장", exact: true })
+    .click();
+  await expect
+    .poll(
+      () =>
+        f.state.placements.find((p: any) => p.id === f.state.items[0].id)
+          ?.state,
+    )
+    .toBe("active");
+  await page.getByLabel("묶음에서 뺀 자료도 보기").uncheck();
+  await expect(page.locator(".research-board article")).toHaveCount(2);
+  expect(f.notes[0].content).toBe("처음 생각에 관한 나의 문장 0");
 });
+test("has one writing entry and distinguishes body-only notes by their contents", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  f.notes[0].title = "미분류 메모";
+  f.notes[0].content = "공감에는 상대방과 나의 경계가 필요하다";
+  await expect(
+    page.getByRole("button", { name: "설교·논문 자료", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.getByRole("button", { name: "글감 엮기", exact: true }).click();
+  await page.getByLabel("제목", { exact: true }).fill("경계를 생각하는 글");
+  await page
+    .getByRole("button", { name: "글감 묶음 만들기", exact: true })
+    .click();
+  const picker = page.getByRole("combobox", { name: "담을 메모", exact: true });
+  await expect(
+    picker.locator(`option[value="${f.notes[0].id}"]`),
+  ).toContainText(f.notes[0].content);
+  await picker.selectOption(f.notes[0].id);
+  await page.getByRole("button", { name: "출처와 함께 담기" }).click();
+  await expect(page.locator(".research-board article h3")).toHaveText(
+    f.notes[0].content,
+  );
+  expect(f.notes[0].title).toBe("미분류 메모");
+});
+
 test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
   page,
 }) => {
@@ -404,7 +477,7 @@ test("refresh keeps an unfinished connection reason and its original version", a
   f.source.connections[0].version = 2;
   f.source.connections[0].reason = "다른 곳의 연결 이유";
   f.source.notes[1].title = "갱신된 도착 메모";
-  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await page.evaluate(() => (window as any).refreshFixture());
   await expect(
     detail.getByRole("button", { name: "갱신된 도착 메모", exact: true }),
   ).toBeVisible();

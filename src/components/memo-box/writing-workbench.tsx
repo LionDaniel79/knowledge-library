@@ -10,6 +10,7 @@ import {
 } from "@/lib/writing";
 import {
   sortResearchItems,
+  researchNoteTitle,
   type ResearchItem,
   type ResearchPlacement,
 } from "@/lib/research";
@@ -117,8 +118,7 @@ export function WritingWorkbench({
           </button>
         </p>
       )}
-      <details className="panel">
-        <summary>새 글감 묶음 만들기</summary>
+      <section className="panel">
         <ProjectForm
           busy={command.busy}
           onSave={async (p) => {
@@ -130,7 +130,7 @@ export function WritingWorkbench({
             return false;
           }}
         />
-      </details>
+      </section>
       {!resource.data && resource.loading && (
         <p role="status">글감 불러오는 중…</p>
       )}
@@ -212,7 +212,7 @@ export function WritingWorkbench({
                   <option value="">메모 선택</option>
                   {available.map((n) => (
                     <option key={n.id} value={n.id}>
-                      {n.title || n.content.slice(0, 70)}
+                      {researchNoteTitle(n)}
                     </option>
                   ))}
                 </select>
