@@ -152,7 +152,7 @@ export function NoteTagFilter({
                   if (item && details.current) details.current.open = false;
                 }}
               >
-                −
+                ⊖
               </button>
             </div>
           ))}

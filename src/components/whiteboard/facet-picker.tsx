@@ -198,7 +198,7 @@ export function FacetPicker({
                           management.onRemove(o.value);
                         }}
                       >
-                        −
+                        ⊖
                       </button>
                     )}
                   </div>

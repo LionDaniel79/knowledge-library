@@ -349,6 +349,36 @@ test("waits for initial topic choices before enabling creation", async ({
     page.getByRole("button", { name: "주제 생성", exact: true }),
   ).toBeDisabled();
 });
+for (const mode of ["search", "records"])
+  for (const width of [390, 1280])
+    test(`tag dropdown matches its field and keeps circled removal in ${mode} at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await mount(page, mode);
+      const toggle = page.getByRole("button", {
+        name: "태그 선택",
+        exact: true,
+      });
+      await toggle.click();
+      const remove = page.getByRole("button", {
+        name: "태그 삭제 관계",
+        exact: true,
+      });
+      await expect(remove).toBeVisible();
+      const field = (await toggle.boundingBox())!,
+        popup = (await page.locator(".tag-dropdown").boundingBox())!;
+      expect(Math.abs(popup.width - field.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(popup.x - field.x)).toBeLessThanOrEqual(1);
+      await expect(remove).toHaveText("⊖");
+      await page
+        .getByRole("button", { name: "주제 선택", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "주제 삭제 공감", exact: true }),
+      ).toHaveText("⊖");
+    });
+
 test("clears only the submitted topic or tag that was deleted", async ({
   page,
 }) => {
