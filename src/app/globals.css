@@ -1168,11 +1168,14 @@ progress::-moz-progress-bar {
   backdrop-filter: blur(3px);
 }
 .modal > header {
+  /* Dialog titles scroll with their content instead of covering the form. */
+  position: static;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 24px;
+  padding-block: 6px;
 }
 .modal > header h2 {
   font-size: 20px;
@@ -3633,9 +3636,6 @@ textarea {
   max-height: calc(100svh - 16px);
   overflow-anchor: none;
 }
-.modal.memo-editor > header {
-  position: static;
-}
 .book-picker-status {
   min-height: 1.5em;
 }
@@ -3670,13 +3670,6 @@ textarea {
 }
 .topic-row {
   flex-wrap: wrap;
-}
-.modal > header {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: white;
-  padding-block: 6px;
 }
 .modal > * {
   min-width: 0;
@@ -3849,7 +3842,6 @@ textarea {
   overflow-anchor: none;
 }
 .sync-review-modal > header {
-  position: static;
   margin-bottom: 16px;
 }
 .sync-issue-list {
@@ -5311,9 +5303,6 @@ textarea {
 }
 .integrated-search-form button {
   min-height: 48px;
-}
-.book-detail-modal > header {
-  position: static;
 }
 .book-picker-pages > p {
   margin: 8px 0;
