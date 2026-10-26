@@ -66,6 +66,7 @@ it("compares the original, latest server text and newest dependent draft, then a
     pull: async () => {},
   });
   const review = await loadReplicaConflict(f.s, ids[0]);
+  expect(review.context.bookTitles[f.book]).toBe("넥서스");
   expect(review.base.content).toContain("정보와 신뢰");
   expect(review.latest.content).toBe("다른 기기의 글");
   expect(review.local.content).toBe("기기 최종 수정");

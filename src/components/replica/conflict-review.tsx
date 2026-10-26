@@ -1,39 +1,63 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useReplicaOptional } from "./provider";
 import { Modal } from "../modal";
+import { ConflictChoice } from "./conflict-choice";
 import {
   loadReplicaConflict,
+  readConflictContext,
   applyReplicaResolution,
   type ConflictReview,
   type Resolution,
 } from "@/client/replica/conflicts";
+import {
+  describeQueuedConflict,
+  presentConflict,
+  type ConflictContext,
+} from "@/lib/replica/conflict-presentation";
 import type { OutboxEntry } from "@/lib/replica/contracts";
 import type { QueuedChange } from "@/client/replica/optimistic";
-const textOf = (value: any) =>
-  value == null
-    ? "기준 자료 없음"
-    : typeof value.content === "string"
-      ? value.content
-      : JSON.stringify(value, null, 2);
+
+const emptyContext: ConflictContext = {
+  bookTitles: {},
+  topicNames: {},
+  sourceTitles: {},
+};
+const originalText = (value: unknown) =>
+  value == null ? "자료 없음" : JSON.stringify(value, null, 2);
 export function ConflictReviewPanel() {
   const replica = useReplicaOptional(),
     [entries, setEntries] = useState<OutboxEntry[]>([]),
+    [context, setContext] = useState<ConflictContext>(emptyContext),
     [review, setReview] = useState<ConflictReview | null>(null),
     [drafts, setDrafts] = useState<
       Record<string, { title: string; content: string }>
     >({}),
+    [choices, setChoices] = useState<
+      Record<string, { choice: Resolution["choice"]; token: string }>
+    >({}),
+    [advanced, setAdvanced] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
   useEffect(() => {
     let live = true;
     if (replica?.ready)
-      void replica.runtime.storage.listOutbox().then((rows) => {
-        if (live)
-          setEntries(
-            rows.filter((e) => e.state === "conflict" || e.state === "failed"),
+      void (async () => {
+        try {
+          const rows = (await replica.runtime.storage.listOutbox()).filter(
+            (e) => e.state === "conflict" || e.state === "failed",
           );
-      });
+          if (live) setEntries(rows);
+          const titles = await readConflictContext(
+            replica.runtime.storage,
+            rows,
+          );
+          if (live) setContext(titles);
+        } catch (e) {
+          if (live) setError((e as Error).message);
+        }
+      })();
     return () => {
       live = false;
     };
@@ -44,11 +68,17 @@ export function ConflictReviewPanel() {
     replica?.status.failed,
     replica?.runtime,
   ]);
+  const presentation = useMemo(
+    () => (review ? presentConflict(review) : null),
+    [review],
+  );
   if (!replica?.ready) return null;
   const runtime = replica.runtime;
   async function open(id: string) {
     setBusy(true);
     setError("");
+    setAdvanced(false);
+    setNotice("");
     try {
       const r = await loadReplicaConflict(runtime.storage, id);
       setReview(r);
@@ -70,7 +100,7 @@ export function ConflictReviewPanel() {
     }
   }
   async function resolve(choice: Resolution["choice"]) {
-    if (!review) return;
+    if (!review || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -82,6 +112,7 @@ export function ConflictReviewPanel() {
       });
       await runtime.notifyLocalChange();
       setReview(null);
+      setNotice("선택한 내용을 반영했습니다.");
       void runtime.sync({ reason: "local-save" }).catch(() => {});
     } catch (e) {
       setError((e as Error).message);
@@ -89,105 +120,192 @@ export function ConflictReviewPanel() {
       setBusy(false);
     }
   }
-  const draft = review ? drafts[review.firstEntry.requestId] : null,
-    isNote =
-      review?.entry.family === "library" &&
-      ["addNote", "editNote"].includes(
-        (review.entry.command as QueuedChange).body.type,
-      );
+  const savedChoice = review ? choices[review.firstEntry.requestId] : undefined,
+    selected =
+      savedChoice?.token === review?.token ? savedChoice?.choice : null,
+    draft = review ? drafts[review.firstEntry.requestId] : null,
+    isNote = presentation?.canEditNote ?? false;
+  function choose(choice: Resolution["choice"]) {
+    if (review && !busy)
+      setChoices((old) => ({
+        ...old,
+        [review.firstEntry.requestId]: { choice, token: review.token },
+      }));
+  }
   return (
     <>
       {!!entries.length && (
         <details className="panel sync-issues">
           <summary>동기화 확인 · {entries.length}개</summary>
-          {entries.map((e) => (
-            <div className="sync-issue" key={e.requestId}>
-              <span>
-                {(e.command as QueuedChange).result?.queued
-                  ? "기기에 보관된 입력"
-                  : "보관된 입력"}{" "}
-                · {(e.command as QueuedChange).error ?? "변경 내용 확인"}
-              </span>
-              <button disabled={busy} onClick={() => void open(e.requestId)}>
-                검토
-              </button>
-            </div>
-          ))}
+          <div className="sync-issue-list">
+            {entries.map((e) => {
+              const item = describeQueuedConflict(e, context);
+              return (
+                <button
+                  type="button"
+                  className="sync-issue-card"
+                  aria-label={`검토 ${item.title}`}
+                  key={e.requestId}
+                  disabled={busy}
+                  onClick={() => void open(e.requestId)}
+                >
+                  <span className="sync-issue-operation">{item.operation}</span>
+                  <strong>{item.title}</strong>
+                  <span className="sync-issue-detail">{item.detail}</span>
+                  <span className="sync-issue-next" aria-hidden="true">
+                    내용 선택 ›
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </details>
+      )}
+      {notice && (
+        <p role="status" className="sync-resolution-notice">
+          {notice}
+        </p>
       )}
       {error && !review && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      {review && (
+      {review && presentation && (
         <Modal
-          title="동기화 충돌 확인"
+          className="sync-review-modal"
+          title="동기화 내용 선택"
+          canClose={!busy}
           onClose={() => {
             if (!busy) setReview(null);
           }}
-          canClose={!busy}
         >
           <div className="conflict-review">
-            <div className="conflict-columns">
-              <section>
-                <h3>수정 전</h3>
-                <pre>{textOf(review.base)}</pre>
-              </section>
-              <section>
-                <h3>서버의 최신 내용</h3>
-                <pre>{textOf(review.latest)}</pre>
-              </section>
-              <section>
-                <h3>기기에 보관한 최신 입력</h3>
-                <pre>{textOf(review.local)}</pre>
-              </section>
+            <div className="sync-review-heading">
+              <span>{presentation.operation}</span>
+              <h3>{presentation.title}</h3>
+              <p>
+                {presentation.changed.length
+                  ? `달라진 항목: ${presentation.changed.join(" · ")}`
+                  : "표시된 내용은 같지만 저장 이력이 달라 확인이 필요합니다."}
+              </p>
             </div>
-            {review.unavailable && <p role="status">{review.unavailable}</p>}
-            {isNote && draft && (
-              <>
-                <label>
-                  선택할 제목
-                  <input
-                    value={draft.title}
-                    maxLength={300}
-                    onChange={(e) =>
-                      setDrafts((d) => ({
-                        ...d,
-                        [review.firstEntry.requestId]: {
-                          ...draft,
-                          title: e.target.value,
-                        },
-                      }))
+            <div
+              className="sync-choice-grid"
+              role="radiogroup"
+              aria-label="반영할 내용 선택"
+            >
+              <ConflictChoice
+                name="서버 내용 선택"
+                title="온라인 서재"
+                description="서버에 저장된 최신 내용"
+                preview={presentation.server}
+                selected={selected === "server"}
+                disabled={busy}
+                onSelect={() => choose("server")}
+              />
+              <ConflictChoice
+                name="PC 내용 선택"
+                title="이 PC"
+                description="이 기기에 보관한 수정 내용"
+                preview={presentation.pc}
+                selected={selected === "mine"}
+                disabled={busy || !!review.unavailable}
+                onSelect={() => choose("mine")}
+              />
+              {isNote && (
+                <div className="sync-note-options">
+                  <label
+                    className={
+                      selected === "merge"
+                        ? "sync-extra-choice selected"
+                        : "sync-extra-choice"
                     }
-                  />
-                </label>
-                <label>
-                  선택할 내용
-                  <textarea
-                    rows={7}
-                    maxLength={50000}
-                    value={draft.content}
-                    onChange={(e) =>
-                      setDrafts((d) => ({
-                        ...d,
-                        [review.firstEntry.requestId]: {
-                          ...draft,
-                          content: e.target.value,
-                        },
-                      }))
+                  >
+                    <input
+                      type="radio"
+                      name="sync-content-choice"
+                      aria-label="직접 수정"
+                      checked={selected === "merge"}
+                      disabled={busy || !!review.unavailable}
+                      onChange={() => choose("merge")}
+                    />
+                    <span>직접 수정</span>
+                  </label>
+                  <label
+                    className={
+                      selected === "copy"
+                        ? "sync-extra-choice selected"
+                        : "sync-extra-choice"
                     }
-                  />
-                </label>
-              </>
+                  >
+                    <input
+                      type="radio"
+                      name="sync-content-choice"
+                      aria-label="새 기록으로 보관"
+                      checked={selected === "copy"}
+                      disabled={busy}
+                      onChange={() => choose("copy")}
+                    />
+                    <span>새 기록으로 보관</span>
+                  </label>
+                </div>
+              )}
+            </div>
+            {review.unavailable && (
+              <p role="status" className="notice">
+                {review.unavailable}
+              </p>
             )}
+            {isNote &&
+              draft &&
+              (selected === "merge" || selected === "copy") && (
+                <section className="sync-merge-editor">
+                  <label>
+                    선택할 제목
+                    <input
+                      value={draft.title}
+                      disabled={busy}
+                      maxLength={300}
+                      onChange={(e) =>
+                        setDrafts((d) => ({
+                          ...d,
+                          [review.firstEntry.requestId]: {
+                            ...draft,
+                            title: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    선택할 내용
+                    <textarea
+                      rows={7}
+                      value={draft.content}
+                      disabled={busy}
+                      maxLength={50000}
+                      onChange={(e) =>
+                        setDrafts((d) => ({
+                          ...d,
+                          [review.firstEntry.requestId]: {
+                            ...draft,
+                            content: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                </section>
+              )}
             {error && (
               <p role="alert" className="error">
                 {error}
               </p>
             )}
-            <div className="conflict-actions">
+            <div className="sync-review-actions">
               <button
+                type="button"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -204,37 +322,69 @@ export function ConflictReviewPanel() {
                 최신 내용 확인
               </button>
               <button
-                disabled={busy || !!review.unavailable}
-                onClick={() => void resolve(isNote ? "merge" : "mine")}
-              >
-                {isNote ? "선택한 글로 저장" : "내 입력으로 다시 저장"}
-              </button>
-              <button disabled={busy} onClick={() => void resolve("server")}>
-                서버 내용 사용
-              </button>
-              {isNote && (
-                <button disabled={busy} onClick={() => void resolve("copy")}>
-                  새 기록으로 보관
-                </button>
-              )}
-              <button
+                type="button"
+                className="primary"
+                disabled={
+                  busy ||
+                  !selected ||
+                  ((selected === "mine" || selected === "merge") &&
+                    !!review.unavailable)
+                }
                 onClick={() => {
-                  const url = URL.createObjectURL(
-                    new Blob([JSON.stringify(review, null, 2)], {
-                      type: "application/json",
-                    }),
-                  );
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "지식서재-충돌-원문.json";
-                  a.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 30000);
+                  if (selected) void resolve(selected);
                 }}
               >
-                입력 원문 내려받기
+                {busy ? "반영 중…" : "선택한 내용 적용"}
               </button>
             </div>
-            <p className="form-hint">선택 전의 초안도 기기에 보관합니다.</p>
+            <small className="sync-archive-hint">
+              선택 전 입력도 이 기기에 보관합니다.
+            </small>
+            <details
+              className="sync-review-originals"
+              onToggle={(e) => {
+                if (e.target === e.currentTarget)
+                  setAdvanced(e.currentTarget.open);
+              }}
+            >
+              <summary>원본·상세 보기</summary>
+              {advanced && (
+                <>
+                  {(review.firstEntry.command as QueuedChange).error && (
+                    <p>{(review.firstEntry.command as QueuedChange).error}</p>
+                  )}
+                  <div className="conflict-columns">
+                    {[
+                      ["수정 전", review.base],
+                      ["서버 원본", review.latest],
+                      ["PC 원본", review.local],
+                    ].map(([label, value]) => (
+                      <section key={String(label)}>
+                        <h3>{String(label)}</h3>
+                        <pre>{originalText(value)}</pre>
+                      </section>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = URL.createObjectURL(
+                        new Blob([JSON.stringify(review, null, 2)], {
+                          type: "application/json",
+                        }),
+                      );
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "지식서재-충돌-원문.json";
+                      a.click();
+                      setTimeout(() => URL.revokeObjectURL(url), 30000);
+                    }}
+                  >
+                    입력 원문 내려받기
+                  </button>
+                </>
+              )}
+            </details>
           </div>
         </Modal>
       )}

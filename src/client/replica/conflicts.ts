@@ -13,6 +13,10 @@ import {
 } from "../../lib/offline-drafts";
 import { ReplicaQueryError } from "./queries";
 import type { SyncEntity } from "../../lib/replica/entities";
+import {
+  queuedConflictRow,
+  type ConflictContext,
+} from "../../lib/replica/conflict-presentation";
 async function baseRow(
   storage: ReplicaStorage,
   entity: SyncEntity,
@@ -30,6 +34,109 @@ async function baseRow(
           ),
         ),
       );
+}
+export async function readConflictContext(
+  storage: ReplicaStorage,
+  entries: OutboxEntry[],
+  values: unknown[] = [],
+): Promise<ConflictContext> {
+  const result: ConflictContext = {
+      bookTitles: {},
+      topicNames: {},
+      sourceTitles: {},
+      bookDetails: {},
+    },
+    books = new Set<string>(),
+    topics = new Set<string>(),
+    sources = new Map<string, { kind: string; id: string }>();
+  const collect = (value: any) => {
+    if (!value || typeof value !== "object") return;
+    if (typeof value.book_id === "string") books.add(value.book_id);
+    if (typeof value.bookId === "string") books.add(value.bookId);
+    for (const key of [
+      "topic_id",
+      "topicId",
+      "source_topic_id",
+      "target_topic_id",
+      "sourceTopicId",
+      "targetTopicId",
+    ])
+      if (typeof value[key] === "string") topics.add(value[key]);
+    for (const [kind, id] of [
+      [
+        value.source_kind ?? value.sourceKind,
+        value.source_id ?? value.sourceId,
+      ],
+      [
+        value.target_kind ?? value.targetKind,
+        value.target_id ?? value.targetId,
+      ],
+    ])
+      if (["note", "book"].includes(kind) && typeof id === "string")
+        sources.set(`${kind}:${id}`, { kind, id });
+    if (value.data && typeof value.data === "object") {
+      const data = value.data;
+      for (const id of data.filter?.books ?? [])
+        if (typeof id === "string") books.add(id);
+      for (const id of data.filter?.topics ?? [])
+        if (typeof id === "string") topics.add(id);
+      for (const group of (Array.isArray(data.groups) ? data.groups : []).slice(
+        0,
+        20,
+      ))
+        for (const id of (Array.isArray(group.noteIds)
+          ? group.noteIds
+          : []
+        ).slice(0, 5))
+          if (typeof id === "string")
+            sources.set(`note:${id}`, { kind: "note", id });
+      for (const link of (Array.isArray(data.links) ? data.links : []).slice(
+        0,
+        20,
+      ))
+        for (const id of [link.source, link.target])
+          if (typeof id === "string" && id.startsWith("topic:"))
+            topics.add(id.slice(6));
+    }
+  };
+  for (const value of values) collect(value);
+  for (const entry of entries) {
+    const c = entry.command as QueuedChange;
+    collect(queuedConflictRow(entry));
+    collect(c.body);
+    collect(c.body.payload);
+  }
+  const cache = new Map<string, Promise<any>>();
+  const read = (entity: SyncEntity, id: string) => {
+    const key = entity + ":" + id;
+    if (!cache.has(key))
+      cache.set(key, baseRow(storage, entity, JSON.stringify([id])));
+    return cache.get(key)!;
+  };
+  await Promise.all([
+    ...[...books].map(async (id) => {
+      const r = await read("library_books", id);
+      if (r?.title) {
+        result.bookTitles[id] = r.title;
+        result.bookDetails![id] = [r.author, r.publisher, r.isbn]
+          .filter(Boolean)
+          .join(" · ");
+      }
+    }),
+    ...[...topics].map(async (id) => {
+      const r = await read("library_topics", id);
+      if (r?.name) result.topicNames[id] = r.name;
+    }),
+    ...[...sources].map(async ([key, { kind, id }]) => {
+      const r = await read(
+        kind === "book" ? "library_books" : "library_notes",
+        id,
+      );
+      if (r)
+        result.sourceTitles[key] = r.title || r.content?.slice(0, 80) || "자료";
+    }),
+  ]);
+  return result;
 }
 export async function loadReplicaConflict(
   storage: ReplicaStorage,
@@ -92,6 +199,11 @@ export async function loadReplicaConflict(
     primary,
     unavailable,
     token,
+    context: await readConflictContext(
+      storage,
+      [last],
+      [latest, local, first.base],
+    ),
   };
 }
 export type ConflictReview = Awaited<ReturnType<typeof loadReplicaConflict>>;
