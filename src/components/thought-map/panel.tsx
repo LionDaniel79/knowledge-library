@@ -85,6 +85,7 @@ export function ThoughtMapPanel({
       {state && (
         <TopicBrowser
           initialTag={initialTag}
+          onTopicsUpdated={resource.reload}
           ownerId={ownerId}
           onUpdated={onUpdated}
           onSaveNote={onSaveNote}

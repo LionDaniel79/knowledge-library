@@ -1,6 +1,7 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
 import { useRef, useState } from "react";
+import { Modal } from "./modal";
 type Tag = {
   tag: string;
   count: number;
@@ -148,38 +149,13 @@ export function NoteTagFilter({
                   setPending(
                     item ? { ...item, requestId: crypto.randomUUID() } : null,
                   );
+                  if (item && details.current) details.current.open = false;
                 }}
               >
-                ⊖
+                −
               </button>
             </div>
           ))}
-          {pending && (
-            <div
-              className="tag-confirm"
-              role="group"
-              aria-label="태그 삭제 확인"
-            >
-              <p>
-                ‘{pending.tag}’를 기록 {pending.count}개에서 삭제합니다. 기록
-                내용은 유지됩니다.
-              </p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void remove()}
-              >
-                태그 삭제
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setPending(null)}
-              >
-                취소
-              </button>
-            </div>
-          )}
           {error && (
             <p className="error" role="alert">
               {error}
@@ -187,6 +163,35 @@ export function NoteTagFilter({
           )}
         </div>
       </details>
+      {pending && (
+        <Modal
+          title="태그 삭제 확인"
+          canClose={!busy}
+          onClose={() => setPending(null)}
+        >
+          <p>
+            ‘{pending.tag}’를 기록 {pending.count}개에서 삭제할까요? 기록 내용은
+            그대로 남습니다.
+          </p>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <div className="form-footer">
+            <button type="button" disabled={busy} onClick={() => void remove()}>
+              태그 삭제
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setPending(null)}
+            >
+              취소
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

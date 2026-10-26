@@ -20,6 +20,7 @@ import { TopicPicker, type ThoughtSend } from "./topic-picker";
 import { TopicManager } from "./topic-manager";
 import { useTopicOrder } from "./use-topic-order";
 import { useReplicaOptional } from "../replica/provider";
+import { TopicFilter } from "../topic-filter";
 export function TopicBrowser({
   library,
   state,
@@ -32,6 +33,7 @@ export function TopicBrowser({
   onSaveNote,
   onNewNote,
   initialTag = "all",
+  onTopicsUpdated = () => {},
 }: {
   library: Library;
   state: ThoughtMapSnapshot;
@@ -44,6 +46,7 @@ export function TopicBrowser({
   onSaveNote?: (c: Command) => Promise<void>;
   onNewNote?: (c: NewNoteContext) => void;
   initialTag?: string;
+  onTopicsUpdated?: () => void;
 }) {
   const [selected, setSelected] = useState("all"),
     [field, setField] = useState("all"),
@@ -136,7 +139,7 @@ export function TopicBrowser({
     <div className="thought-layout topic-material-layout">
       <div className="thought-materials">
         <div className="panel thought-filters topic-material-filters unified-notes-filters">
-          <label>
+          <label className="note-kind-filter">
             종류
             <select
               aria-label="종류"
@@ -152,7 +155,7 @@ export function TopicBrowser({
               ))}
             </select>
           </label>
-          <label>
+          <label className="note-category-filter">
             도서 분야
             <select value={field} onChange={(e) => setField(e.target.value)}>
               <option value="all">모든 분야</option>
@@ -169,31 +172,24 @@ export function TopicBrowser({
             value={bookId}
             onChange={setBookId}
           />
-          <label>
-            주제
-            <select
-              aria-label="주제"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              <option value="all">전체 주제</option>
-              <option value="unclassified">미분류</option>
-              {orderedTopics.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {!t.confirmed ? " · 제안" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+          <TopicFilter
+            topics={orderedTopics}
+            value={selected}
+            onChange={setSelected}
+            onUpdated={async () => {
+              onTopicsUpdated();
+              await onUpdated();
+            }}
+          />
           <NoteTagFilter
+            searchable
             tags={(state.notes ?? library.notes).flatMap((n) => n.tags ?? [])}
             value={tag}
             onChange={setTag}
             onUpdated={onUpdated}
             preview={false}
           />
-          <label>
+          <label className="note-sort-filter">
             정렬
             <select value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="newest">최신순</option>

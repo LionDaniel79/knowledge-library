@@ -5,6 +5,14 @@ export interface FacetOption {
   value: string;
   label: string;
 }
+export interface FacetManagement {
+  busy: boolean;
+  canCreate: (query: string) => boolean;
+  onCreate: (query: string) => Promise<void>;
+  canRemove: (value: string) => boolean;
+  onRemove: (value: string) => void;
+  error?: string;
+}
 export function FacetPicker({
   label,
   options,
@@ -13,6 +21,7 @@ export function FacetPicker({
   multiple = true,
   onSearch,
   compact = false,
+  management,
 }: {
   label: string;
   options: FacetOption[];
@@ -21,6 +30,7 @@ export function FacetPicker({
   multiple?: boolean;
   onSearch?: (query: string) => void;
   compact?: boolean;
+  management?: FacetManagement;
 }) {
   const [open, setOpen] = useState(false),
     [q, setQ] = useState("");
@@ -101,16 +111,37 @@ export function FacetPicker({
               if (e.key === "Escape") setOpen(false);
             }}
           >
-            <input
-              ref={input}
-              aria-label={`${label} 검색`}
-              placeholder={`${label} 검색`}
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                onSearch?.(e.target.value);
-              }}
-            />
+            <div className="wb-facet-search">
+              <input
+                ref={input}
+                aria-label={`${label} 검색`}
+                placeholder={`${label} 검색`}
+                value={q}
+                maxLength={management ? 80 : undefined}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  onSearch?.(e.target.value);
+                }}
+              />
+              {management && (
+                <button
+                  type="button"
+                  aria-label={`${label} 생성`}
+                  disabled={management.busy || !management.canCreate(q)}
+                  onClick={() => void management.onCreate(q)}
+                >
+                  생성
+                </button>
+              )}
+            </div>
+            {management?.error && (
+              <p role="alert" className="error">
+                {management.error}
+              </p>
+            )}
             <div
               role="listbox"
               aria-label={`${label} 목록`}
@@ -127,31 +158,54 @@ export function FacetPicker({
               >
                 전체 {!values.length && "✓"}
               </button>
-              {matches.slice(0, 100).map((o) => (
-                <button
-                  type="button"
-                  role="option"
-                  key={o.value}
-                  aria-selected={values.includes(o.value)}
-                  onClick={() => {
-                    if (!multiple) {
-                      onChange([o.value]);
-                      setOpen(false);
-                      return;
-                    }
-                    onChange(
-                      values.includes(o.value)
-                        ? values.filter((v) => v !== o.value)
-                        : [...values, o.value],
-                    );
-                  }}
-                >
-                  <span>{o.label}</span>
-                  {values.includes(o.value) && (
-                    <span aria-hidden="true">✓</span>
-                  )}
-                </button>
-              ))}
+              {matches.slice(0, 100).map((o) => {
+                const option = (
+                  <button
+                    type="button"
+                    role="option"
+                    key={o.value}
+                    aria-selected={values.includes(o.value)}
+                    onClick={() => {
+                      if (!multiple) {
+                        onChange([o.value]);
+                        setOpen(false);
+                        return;
+                      }
+                      onChange(
+                        values.includes(o.value)
+                          ? values.filter((v) => v !== o.value)
+                          : [...values, o.value],
+                      );
+                    }}
+                  >
+                    <span>{o.label}</span>
+                    {values.includes(o.value) && (
+                      <span aria-hidden="true">✓</span>
+                    )}
+                  </button>
+                );
+                return management ? (
+                  <div className="wb-facet-option-row" key={o.value}>
+                    {option}
+                    {management.canRemove(o.value) && (
+                      <button
+                        type="button"
+                        className="facet-remove"
+                        aria-label={`${label} 삭제 ${o.label}`}
+                        disabled={management.busy}
+                        onClick={() => {
+                          setOpen(false);
+                          management.onRemove(o.value);
+                        }}
+                      >
+                        −
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  option
+                );
+              })}
               {!matches.length && <p>검색 결과 없음</p>}
               {matches.length > 100 && (
                 <small>검색어를 입력해 범위를 좁혀 주세요.</small>

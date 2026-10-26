@@ -287,9 +287,9 @@ test("tag deletion retries reuse the committed request after a lost response", a
   await page.getByRole("button", { name: "태그 삭제", exact: true }).click();
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1]).toBe(requests[0]);
-  await expect(page.getByRole("group", { name: "태그 삭제 확인" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("dialog", { name: "태그 삭제 확인" }),
+  ).toHaveCount(0);
 });
 
 test("cover controls cannot overwrite a pending upload", async ({ page }) => {

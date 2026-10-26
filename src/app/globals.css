@@ -3995,6 +3995,50 @@ textarea {
   min-width: 0;
   height: 40px;
 }
+.wb-facet-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.wb-facet-search > input {
+  flex: 1;
+  margin: 0;
+}
+.wb-facet-search > button {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 6px 10px;
+}
+.wb-facet-option-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wb-facet-option-row > [role="option"] {
+  flex: 1;
+  min-width: 0;
+}
+.wb-facet-option-row .facet-remove {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 36px;
+  padding: 0;
+  color: #9c483f;
+  font-size: 20px;
+}
+.topic-filter {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  align-content: start;
+  font-size: 14px;
+}
+.topic-filter > .wb-facet {
+  width: 100%;
+  min-width: 0;
+}
 .wb-facet-popup [role="listbox"] {
   max-height: 250px;
   overflow: auto;
@@ -4809,19 +4853,19 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(1) {
+  .topic-material-layout .unified-notes-filters > label.note-kind-filter {
     grid-column: 1;
     grid-row: 1;
   }
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(2) {
+  .topic-material-layout .unified-notes-filters > label.note-category-filter {
     grid-column: 1;
     grid-row: 2;
   }
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(3) {
+  .topic-material-layout .unified-notes-filters > label.note-book-filter {
     grid-column: 2;
     grid-row: 2;
   }
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(4) {
+  .topic-material-layout .unified-notes-filters > .topic-filter {
     grid-column: 1;
     grid-row: 3;
   }
@@ -4829,11 +4873,11 @@ textarea {
     grid-column: 2;
     grid-row: 3;
   }
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(5) {
+  .topic-material-layout .unified-notes-filters > label.note-sort-filter {
     grid-column: 2;
     grid-row: 1;
   }
-  .topic-material-layout .unified-notes-filters > label:nth-of-type(6) {
+  .topic-material-layout .unified-notes-filters > label.topic-material-search {
     grid-column: 1 / -1;
     grid-row: 4;
   }

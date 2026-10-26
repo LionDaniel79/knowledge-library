@@ -5,7 +5,7 @@ import { categories, categoryName } from "@/lib/catalog";
 import { noteKindNames } from "@/lib/note-kinds";
 import { containsSearchField } from "@/lib/search-fields";
 import { NoteTagFilter } from "./note-tag-filter";
-import { FacetPicker } from "./whiteboard/facet-picker";
+import { TopicFilter, type FilterTopic } from "./topic-filter";
 import { useBookCatalog } from "./use-book-catalog";
 import { usePagedResource } from "./use-paged-resource";
 import {
@@ -48,9 +48,11 @@ export function AdvancedSearch({
     !!submitted && paging.ready,
     revision,
   );
-  const topics = usePagedResource<{ topics: { id: string; name: string }[] }>(
+  const topics = usePagedResource<{ topics: FilterTopic[] }>(
     "/api/library-search/topics",
     mode === "note",
+    undefined,
+    { keepPreviousData: true },
   );
   const books = useBookCatalog({
     enabled: mode === "note" && !!library.catalog && !!bookTitle.trim(),
@@ -149,24 +151,24 @@ export function AdvancedSearch({
               </select>
             </label>
             {fields}
-            <label>
-              주제
-              <FacetPicker
-                compact
-                label="주제"
-                multiple={false}
-                options={[
-                  { value: "unclassified", label: "미분류" },
-                  ...(topics.data?.topics ?? []).map((t) => ({
-                    value: t.id,
-                    label: t.name,
-                  })),
-                ]}
-                values={topic === "all" ? [] : [topic]}
-                onChange={(ids) => setTopic(ids[0] ?? "all")}
-              />
-              <input type="hidden" name="topic" value={topic} />
-            </label>
+            <TopicFilter
+              topics={topics.data?.topics ?? []}
+              ready={!!topics.data}
+              value={topic}
+              onChange={setTopic}
+              preview={preview}
+              onUpdated={async () => {
+                topics.reload();
+                setRevision((n) => n + 1);
+                await onUpdated();
+              }}
+              onRemoved={(id) =>
+                setSubmitted((old) =>
+                  old?.topic === id ? { ...old, topic: "all" } : old,
+                )
+              }
+            />
+            <input type="hidden" name="topic" value={topic} />
             <>
               <NoteTagFilter
                 searchable

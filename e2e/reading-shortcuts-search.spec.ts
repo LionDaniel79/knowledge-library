@@ -262,7 +262,7 @@ test("memo search keeps tag searching and deletes a tag through the shared bulk 
     .getByRole("button", { name: "태그 삭제 공감", exact: true })
     .click();
   await page
-    .getByRole("group", { name: "태그 삭제 확인", exact: true })
+    .getByRole("dialog", { name: "태그 삭제 확인", exact: true })
     .getByRole("button", { name: "태그 삭제", exact: true })
     .click();
   await expect.poll(() => f.calls.filter((c) => c.tagDelete).length).toBe(1);

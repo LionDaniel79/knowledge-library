@@ -752,7 +752,7 @@ export function createLocalReplicaRepository(
         );
       }
       if (path === "/api/library-search/topics") {
-        const data = await index();
+        const data = await catalogIndex();
         return {
           topics: data.topics
             .filter((t) => t.confirmed)
@@ -765,11 +765,12 @@ export function createLocalReplicaRepository(
               name: t.name,
               parentId: t.parent_id,
               aliases: t.aliases,
+              version: t.version,
             })),
         };
       }
       if (path === "/api/note-tags") {
-        const data = await index(),
+        const data = await catalogIndex(),
           groups = new Map<string, Note[]>();
         for (const note of data.notes)
           for (const tag of note.tags ?? [])

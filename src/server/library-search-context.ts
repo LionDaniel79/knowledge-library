@@ -4,6 +4,7 @@ export interface SearchTopic {
   name: string;
   parentId: string | null;
   aliases: string[];
+  version: number;
 }
 export type TopicRelation = "exact" | "child" | "related";
 export async function listSearchTopics(
@@ -13,7 +14,7 @@ export async function listSearchTopics(
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   return (
     await db.query(
-      "SELECT id,name,parent_id,aliases FROM library_topics WHERE owner_id=$1 AND confirmed=true AND coalesce(to_jsonb(library_topics)->>'archived_at','')='' ORDER BY name,id",
+      "SELECT id,name,parent_id,aliases,version FROM library_topics WHERE owner_id=$1 AND confirmed=true AND coalesce(to_jsonb(library_topics)->>'archived_at','')='' ORDER BY name,id",
       [owner],
     )
   ).rows.map((t) => ({
@@ -21,6 +22,7 @@ export async function listSearchTopics(
     name: t.name,
     parentId: t.parent_id,
     aliases: t.aliases,
+    version: t.version,
   }));
 }
 export async function searchContext(

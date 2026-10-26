@@ -213,7 +213,9 @@ test("memo search combines searchable topic and tag, suggested book title and co
     content: "경계",
   });
   const fields = await page
-    .locator(".memo-search-fields > label, .memo-search-fields > .tag-filter")
+    .locator(
+      ".memo-search-fields > label, .memo-search-fields > .tag-filter, .memo-search-fields > .topic-filter",
+    )
     .evaluateAll((es) => es.map((e) => e.firstChild?.textContent?.trim()));
   expect(fields).toEqual(["종류", "분야", "주제", "태그", "제목", "메모 내용"]);
 });
