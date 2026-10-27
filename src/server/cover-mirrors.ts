@@ -49,6 +49,26 @@ export async function mirrorCover(
     storeCoverMirror(db, owner, source, await download(source))
   );
 }
+/** Repair a missing mirror without changing the book or downloading it twice. */
+export async function readStoredBookCover(
+  db: Database,
+  owner: string,
+  bookId: string,
+  etag = "",
+) {
+  if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
+  z.string().uuid().parse(bookId);
+  const book = (
+    await db.query(
+      "SELECT cover_url FROM library_active_books WHERE owner_id=$1 AND id=$2",
+      [owner, bookId],
+    )
+  ).rows[0];
+  if (!book?.cover_url?.startsWith("https://"))
+    throw new LibraryError(404, "저장할 표지가 없습니다.");
+  const asset = await mirrorCover(db, owner, book.cover_url);
+  return createCoverStore(db).readConditional(owner, asset.id, etag);
+}
 export async function attachStoredCovers(
   db: Executor,
   owner: string,

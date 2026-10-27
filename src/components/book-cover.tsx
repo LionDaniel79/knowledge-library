@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Book } from "@/lib/domain";
 import { useReplicaOptional } from "./replica/provider";
 import { useReplicaImage } from "./replica/use-image";
@@ -12,21 +12,30 @@ export function BookCover({
   small?: boolean;
 }) {
   const replica = useReplicaOptional();
-  const [failed, setFailed] = useState<string[]>([]);
   const pdfId =
     book.sourceData?.app === "Local PDF" ? book.sourceData.recordId : undefined;
-  useEffect(
-    () => setFailed([]),
-    [
-      book.id,
-      book.coverUrl,
-      book.storedCoverUrl,
-      book.storedImportedCoverUrl,
-      book.catalogCoverUrl,
-      book.sourceData?.cover?.sha256,
-      pdfId,
-      replica?.revision,
-    ],
+  const failureKey = JSON.stringify([
+    book.id,
+    book.coverUrl,
+    book.storedCoverUrl,
+    book.storedImportedCoverUrl,
+    book.catalogCoverUrl,
+    book.sourceData?.cover?.sha256,
+    pdfId,
+    replica?.revision,
+  ]);
+  const [failure, setFailure] = useState({ key: "", urls: [] as string[] });
+  const failed = failure.key === failureKey ? failure.urls : [];
+  const markFailed = useCallback(
+    (url: string) => {
+      setFailure((previous) => {
+        const urls = previous.key === failureKey ? previous.urls : [];
+        return urls.includes(url)
+          ? previous
+          : { key: failureKey, urls: [...urls, url] };
+      });
+    },
+    [failureKey],
   );
   const sources = [
     { src: book.storedCoverUrl },
@@ -34,6 +43,14 @@ export function BookCover({
       src: book.coverUrl?.startsWith("/api/book-covers/")
         ? book.coverUrl
         : undefined,
+    },
+    {
+      // Older imports/review decisions can contain an image address before its
+      // stored copy exists. Resolve it through the owner-checked server route.
+      src:
+        !book.storedCoverUrl && book.coverUrl?.startsWith("https://")
+          ? "/api/books/" + book.id + "/cover"
+          : undefined,
     },
     {
       src: book.storedImportedCoverUrl,
@@ -55,21 +72,27 @@ export function BookCover({
       !failed.includes(source.src) &&
       (!replica?.ready ||
         source.src.startsWith("/api/book-covers/") ||
+        (source.src.startsWith("/api/books/") && navigator.onLine) ||
         (source.src.startsWith("/api/pdf/") && navigator.onLine)),
   );
   const assetId = selected?.src?.match(
     /^\/api\/book-covers\/([a-f0-9-]{36})$/i,
   )?.[1];
   const localImage = useReplicaImage(assetId);
+  const localFailed =
+    localImage.error || (!!localImage.url && failed.includes(localImage.url));
   useEffect(() => {
-    if (localImage.error && selected?.src)
-      setFailed((previous) =>
-        previous.includes(selected.src!)
-          ? previous
-          : [...previous, selected.src!],
-      );
-  }, [localImage.error, selected?.src]);
-  const src = localImage.local && assetId ? localImage.url : selected?.src;
+    if (localFailed && selected?.src && !navigator.onLine)
+      markFailed(selected.src);
+  }, [localFailed, selected?.src, markFailed]);
+  const src =
+    localImage.local && assetId
+      ? localFailed
+        ? navigator.onLine
+          ? selected?.src
+          : undefined
+        : localImage.url
+      : selected?.src;
   if (selected && src)
     return (
       <div
@@ -82,7 +105,7 @@ export function BookCover({
           referrerPolicy="no-referrer"
           alt=""
           loading="lazy"
-          onError={() => setFailed((previous) => [...previous, selected.src!])}
+          onError={() => markFailed(src)}
         />
       </div>
     );
