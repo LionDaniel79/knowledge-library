@@ -42,7 +42,8 @@ import {
 } from "../../lib/whiteboard";
 import {
   noteVisibilitySchema,
-  withWhiteboardNoteVisibility,
+  notesVisibilitySchema,
+  withWhiteboardNotesVisibility,
   whiteboardSaveData,
 } from "../../lib/whiteboard-visibility";
 export interface OptimisticEffect {
@@ -373,15 +374,24 @@ export async function prepareOptimistic(
   } else if (path === "/api/knowledge") {
     const p = body.payload;
     body.entityId = id;
-    if (body.type === "setWhiteboardNoteVisibility") {
-      const p = noteVisibilitySchema.parse(body.payload);
-      await note(p.noteId);
+    if (
+      body.type === "setWhiteboardNoteVisibility" ||
+      body.type === "setWhiteboardNotesVisibility"
+    ) {
+      const p =
+        body.type === "setWhiteboardNotesVisibility"
+          ? notesVisibilitySchema.parse(body.payload)
+          : (() => {
+              const v = noteVisibilitySchema.parse(body.payload);
+              return { noteIds: [v.noteId], visible: v.visible };
+            })();
+      for (const id of p.noteIds) await note(id);
       const old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
       base = old;
       entityId = WHITEBOARD_ID;
       body.entityId = WHITEBOARD_ID;
       const original = old?.data ?? emptyBoard(),
-        data = withWhiteboardNoteVisibility(original, p.noteId, p.visible);
+        data = withWhiteboardNotesVisibility(original, p.noteIds, p.visible);
       if (data !== original)
         put("library_whiteboards", {
           id: WHITEBOARD_ID,

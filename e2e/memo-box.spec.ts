@@ -195,6 +195,48 @@ async function mount(page: Page) {
   await page.addScriptTag({ content: bundle });
   return { topics, notes, commands, state, source };
 }
+test("My records is the first memo-box tab and retains its filters and new-note entry without loading connection data", async ({
+  page,
+}, testInfo) => {
+  let boardReads = 0;
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/api/whiteboard") boardReads++;
+  });
+  await mount(page);
+  const top = page.locator(".knowledge-panel > .knowledge-tabs");
+  await expect(
+    top.getByRole("button", { name: "내 기록", exact: true }),
+  ).toHaveCount(0);
+  const tabs = page.locator(".memo-box > .knowledge-tabs");
+  await expect(tabs.getByRole("button")).toHaveText([
+    "내 기록",
+    "연결된 메모",
+    "연결된 주제",
+    "글감 엮기",
+  ]);
+  await expect(
+    page.getByRole("combobox", { name: "종류", exact: true }),
+  ).toBeVisible();
+  expect(boardReads).toBe(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("records-tab.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
+  await expect(page.locator(".memo-box-list > button")).toHaveCount(1);
+  await page.getByRole("button", { name: "내 기록", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "종류", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "새 기록", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "새로운 기록" })).toBeVisible();
+});
+
 for (const width of [390, 1280])
   test(`connected notes, topic presets and record form fit at ${width}px`, async ({
     page,
@@ -206,6 +248,9 @@ for (const width of [390, 1280])
         0,
       );
     await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+    await page
+      .getByRole("button", { name: "연결된 메모", exact: true })
+      .click();
     await expect(page.locator(".memo-box-list > button")).toHaveCount(1);
     await expect(page.locator(".memo-box-list")).toContainText("처음 생각");
     await expect(page.locator(".memo-box-list")).toContainText("지금 생각");
@@ -481,6 +526,7 @@ test("refresh keeps an unfinished connection reason and its original version", a
 }) => {
   const f = await mount(page);
   await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
   await page.locator(".memo-box-list > button").first().click();
   const detail = page.locator(".memo-box-detail");
   await detail.getByLabel("연결 이유").fill("연결에 관한 내 초안");

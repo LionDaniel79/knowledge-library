@@ -20,6 +20,55 @@ const command = (type: string, payload: unknown) => ({
   type,
   payload,
 });
+it("restores selected hidden notes as one atomic owner-only change and keeps layout and other hidden notes", async () => {
+  const owner = randomUUID(),
+    library = createLibraryStore(fixture.db),
+    store = createKnowledgeStore(fixture.db);
+  const ids: string[] = [];
+  for (const content of ["하나", "둘", "셋"])
+    ids.push(
+      (await library.mutate(owner, command("addNote", { content }))).id!,
+    );
+  const data = emptyBoard();
+  data.hiddenNoteIds = ids;
+  data.positions["note::" + ids[0]] = { x: 100, y: 200 };
+  await store.mutate(
+    owner,
+    command("saveWhiteboard", {
+      data,
+      expectedVersion: 0,
+      includeVisibility: true,
+    }),
+  );
+  const foreign = (
+    await library.mutate(
+      randomUUID(),
+      command("addNote", { content: "다른 사용자" }),
+    )
+  ).id!;
+  await expect(
+    store.mutate(
+      owner,
+      command("setWhiteboardNotesVisibility", {
+        noteIds: [ids[0], foreign],
+        visible: true,
+      }),
+    ),
+  ).rejects.toMatchObject({ status: 404 });
+  expect(
+    (await readWhiteboard(fixture.db, owner)).board?.data.hiddenNoteIds,
+  ).toEqual(ids);
+  const restore = command("setWhiteboardNotesVisibility", {
+    noteIds: [ids[0], ids[1], ids[0]],
+    visible: true,
+  });
+  expect(await store.mutate(owner, restore)).toMatchObject({ version: 2 });
+  expect(await store.mutate(owner, restore)).toMatchObject({ version: 2 });
+  const result = await readWhiteboard(fixture.db, owner);
+  expect(result.board?.data.hiddenNoteIds).toEqual([ids[2]]);
+  expect(result.board?.data.positions).toEqual(data.positions);
+  expect(result.notes).toHaveLength(3);
+});
 it("saves reversible owner-only visibility without losing layout, old-client saves or other hidden notes", async () => {
   const owner = randomUUID(),
     library = createLibraryStore(fixture.db),

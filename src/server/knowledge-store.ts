@@ -15,6 +15,7 @@ import { withSyncWrite } from "./sync/write";
 import {
   saveWhiteboard,
   setWhiteboardNoteVisibility,
+  setWhiteboardNotesVisibility,
 } from "./whiteboard-store";
 import { noteVisibilitySchema } from "../lib/whiteboard-visibility";
 
@@ -36,6 +37,7 @@ const command = z.object({
     "placeResearchItem",
     "saveWhiteboard",
     "setWhiteboardNoteVisibility",
+    "setWhiteboardNotesVisibility",
     "connectWhiteboardNotes",
   ]),
   payload: z.unknown(),
@@ -186,6 +188,8 @@ export function createKnowledgeStore(db: Database) {
         const p = noteVisibilitySchema.parse(c.payload);
         await own("note", p.noteId);
         result = await setWhiteboardNoteVisibility(tx, owner, p);
+      } else if (c.type === "setWhiteboardNotesVisibility") {
+        result = await setWhiteboardNotesVisibility(tx, owner, c.payload);
       } else if (c.type === "connectWhiteboardNotes") {
         const p = boardNoteLinkSchema.parse(c.payload),
           [sourceId, targetId] = [p.sourceId, p.targetId].sort();

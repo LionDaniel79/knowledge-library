@@ -9,10 +9,61 @@ import {
   withWhiteboardNoteVisibility,
   whiteboardNoteVisible,
 } from "../src/lib/whiteboard-visibility";
-import { revealMemoGroup } from "../src/lib/whiteboard-workflows";
+import {
+  revealMemoGroup,
+  connectionGroupsForView,
+} from "../src/lib/whiteboard-workflows";
 const a = "11111111-1111-4111-8111-111111111111",
   b = "22222222-2222-4222-8222-222222222222",
   c = "33333333-3333-4333-8333-333333333333";
+it("selects only accepted checked endpoints, deduplicates shared notes and keeps all unrelated notes out of All", () => {
+  const notes = [a, b, c, "44444444-4444-4444-8444-444444444444"].map((id) => ({
+    id,
+  }));
+  const connections = [
+    {
+      id: "ab",
+      source_kind: "note",
+      target_kind: "note",
+      source_id: a,
+      target_id: b,
+      status: "accepted",
+    },
+    {
+      id: "bc",
+      source_kind: "note",
+      target_kind: "note",
+      source_id: b,
+      target_id: c,
+      status: "accepted",
+    },
+    {
+      id: "rejected",
+      source_kind: "note",
+      target_kind: "note",
+      source_id: a,
+      target_id: notes[3].id,
+      status: "rejected",
+    },
+  ];
+  const source = { notes, connections } as WhiteboardSnapshot;
+  expect(
+    connectionGroupsForView(source, ["ab", "missing", "rejected"]).flatMap(
+      (g) => g.notes.map((n) => n.id),
+    ),
+  ).toEqual([a, b]);
+  expect(
+    connectionGroupsForView(source, ["ab", "bc"]).flatMap((g) =>
+      g.notes.map((n) => n.id),
+    ),
+  ).toEqual([a, b, c]);
+  expect(
+    connectionGroupsForView(source, "all").flatMap((g) =>
+      g.notes.map((n) => n.id),
+    ),
+  ).toEqual([a, b, c]);
+  expect(connectionGroupsForView(source, [])).toEqual([]);
+});
 it("hides only the board representation while preserving notes, links and placements, and shows it again", () => {
   const board = emptyBoard();
   board.positions["unclassified::" + a] = { x: 80, y: 90 };

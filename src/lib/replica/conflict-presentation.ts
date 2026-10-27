@@ -65,6 +65,7 @@ const operations: Record<string, string> = {
   editBook: "도서 정보 수정",
   saveWhiteboard: "화이트보드 배치",
   setWhiteboardNoteVisibility: "화이트보드 표시 설정",
+  setWhiteboardNotesVisibility: "화이트보드 일괄 표시 설정",
   upsertTopic: "주제 수정",
   deleteTopic: "주제 삭제",
   restoreTopic: "주제 복원",

@@ -118,7 +118,11 @@ async function mount(page: Page, configure?: (state: any) => void) {
     if (u.pathname === "/api/knowledge" && r.request().method() === "POST") {
       const c = r.request().postDataJSON();
       calls.push(c);
-      if (c.type === "setWhiteboardNoteVisibility") {
+      if (
+        c.type === "setWhiteboardNoteVisibility" ||
+        c.type === "setWhiteboardNotesVisibility"
+      ) {
+        const noteIds = c.payload.noteIds ?? [c.payload.noteId];
         const data = state.board?.data ?? emptyBoard();
         state.board = {
           id: "00000000-0000-4000-8000-000000000001",
@@ -127,9 +131,9 @@ async function mount(page: Page, configure?: (state: any) => void) {
             ...data,
             hiddenNoteIds: c.payload.visible
               ? (data.hiddenNoteIds ?? []).filter(
-                  (id: string) => id !== c.payload.noteId,
+                  (id: string) => !noteIds.includes(id),
                 )
-              : [...(data.hiddenNoteIds ?? []), c.payload.noteId],
+              : [...new Set([...(data.hiddenNoteIds ?? []), ...noteIds])],
           },
         };
         await page.evaluate(() => (window as any).refreshBoard());
@@ -199,7 +203,7 @@ async function mount(page: Page, configure?: (state: any) => void) {
     if (u.pathname === "/")
       return r.fulfill({
         contentType: "text/html",
-        body: `<!doctype html><html lang="ko"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:16px"><div id="root"></div><script>window.fixture=${JSON.stringify({ books, notes, cycles: [] })}</script></body></html>`,
+        body: `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:16px"><div id="root"></div><script>window.fixture=${JSON.stringify({ books, notes, cycles: [] })}</script></body></html>`,
       });
     return r.abort();
   });
@@ -314,11 +318,240 @@ test("arrange packs visible notes, preserves connections and can undo the layout
     .toEqual(original.positions[key]);
 });
 
+test("hidden memos can be inspected and selectively restored in one batch without moving the board", async ({
+  page,
+}, testInfo) => {
+  const f = await mount(page, (state) => {
+    const data = emptyBoard();
+    data.hiddenNoteIds = [
+      state.notes[0].id,
+      state.notes[1].id,
+      state.notes[2].id,
+    ];
+    state.board = {
+      id: "00000000-0000-4000-8000-000000000001",
+      data,
+      version: 1,
+    };
+  });
+  const list = page.locator(".wb-hidden-notes");
+  await page.evaluate(() => ((window as any).fixtureEditor = true));
+  await expect(list).not.toHaveAttribute("open", "");
+  await list.locator("summary").click();
+  await list
+    .getByRole("button", { name: "둘째 생각 세부정보", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).opened)).toBe(
+    f.state.notes[1].id,
+  );
+  const detail = page.getByRole("dialog", { name: "기록 수정" });
+  await expect(detail.locator('textarea[name="content"]')).toHaveValue(
+    "두 번째 내 생각",
+  );
+  await detail.getByRole("button", { name: "닫기", exact: true }).click();
+  await list
+    .getByRole("checkbox", { name: "첫 생각 보이기 선택", exact: true })
+    .check();
+  await list
+    .getByRole("checkbox", { name: "셋째 생각 보이기 선택", exact: true })
+    .check();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+  await list.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("hidden-notes.png"),
+    fullPage: true,
+  });
+  const rejectRestore = async (r: any) => {
+    if (r.request().postDataJSON().type === "setWhiteboardNotesVisibility")
+      return r.fulfill({ status: 503, json: { error: "검수용 복원 실패" } });
+    return r.fallback();
+  };
+  await page.route("**/api/knowledge", rejectRestore);
+  await list
+    .getByRole("button", { name: "선택한 메모 보이기", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("검수용 복원 실패");
+  await expect(
+    list.getByRole("checkbox", { name: "첫 생각 보이기 선택", exact: true }),
+  ).toBeChecked();
+  await page.unroute("**/api/knowledge", rejectRestore);
+  const view = await page
+    .locator(".wb-world")
+    .evaluate((el) => (el as HTMLElement).style.transform);
+  await list
+    .getByRole("button", { name: "선택한 메모 보이기", exact: true })
+    .click();
+  await expect(
+    list.getByRole("button", { name: "첫 생각 세부정보", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    list.getByRole("button", { name: "둘째 생각 세부정보", exact: true }),
+  ).toBeVisible();
+  const writes = f.calls.filter(
+    (c) => c.type === "setWhiteboardNotesVisibility",
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0].payload.noteIds.sort()).toEqual(
+    [f.state.notes[0].id, f.state.notes[2].id].sort(),
+  );
+  expect(f.state.board.data.hiddenNoteIds).toEqual([f.state.notes[1].id]);
+  expect(
+    await page
+      .locator(".wb-world")
+      .evaluate((el) => (el as HTMLElement).style.transform),
+  ).toBe(view);
+  await expect(
+    list.getByRole("button", { name: "선택한 메모 보이기", exact: true }),
+  ).toBeDisabled();
+  await list
+    .getByRole("button", { name: "둘째 생각 세부정보", exact: true })
+    .click();
+  await detail.getByRole("button", { name: "보이기", exact: true }).click();
+  await expect(list).toContainText("가려진 메모 · 0개");
+  await detail.getByRole("button", { name: "닫기", exact: true }).click();
+  expect(
+    await page
+      .locator(".wb-world")
+      .evaluate((el) => (el as HTMLElement).style.transform),
+  ).toBe(view);
+});
+
+for (const width of [390, 1280])
+  test(`connection checkboxes apply selected or all connected memos and preserve individual viewing at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    const f = await mount(page, (state) => {
+      connectedFixture(state);
+      state.connections.push({
+        ...state.connections[0],
+        id: randomUUID(),
+        source_id: state.notes[2].id,
+        target_id: state.notes[3].id,
+      });
+    });
+    const manager = page.locator(".wb-connection-list");
+    await manager.locator(".wb-connection-counts").click();
+    const selected = manager.getByRole("button", {
+      name: "선택보기",
+      exact: true,
+    });
+    const all = manager.getByRole("button", { name: "전체보기", exact: true });
+    const first = manager.getByRole("checkbox", {
+      name: "첫 생각 ↔ 둘째 생각 선택",
+      exact: true,
+    });
+    const second = manager.getByRole("checkbox", {
+      name: "셋째 생각 ↔ 신학 기록 선택",
+      exact: true,
+    });
+    await expect(selected).toBeDisabled();
+    await first.check();
+    await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
+    await manager
+      .getByRole("button", {
+        name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".wb-note")).toHaveCount(2);
+    await expect(first).toBeChecked();
+    await second.check();
+    await selected.click();
+    await expect(page.locator(".wb-note")).toHaveCount(4);
+    await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(2);
+    await expect
+      .poll(() =>
+        page.locator(".wb-viewport").evaluate((viewport) => {
+          const bounds = viewport.getBoundingClientRect();
+          return [...viewport.querySelectorAll(".wb-group")].every((group) => {
+            const b = group.getBoundingClientRect();
+            return (
+              b.left >= bounds.left &&
+              b.right <= bounds.right &&
+              b.top >= bounds.top &&
+              b.bottom <= bounds.bottom
+            );
+          });
+        }),
+      )
+      .toBe(true);
+    expect(
+      await page
+        .locator(".wb-note")
+        .evaluateAll((nodes) =>
+          nodes.map((n) => n.getAttribute("data-note-id")).sort(),
+        ),
+    ).toEqual(
+      f.state.notes
+        .slice(0, 4)
+        .map((n: any) => n.id)
+        .sort(),
+    );
+    await expect(manager).toHaveAttribute("open", "");
+    await manager
+      .getByRole("button", {
+        name: "셋째 생각 ↔ 신학 기록 보드에서 보기",
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".wb-note")).toHaveCount(2);
+    await expect(first).toBeChecked();
+    await expect(second).toBeChecked();
+    await all.click();
+    await expect(page.locator(".wb-note")).toHaveCount(4);
+    await first.uncheck();
+    await selected.click();
+    await expect(page.locator(".wb-note")).toHaveCount(2);
+    expect(
+      await page
+        .locator(".wb-note")
+        .evaluateAll((nodes) =>
+          nodes.map((n) => n.getAttribute("data-note-id")).sort(),
+        ),
+    ).toEqual(
+      f.state.notes
+        .slice(2, 4)
+        .map((n: any) => n.id)
+        .sort(),
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await manager.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath("connection-selection.png"),
+      fullPage: true,
+    });
+    expect(f.state.connections).toHaveLength(2);
+    expect(
+      f.calls.some(
+        (c) =>
+          c.type === "connectWhiteboardNotes" || c.type === "editConnection",
+      ),
+    ).toBe(false);
+    f.state.connections = f.state.connections.map((c: any) => ({
+      ...c,
+      status: "rejected",
+      version: c.version + 1,
+    }));
+    await page.evaluate(() => (window as any).refreshBoard());
+    await expect(all).toBeDisabled();
+    await expect(selected).toBeDisabled();
+    await expect(page.locator(".wb-note")).toHaveCount(0);
+  });
+
 test("connection management reveals an editable memo group without creating extra relationships", async ({
   page,
 }, testInfo) => {
   const f = await mount(page, connectedFixture);
-  await page.locator(".wb-connection-list summary").click();
+  await page.locator(".wb-connection-counts").click();
   await page
     .getByRole("button", {
       name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
@@ -1346,7 +1579,7 @@ test("undo never overwrites a subsequently revised relationship judgment", async
     reason: "나중에 확인한 판단",
   });
   await page.evaluate(() => (window as any).refreshBoard());
-  await page.locator(".wb-connection-list summary").click();
+  await page.locator(".wb-connection-counts").click();
   await expect(page.locator(".wb-connection-list small")).toContainText("반론");
   await page.getByRole("button", { name: "되돌리기", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("관계가 변경");

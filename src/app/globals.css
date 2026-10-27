@@ -4655,6 +4655,83 @@ textarea {
   padding: 0.3rem 0.5rem;
   font-size: 0.8rem;
 }
+.wb-connection-counts {
+  font-size: 0.82rem;
+}
+.wb-connection-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.wb-connection-actions button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  min-height: 44px;
+  padding: 5px 7px;
+  white-space: nowrap;
+}
+.wb-connection-check {
+  flex: 0 0 28px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.wb-connection-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.wb-hidden-notes {
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+.wb-hidden-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+.wb-hidden-tools label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.wb-hidden-tools input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.wb-hidden-tools button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  padding: 6px 10px;
+  min-height: 44px;
+}
+.wb-hidden-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 2px 0;
+}
+.wb-hidden-row button {
+  min-height: 44px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wb-relationship-detail > .memo-group-detail + .memo-group-detail {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 8px;
+}
 @media (max-width: 600px) {
   .wb-facet {
     flex-basis: 136px;

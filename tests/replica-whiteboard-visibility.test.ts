@@ -12,6 +12,53 @@ import { sha256Bytes } from "../src/lib/replica/codec";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { createKnowledgeStore } from "../src/server/knowledge-store";
+it("queues bulk visibility as one version and one effect while preserving unselected hidden notes and text", async () => {
+  const f = await resourceFixture();
+  const queue = (path: string, type: string, payload: unknown) =>
+    queueReplicaCommand({
+      storage: f.s,
+      repository: f.repo,
+      path,
+      body: { requestId: crypto.randomUUID(), type, payload },
+    });
+  try {
+    const second = await queue("/api/library", "addNote", {
+      content: "남겨둘 메모",
+    });
+    const board = emptyBoard();
+    board.hiddenNoteIds = [f.note, second.id];
+    board.filter.q = "원래 검색";
+    await queue("/api/knowledge", "saveWhiteboard", {
+      data: board,
+      expectedVersion: 0,
+      includeVisibility: true,
+    });
+    const before = (await f.s.listOutbox()).length;
+    await queue("/api/knowledge", "setWhiteboardNotesVisibility", {
+      noteIds: [f.note],
+      visible: true,
+    });
+    expect(await f.s.listOutbox()).toHaveLength(before + 1);
+    const saved = await f.repo.raw("library_whiteboards", WHITEBOARD_ID);
+    expect(saved?.version).toBe(2);
+    expect(saved?.data.hiddenNoteIds).toEqual([second.id]);
+    expect(saved?.data.filter.q).toBe("원래 검색");
+    expect((await f.repo.note(f.note)).content).toBe(
+      "정보와 신뢰를 함께 생각한다",
+    );
+    await expect(
+      queue("/api/knowledge", "setWhiteboardNotesVisibility", {
+        noteIds: [f.note, crypto.randomUUID()],
+        visible: true,
+      }),
+    ).rejects.toBeDefined();
+    expect(
+      (await f.repo.raw("library_whiteboards", WHITEBOARD_ID))?.version,
+    ).toBe(2);
+  } finally {
+    f.repo.close();
+  }
+});
 it("queues visibility offline, answers a small direct lookup and preserves it across an older layout save", async () => {
   const f = await resourceFixture();
   const queue = (type: string, payload: unknown) =>
@@ -159,6 +206,14 @@ it("pushes an unchanged visibility command followed by a layout without a false 
       ).version,
     ).toBe(0);
     await queue("saveWhiteboard", { data: emptyBoard(), expectedVersion: 0 });
+    await queue("setWhiteboardNotesVisibility", {
+      noteIds: [f.note],
+      visible: false,
+    });
+    await queue("setWhiteboardNotesVisibility", {
+      noteIds: [f.note],
+      visible: true,
+    });
     const report = await pushReplica({
       storage: f.s,
       send: (entry) =>
@@ -166,7 +221,7 @@ it("pushes an unchanged visibility command followed by a layout without a false 
       pull: async () => {},
     });
     expect(report).toMatchObject({
-      confirmed: 2,
+      confirmed: 4,
       conflicts: 0,
       failed: 0,
       remaining: 0,

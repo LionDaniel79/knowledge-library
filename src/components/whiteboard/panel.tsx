@@ -8,8 +8,12 @@ import { useReplicaOptional } from "../replica/provider";
 import { usePagedResource } from "../use-paged-resource";
 import { FacetPicker } from "./facet-picker";
 import { WhiteboardCanvas } from "./canvas";
+import { HiddenWhiteboardNotes } from "./hidden-notes";
 import { connectedMemoGroups } from "@/lib/memo-box";
-import { revealMemoGroup } from "@/lib/whiteboard-workflows";
+import {
+  revealMemoGroup,
+  connectionGroupsForView,
+} from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
 import {
   boardSchema,
@@ -75,7 +79,11 @@ export function WhiteboardPanel({
     [searchRevision, setSearchRevision] = useState(0),
     [selectedNote, setSelectedNote] = useState<string | null>(null),
     [selectedGroup, setSelectedGroup] = useState<string | null>(null),
-    [focusedConnection, setFocusedConnection] = useState<string | null>(null),
+    [connectionView, setConnectionView] = useState<string[] | "all" | null>(
+      null,
+    ),
+    [overviewOnFit, setOverviewOnFit] = useState(false),
+    [checkedConnections, setCheckedConnections] = useState<string[]>([]),
     [linkSource, setLinkSource] = useState<{
       kind: "note" | "group";
       id: string;
@@ -331,36 +339,67 @@ export function WhiteboardPanel({
     () => (source ? connectedMemoGroups(source) : []),
     [source],
   );
-  const focus = memoGroups.find((g) =>
-    g.connections.some((c) => c.id === focusedConnection),
+  const availableConnections = useMemo(
+    () => memoGroups.flatMap((g) => g.connections),
+    [memoGroups],
   );
+  const selectedConnectionIds = checkedConnections.filter((id) =>
+    availableConnections.some((c) => c.id === id),
+  );
+  const focusGroups = useMemo(
+    () =>
+      source && connectionView !== null
+        ? connectionGroupsForView(source, connectionView)
+        : [],
+    [source, connectionView],
+  );
+  const focusNotes = useMemo(
+    () => focusGroups.flatMap((g) => g.notes),
+    [focusGroups],
+  );
+  const hasFocus = connectionView !== null;
   const displaySource = useMemo(
-    () => (source && focus ? { ...source, notes: focus.notes } : source),
-    [source, focus],
+    () => (source && hasFocus ? { ...source, notes: focusNotes } : source),
+    [source, hasFocus, focusNotes],
   );
   const displayBoard = useMemo(
-    () => (focus ? { ...board, filter: emptyBoard().filter } : board),
-    [board, focus],
+    () => (hasFocus ? { ...board, filter: emptyBoard().filter } : board),
+    [board, hasFocus],
   );
   function showConnection(c: BoardConnection) {
     const group = memoGroups.find((g) =>
       g.connections.some((edge) => edge.id === c.id),
     );
-    if (!group || linkBusy) return;
-    const id = "manual:" + group.id,
-      before = current.current;
-    update(
-      revealMemoGroup(
-        before,
-        group.notes.map((n) => n.id),
-        id,
-      ),
+    if (group) showConnections(group.connections.map((edge) => edge.id));
+  }
+  function showConnections(ids: string[] | "all", overview = false) {
+    const s = sourceRef.current;
+    if (!s || linkBusy) return;
+    const groups = connectionGroupsForView(s, ids);
+    if (!groups.length) return;
+    const before = current.current;
+    let next = groups.reduce(
+      (b, g) =>
+        revealMemoGroup(
+          b,
+          g.notes.map((n) => n.id),
+          "manual:" + g.id,
+        ),
       before,
     );
-    setSelectedGroup(id);
+    if (groups.length > 1) {
+      next = arrangeSearchResults(
+        { ...s, notes: groups.flatMap((g) => g.notes) },
+        { ...next, filter: emptyBoard().filter },
+      );
+      next = { ...next, filter: before.filter };
+    }
+    update(next, before);
+    setSelectedGroup(groups.length === 1 ? "manual:" + groups[0].id : null);
     setSelectedNote(null);
     setLinkSource(null);
-    setFocusedConnection(c.id);
+    setConnectionView(ids);
+    setOverviewOnFit(overview);
     setSearchRevision((n) => n + 1);
     canvasHost.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -388,6 +427,34 @@ export function WhiteboardPanel({
     } catch (e) {
       setError((e as Error).message);
       return null;
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+  async function showHiddenNotes(noteIds: string[]) {
+    if (linkBusy) return false;
+    setLinkBusy(true);
+    setError("");
+    try {
+      if (timer.current) clearTimeout(timer.current);
+      await runSave.current();
+      if (dirty.current || needsChoice.current)
+        throw Error(
+          "먼저 배치의 저장 오류를 해결해 주세요. 메모와 선택은 유지됩니다.",
+        );
+      const result = await send("setWhiteboardNotesVisibility", {
+        noteIds,
+        visible: true,
+      });
+      version.current = result.version;
+      resource.reload();
+      setMessage(
+        result.queued ? "기기에 저장됨" : "선택한 메모를 보이게 했습니다.",
+      );
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
     } finally {
       setLinkBusy(false);
     }
@@ -665,7 +732,8 @@ export function WhiteboardPanel({
             before,
           );
           setSelectedGroup(null);
-          setFocusedConnection(null);
+          setConnectionView(null);
+          setOverviewOnFit(false);
           setSelectedNote(null);
         }}
       >
@@ -849,13 +917,17 @@ export function WhiteboardPanel({
           </button>
         </div>
       )}
-      {focus && (
+      {hasFocus && (
         <div className="wb-focus-toolbar">
-          <strong>선택한 연결 · {focus.notes.length}개 메모</strong>
+          <strong>
+            {connectionView === "all" ? "전체 연결" : "선택한 연결"} ·{" "}
+            {focusNotes.length}개 메모
+          </strong>
           <button
             type="button"
             onClick={() => {
-              setFocusedConnection(null);
+              setConnectionView(null);
+              setOverviewOnFit(false);
               setSearchRevision((n) => n + 1);
             }}
           >
@@ -896,8 +968,9 @@ export function WhiteboardPanel({
           fitKey={JSON.stringify([
             board.filter,
             searchRevision,
-            focusedConnection,
+            connectionView,
           ])}
+          overviewOnFit={overviewOnFit}
           busy={linkBusy}
           onSelectLine={() => {
             setSelectedNote(null);
@@ -914,55 +987,90 @@ export function WhiteboardPanel({
           }}
         />
       </div>
-      {focus && (
+      {!!focusGroups.length && (
         <section
           className="panel wb-relationship-detail"
           aria-label="연결된 메모 내용"
         >
-          <MemoGroupDetail
-            compact
-            group={focus}
-            onOpen={onOpen}
-            busy={linkBusy}
-            onSave={editSelectedConnection}
-            onRemove={(c) => void removeConnection(c)}
-          />
+          {focusGroups.map((group) => (
+            <MemoGroupDetail
+              key={group.id}
+              compact
+              group={group}
+              onOpen={onOpen}
+              busy={linkBusy}
+              onSave={editSelectedConnection}
+              onRemove={(c) => void removeConnection(c)}
+            />
+          ))}
         </section>
       )}
       <details className="wb-connection-list">
         <summary>
-          연결 관리 · 메모{" "}
-          {source.connections.filter((c) => c.status === "accepted").length} ·
-          묶음 {board.links.length}
+          <span className="wb-connection-counts">
+            연결 관리 · 메모 {availableConnections.length} · 묶음{" "}
+            {board.links.length}
+          </span>
+          <span className="wb-connection-actions">
+            <button
+              type="button"
+              disabled={linkBusy || !selectedConnectionIds.length}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showConnections(selectedConnectionIds, true);
+              }}
+            >
+              선택보기
+            </button>
+            <button
+              type="button"
+              disabled={linkBusy || !availableConnections.length}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showConnections("all", true);
+              }}
+            >
+              전체보기
+            </button>
+          </span>
         </summary>
-        {source.connections
-          .filter(
-            (c) =>
-              c.status === "accepted" &&
-              labels.has(c.source_id) &&
-              labels.has(c.target_id),
-          )
-          .map((c) => (
-            <div key={c.id}>
-              <button
-                className="wb-connection-select"
-                type="button"
-                disabled={linkBusy}
-                onClick={() => showConnection(c)}
-                aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 보드에서 보기`}
-              >
-                {labels.get(c.source_id)} ↔ {labels.get(c.target_id)}{" "}
-                <small>{relationNames[c.relation as Relation] ?? "관련"}</small>
-              </button>
-              <button
-                type="button"
-                disabled={linkBusy}
-                onClick={() => void removeConnection(c)}
-              >
-                연결 해제
-              </button>
-            </div>
-          ))}
+        {availableConnections.map((c) => (
+          <div key={c.id}>
+            <label className="wb-connection-check">
+              <input
+                type="checkbox"
+                aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 선택`}
+                checked={checkedConnections.includes(c.id)}
+                onChange={(e) =>
+                  setCheckedConnections((old) =>
+                    e.target.checked
+                      ? [...old, c.id]
+                      : old.filter((id) => id !== c.id),
+                  )
+                }
+              />
+            </label>
+            <button
+              className="wb-connection-select"
+              type="button"
+              disabled={linkBusy}
+              onClick={() => showConnection(c)}
+              aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 보드에서 보기`}
+            >
+              {labels.get(c.source_id)} ↔ {labels.get(c.target_id)}{" "}
+              <small>{relationNames[c.relation as Relation] ?? "관련"}</small>
+            </button>
+            <button
+              type="button"
+              disabled={linkBusy}
+              onClick={() => void removeConnection(c)}
+            >
+              연결 해제
+            </button>
+          </div>
+        ))}
         {board.links.map((l) => (
           <div key={l.source + ":" + l.target}>
             <span>
@@ -979,6 +1087,14 @@ export function WhiteboardPanel({
           </div>
         ))}
       </details>
+      <HiddenWhiteboardNotes
+        notes={source.notes.filter((n) =>
+          (board.hiddenNoteIds ?? []).includes(n.id),
+        )}
+        busy={linkBusy}
+        onOpen={(id) => onOpen("note", id)}
+        onShow={showHiddenNotes}
+      />
     </section>
   );
 }

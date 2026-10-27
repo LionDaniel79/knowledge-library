@@ -1,7 +1,8 @@
 import { WHITEBOARD_ID, boardSaveSchema, emptyBoard } from "../lib/whiteboard";
 import {
   noteVisibilitySchema,
-  withWhiteboardNoteVisibility,
+  notesVisibilitySchema,
+  withWhiteboardNotesVisibility,
   whiteboardSaveData,
 } from "../lib/whiteboard-visibility";
 import { projectNote } from "../lib/replica/projections";
@@ -67,6 +68,30 @@ export async function setWhiteboardNoteVisibility(
   input: unknown,
 ) {
   const p = noteVisibilitySchema.parse(input);
+  return setVisibility(tx, owner, [p.noteId], p.visible);
+}
+export async function setWhiteboardNotesVisibility(
+  tx: Executor,
+  owner: string,
+  input: unknown,
+) {
+  const p = notesVisibilitySchema.parse(input);
+  const owned = (
+    await tx.query(
+      "SELECT id FROM library_active_notes WHERE owner_id=$1 AND id=ANY($2::uuid[])",
+      [owner, p.noteIds],
+    )
+  ).rows;
+  if (owned.length !== p.noteIds.length)
+    throw new LibraryError(404, "메모를 찾을 수 없습니다.");
+  return setVisibility(tx, owner, p.noteIds, p.visible);
+}
+async function setVisibility(
+  tx: Executor,
+  owner: string,
+  noteIds: string[],
+  visible: boolean,
+) {
   const before = (
     await tx.query(
       "SELECT id,data,version FROM library_whiteboards WHERE owner_id=$1 AND id=$2 FOR UPDATE",
@@ -74,7 +99,7 @@ export async function setWhiteboardNoteVisibility(
     )
   ).rows[0];
   const original = before?.data ?? emptyBoard(),
-    data = withWhiteboardNoteVisibility(original, p.noteId, p.visible);
+    data = withWhiteboardNotesVisibility(original, noteIds, visible);
   if (data === original)
     return { id: WHITEBOARD_ID, version: before?.version ?? 0 };
   return saveWhiteboard(tx, owner, {

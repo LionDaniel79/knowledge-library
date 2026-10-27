@@ -45,6 +45,7 @@ export function WhiteboardCanvas({
   selectedNote,
   selectedGroup,
   fitKey,
+  overviewOnFit = false,
   busy,
   onSelectLine,
   onRemoveConnection,
@@ -71,6 +72,7 @@ export function WhiteboardCanvas({
   selectedNote: string | null;
   selectedGroup: string | null;
   fitKey: string;
+  overviewOnFit?: boolean;
   busy: boolean;
   onSelectLine: () => void;
   onRemoveConnection: (connection: BoardConnection) => Promise<void>;
@@ -147,7 +149,7 @@ export function WhiteboardCanvas({
     setView({ x: 18 - x * zoom, y: 18 - y * zoom, zoom });
   }
   useEffect(() => {
-    fit(false);
+    fit(overviewOnFit);
   }, [fitKey]); // Fit only after an explicit search, not after a drag/save.
   useEffect(() => {
     const el = viewport.current;

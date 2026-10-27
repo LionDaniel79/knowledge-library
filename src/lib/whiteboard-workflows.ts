@@ -1,4 +1,17 @@
-import type { Board } from "./whiteboard";
+import type { Board, WhiteboardSnapshot } from "./whiteboard";
+import { connectedMemoGroups } from "./memo-box";
+export function connectionGroupsForView(
+  source: Pick<WhiteboardSnapshot, "notes" | "connections">,
+  ids: "all" | readonly string[],
+) {
+  const selected = ids === "all" ? null : new Set(ids);
+  return connectedMemoGroups({
+    ...source,
+    connections: source.connections.filter(
+      (c) => !selected || selected.has(c.id),
+    ),
+  });
+}
 export function revealMemoGroup(
   board: Board,
   noteIds: string[],
