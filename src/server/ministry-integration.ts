@@ -43,6 +43,19 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("note"), id }).strict(),
   z.object({ action: z.literal("cover"), id }).strict(),
   z
+    .object({
+      action: z.literal("update-progress"),
+      requestId: id,
+      progress: z
+        .object({
+          id,
+          expectedVersion: z.number().int().positive(),
+          currentPage: z.number().int().min(0).max(100000),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
     .object({ action: z.literal("add-note"), requestId: id, note: noteInput })
     .strict(),
 ]);
@@ -165,7 +178,7 @@ export function createMinistryEndpoint(options: {
       if (command.action === "reading") {
         const rows = (
           await options.db.query(
-            `SELECT ${bookSelect},c.id AS "cycleId",c.current_page AS "currentPage",c.started_on::text AS "startedOn" FROM library_active_cycles c JOIN library_active_books b ON b.owner_id=c.owner_id AND b.id=c.book_id WHERE c.owner_id=$1 AND c.status='reading' ORDER BY c.created_at,c.id LIMIT 1001`,
+            `SELECT ${bookSelect},c.id AS "cycleId",c.version AS "cycleVersion",c.current_page AS "currentPage",c.started_on::text AS "startedOn" FROM library_active_cycles c JOIN library_active_books b ON b.owner_id=c.owner_id AND b.id=c.book_id WHERE c.owner_id=$1 AND c.status='reading' ORDER BY c.created_at,c.id LIMIT 1001`,
             [owner],
           )
         ).rows;
@@ -198,6 +211,14 @@ export function createMinistryEndpoint(options: {
         return json({
           note: noteDto(await readNoteDetail(options.db, owner, command.id)),
         });
+      if (command.action === "update-progress")
+        return json(
+          await createLibraryStore(options.db).mutate(owner, {
+            requestId: command.requestId,
+            type: "updateProgress",
+            payload: command.progress,
+          }),
+        );
       return json(
         await createLibraryStore(options.db).mutate(owner, {
           requestId: command.requestId,
