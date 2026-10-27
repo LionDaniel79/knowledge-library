@@ -4894,6 +4894,45 @@ textarea {
 }
 .wb-relationship-detail {
   margin-top: 12px;
+  padding: 10px 14px;
+}
+.memo-group-compact > .memo-group-note,
+.memo-group-compact > .memo-box-edge {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.memo-group-compact > :last-child {
+  border-bottom: 0;
+}
+.memo-group-compact summary {
+  padding: 10px 0;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.memo-group-compact summary small {
+  display: inline-block;
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.memo-group-compact .preserve-text {
+  margin: 0 0 8px;
+}
+.memo-group-compact .form-footer {
+  margin: 6px 0 10px;
+  gap: 6px;
+}
+.memo-group-compact .placement-fields {
+  gap: 8px;
+  padding: 0;
+}
+.memo-group-compact .memo-box-edge form {
+  margin-bottom: 8px;
 }
 .wb-connection-select {
   text-align: left;

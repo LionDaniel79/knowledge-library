@@ -1,13 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
 import { randomUUID } from "node:crypto";
+import { emptyBoard } from "../src/lib/whiteboard";
 let bundle: string;
 test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents:
-          "import {createRoot} from 'react-dom/client';import {WhiteboardPanel} from './src/components/whiteboard/panel';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;window.refreshBoard=()=>root.render(<WhiteboardPanel key={window.fixtureMount} library={{...window.fixture,notes:[...window.fixture.notes]}} ownerId='whiteboard-fixture' onOpen={(k,id)=>window.opened=id}/>);window.refreshBoard();",
+        contents: `import {createRoot} from 'react-dom/client';import{flushSync}from'react-dom';import{useState}from'react';import {WhiteboardPanel} from './src/components/whiteboard/panel';import{LibraryForm}from'./src/components/library-forms';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;function App(){const[editor,setEditor]=useState(null);const library={...window.fixture,notes:[...window.fixture.notes]};return <><WhiteboardPanel library={library} ownerId='whiteboard-fixture' onOpen={(k,id)=>{window.opened=id;if(window.fixtureEditor)setEditor({kind:'note',note:library.notes.find(n=>n.id===id)});}}/>{editor&&<LibraryForm editor={editor} library={library} today='2026-10-27' preview={false} onClose={()=>setEditor(null)} onSave={async()=>{throw Error('검수 중 메모 본문 변경 금지')}}/>}</>}window.refreshBoard=()=>root.render(<App key={window.fixtureMount}/>);window.flushBoard=()=>flushSync(window.refreshBoard);window.refreshBoard();`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -104,10 +104,39 @@ async function mount(page: Page, configure?: (state: any) => void) {
   await page.route("**/*", async (r) => {
     const u = new URL(r.request().url());
     if (u.hostname !== "library.test") return r.abort();
-    if (u.pathname === "/api/whiteboard") return r.fulfill({ json: state });
+    if (u.pathname === "/api/whiteboard")
+      return r.fulfill({
+        json:
+          u.searchParams.get("view") === "visibility"
+            ? {
+                visible: !(state.board?.data.hiddenNoteIds ?? []).includes(
+                  u.searchParams.get("noteId"),
+                ),
+              }
+            : state,
+      });
     if (u.pathname === "/api/knowledge" && r.request().method() === "POST") {
       const c = r.request().postDataJSON();
       calls.push(c);
+      if (c.type === "setWhiteboardNoteVisibility") {
+        const data = state.board?.data ?? emptyBoard();
+        state.board = {
+          id: "00000000-0000-4000-8000-000000000001",
+          version: (state.board?.version ?? 0) + 1,
+          data: {
+            ...data,
+            hiddenNoteIds: c.payload.visible
+              ? (data.hiddenNoteIds ?? []).filter(
+                  (id: string) => id !== c.payload.noteId,
+                )
+              : [...(data.hiddenNoteIds ?? []), c.payload.noteId],
+          },
+        };
+        await page.evaluate(() => (window as any).refreshBoard());
+        return r.fulfill({
+          json: { id: state.board.id, version: state.board.version },
+        });
+      }
       if (c.type === "saveWhiteboard") {
         if (failSave)
           return r.fulfill({
@@ -177,7 +206,7 @@ async function mount(page: Page, configure?: (state: any) => void) {
   await page.goto("https://library.test/");
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
-  await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
+  await expect(page.locator(".wb-canvas-shell")).toBeVisible();
   return {
     state,
     calls,
@@ -299,8 +328,22 @@ test("connection management reveals an editable memo group without creating extr
   await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(2);
   await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(1);
   const detail = page.getByRole("region", { name: "연결된 메모 내용" });
+  await expect(detail.locator(".preserve-text:visible")).toHaveCount(0);
+  await expect(detail.locator("select:visible")).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("connection-group-compact.png"),
+    fullPage: true,
+  });
+  await detail.locator(".memo-group-note summary").first().click();
   await expect(detail).toContainText("본문에만 나오는 수용의 의미");
   await expect(detail).toContainText("두 번째 내 생각");
+  await expect(
+    detail.locator(".memo-group-note").first().locator(".preserve-text"),
+  ).toBeVisible();
+  await expect(
+    detail.locator(".memo-group-note").nth(1).locator(".preserve-text"),
+  ).not.toBeVisible();
+  await detail.locator(".memo-box-edge summary").first().click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -316,6 +359,14 @@ test("connection management reveals an editable memo group without creating extr
   await detail
     .getByRole("textbox", { name: "연결 이유", exact: true })
     .fill("새 주장을 뒷받침한다");
+  await detail.locator(".memo-box-edge summary").first().click();
+  await expect(
+    detail.getByRole("textbox", { name: "연결 이유", exact: true }),
+  ).not.toBeVisible();
+  await detail.locator(".memo-box-edge summary").first().click();
+  await expect(
+    detail.getByRole("textbox", { name: "연결 이유", exact: true }),
+  ).toHaveValue("새 주장을 뒷받침한다");
   await detail
     .getByRole("button", { name: "연결 수정 저장", exact: true })
     .click();
@@ -332,6 +383,170 @@ test("connection management reveals an editable memo group without creating extr
     .click();
   await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(5);
 });
+for (const seeded of [false, true])
+  test(`hiding in the shared editor preserves placements, camera and scroll (${seeded ? "saved" : "legacy"} layout)`, async ({
+    page,
+  }) => {
+    const f = await mount(page, (state) => {
+      const data = emptyBoard();
+      data.filter.topics = [state.topics[0].id];
+      if (seeded)
+        state.notes.slice(0, 3).forEach((n: any, i: number) => {
+          data.positions[`note::${n.id}`] = { x: 40 + i * 245, y: 60 };
+        });
+      state.board = {
+        id: "00000000-0000-4000-8000-000000000001",
+        version: 1,
+        data,
+      };
+    });
+    await page.evaluate(() => {
+      (window as any).fixtureEditor = true;
+      const top = document.createElement("div");
+      top.style.height = "650px";
+      document.body.prepend(top);
+      const bottom = document.createElement("div");
+      bottom.style.height = "900px";
+      document.body.append(bottom);
+    });
+    const opener = page.getByRole("button", {
+      name: "첫 생각 열기",
+      exact: true,
+    });
+    await opener.scrollIntoViewIfNeeded();
+    await page.getByRole("button", { name: "축소", exact: true }).click();
+    await opener.scrollIntoViewIfNeeded();
+    const beforePan = await page
+      .locator(".wb-world")
+      .evaluate((el) => (el as HTMLElement).style.transform);
+    await page
+      .locator(".wb-viewport")
+      .dispatchEvent("wheel", { deltaX: -35, deltaY: -35, cancelable: true });
+    await expect
+      .poll(() =>
+        page
+          .locator(".wb-world")
+          .evaluate((el) => (el as HTMLElement).style.transform),
+      )
+      .not.toBe(beforePan);
+    const original = await page.evaluate(() => ({
+      scroll: window.scrollY,
+      view: (document.querySelector(".wb-world") as HTMLElement).style
+        .transform,
+      nodes: [...document.querySelectorAll(".wb-note")].map((el) => ({
+        id: el.getAttribute("data-note-id"),
+        left: (el as HTMLElement).style.left,
+        top: (el as HTMLElement).style.top,
+      })),
+    }));
+    await opener.click();
+    const dialog = page.getByRole("dialog", { name: "기록 수정" });
+    await dialog.getByRole("button", { name: "가리기", exact: true }).click();
+    await expect
+      .poll(
+        () =>
+          f.calls.filter((c) => c.type === "setWhiteboardNoteVisibility")
+            .length,
+      )
+      .toBe(1);
+    await expect(
+      page.locator(`.wb-note[data-note-id="${f.state.notes[0].id}"]`),
+    ).toHaveCount(0);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(
+      original.scroll,
+      0,
+    );
+    expect(
+      await page
+        .locator(".wb-world")
+        .evaluate((el) => (el as HTMLElement).style.transform),
+    ).toBe(original.view);
+    const remaining = await page.locator(".wb-note").evaluateAll((els) =>
+      els.map((el) => ({
+        id: el.getAttribute("data-note-id"),
+        left: (el as HTMLElement).style.left,
+        top: (el as HTMLElement).style.top,
+      })),
+    );
+    expect(remaining).toEqual(
+      original.nodes.filter((n) => n.id !== f.state.notes[0].id),
+    );
+    await dialog.getByRole("button", { name: "보이기", exact: true }).click();
+    await expect(
+      page.locator(`.wb-note[data-note-id="${f.state.notes[0].id}"]`),
+    ).toHaveCount(1);
+    expect(
+      await page.locator(".wb-note").evaluateAll((els) =>
+        els.map((el) => ({
+          id: el.getAttribute("data-note-id"),
+          left: (el as HTMLElement).style.left,
+          top: (el as HTMLElement).style.top,
+        })),
+      ),
+    ).toEqual(original.nodes);
+    expect(
+      await page
+        .locator(".wb-world")
+        .evaluate((el) => (el as HTMLElement).style.transform),
+    ).toBe(original.view);
+    await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(original.scroll, 0);
+    expect(f.calls.some((c) => c.type === "editNote")).toBe(false);
+  });
+
+for (const afterSave of [false, true])
+  test(`visibility-only refresh merges into a pending layout without moving the camera (${afterSave ? "after acknowledgement" : "initial"})`, async ({
+    page,
+  }) => {
+    const f = await mount(page, (state) => {
+      state.board = {
+        id: "00000000-0000-4000-8000-000000000001",
+        version: 1,
+        data: emptyBoard(),
+      };
+    });
+    if (afterSave) {
+      await page
+        .getByRole("button", { name: "메모 정렬", exact: true })
+        .click();
+      await expect(page.getByText("저장됨", { exact: true })).toBeVisible();
+    }
+    await page.clock.install({ time: new Date("2026-10-27T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-27T00:00:01Z"));
+    await page.getByRole("button", { name: "메모 정렬", exact: true }).click();
+    const view = await page
+      .locator(".wb-world")
+      .evaluate((el) => (el as HTMLElement).style.transform);
+    f.state.board = {
+      ...f.state.board,
+      version: afterSave ? 3 : 2,
+      data: { ...f.state.board.data, hiddenNoteIds: [f.state.notes[0].id] },
+    };
+    await page.evaluate(() => (window as any).flushBoard());
+    await page.clock.runFor(200);
+    await expect(page.getByText("4개 메모", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("다른 곳에서 배치가 변경되었습니다.", { exact: false }),
+    ).toHaveCount(0);
+    expect(
+      await page
+        .locator(".wb-world")
+        .evaluate((el) => (el as HTMLElement).style.transform),
+    ).toBe(view);
+    await page.clock.runFor(350);
+    await expect
+      .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+      .toBe(afterSave ? 2 : 1);
+    const saved = f.calls.filter((c) => c.type === "saveWhiteboard").at(-1);
+    expect(saved.payload.expectedVersion).toBe(afterSave ? 3 : 2);
+    expect(saved.payload.data.hiddenNoteIds).toEqual([f.state.notes[0].id]);
+    await expect(
+      page.getByRole("button", { name: "현재 배치로 저장", exact: true }),
+    ).toHaveCount(0);
+  });
+
 test("layout undo keeps visibility changed by another note editor", async ({
   page,
 }) => {

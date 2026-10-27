@@ -88,6 +88,7 @@ export function WhiteboardPanel({
     pending = useRef<Board | null>(null),
     writing = useRef(false),
     observed = useRef<string | null>(null),
+    observedLayout = useRef(""),
     observedResolution = useRef(""),
     acknowledged = useRef(new Set<string>()),
     needsChoice = useRef(false),
@@ -99,6 +100,13 @@ export function WhiteboardPanel({
     runSave = useRef<() => Promise<void>>(async () => {}),
     saveTask = useRef<Promise<void> | null>(null);
   const key = ownerId ? `library:whiteboard-draft:${ownerId}` : "";
+  function layoutStamp(data: Board | undefined) {
+    return boardStamp({
+      id: WHITEBOARD_ID,
+      version: 0,
+      data: { ...(data ?? emptyBoard()), hiddenNoteIds: [] },
+    });
+  }
   function remember(data: Board, unsaved: boolean) {
     if (!key) return;
     try {
@@ -153,6 +161,7 @@ export function WhiteboardPanel({
               expectedVersion: version.current,
             });
             version.current = result.version;
+            observedLayout.current = layoutStamp(value);
             acknowledged.current.add(
               boardStamp({
                 id: WHITEBOARD_ID,
@@ -214,6 +223,7 @@ export function WhiteboardPanel({
     if (!initialized.current) {
       initialized.current = true;
       observed.current = stamp;
+      observedLayout.current = layoutStamp(data.board?.data);
       observedResolution.current = resolution;
       version.current = v;
       let value = data.board?.data ?? emptyBoard();
@@ -262,8 +272,35 @@ export function WhiteboardPanel({
       observed.current = stamp;
       observedResolution.current = resolution;
       if (resolved) acknowledged.current.clear();
-      if (!resolved && (acknowledged.current.has(stamp) || v < version.current))
+      if (!resolved && v < version.current) return;
+      const layout = layoutStamp(data.board?.data),
+        sameLayout = layout === observedLayout.current;
+      observedLayout.current = layout;
+      if (!resolved && acknowledged.current.has(stamp)) return;
+      if (
+        !resolved &&
+        !needsChoice.current &&
+        sameLayout &&
+        JSON.stringify(current.current.hiddenNoteIds ?? []) !==
+          JSON.stringify(data.board?.data.hiddenNoteIds ?? [])
+      ) {
+        // Visibility is a separate command. Retain materialized default positions,
+        // pending layout edits and the canvas/filter state when only that bit changed.
+        const value = {
+          ...current.current,
+          hiddenNoteIds: data.board?.data.hiddenNoteIds ?? [],
+        };
+        version.current = v;
+        current.current = value;
+        setBoard(value);
+        if (pending.current)
+          pending.current = {
+            ...pending.current,
+            hiddenNoteIds: value.hiddenNoteIds,
+          };
+        remember(value, dirty.current);
         return;
+      }
       if (dirty.current) {
         needsChoice.current = true;
         setConflict(true);
@@ -548,6 +585,7 @@ export function WhiteboardPanel({
         expectedVersion: version.current,
       });
       version.current = result.version;
+      observedLayout.current = layoutStamp(next);
       acknowledged.current.add(
         boardStamp({ id: WHITEBOARD_ID, data: next, version: result.version }),
       );
@@ -882,6 +920,7 @@ export function WhiteboardPanel({
           aria-label="연결된 메모 내용"
         >
           <MemoGroupDetail
+            compact
             group={focus}
             onOpen={onOpen}
             busy={linkBusy}
