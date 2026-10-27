@@ -135,10 +135,22 @@ test("calendar header jumps to a chosen date and today on home and calendar scre
     await calendar
       .getByRole("button", { name: "날짜 이동", exact: true })
       .click();
-    await calendar
-      .getByLabel("이동할 날짜", { exact: true })
-      .fill("2018-02-03");
-    await calendar.getByRole("button", { name: "이동", exact: true }).click();
+    const picker = calendar.getByRole("dialog", {
+      name: "날짜 선택",
+      exact: true,
+    });
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('input[type="date"]')).toHaveCount(0);
+    await picker
+      .getByRole("combobox", { name: "이동 연도", exact: true })
+      .selectOption("2018");
+    await picker
+      .getByRole("combobox", { name: "이동 월", exact: true })
+      .selectOption("02");
+    await picker
+      .getByRole("button", { name: "2018-02-03", exact: true })
+      .click();
+    await expect(picker).toHaveCount(0);
     await expect(calendar.locator(".month-selector")).toContainText(
       "2018년 2월",
     );
@@ -149,7 +161,10 @@ test("calendar header jumps to a chosen date and today on home and calendar scre
       .getByRole("button", { name: "날짜 이동", exact: true })
       .click();
     await page.screenshot({ path: testInfo.outputPath("date-jump.png") });
-    await calendar.getByRole("button", { name: "오늘", exact: true }).click();
+    await calendar
+      .getByRole("dialog", { name: "날짜 선택", exact: true })
+      .getByRole("button", { name: "오늘", exact: true })
+      .click();
     await expect(
       calendar.getByRole("button", { name: "2026-10-28", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -166,8 +181,17 @@ test("calendar header jumps to a chosen date and today on home and calendar scre
   await calendar
     .getByRole("button", { name: "날짜 이동", exact: true })
     .click();
-  await calendar.getByLabel("이동할 날짜", { exact: true }).fill("2018-02-03");
-  await calendar.getByRole("button", { name: "이동", exact: true }).click();
+  const picker = calendar.getByRole("dialog", {
+    name: "날짜 선택",
+    exact: true,
+  });
+  await picker
+    .getByRole("combobox", { name: "이동 연도", exact: true })
+    .selectOption("2018");
+  await picker
+    .getByRole("combobox", { name: "이동 월", exact: true })
+    .selectOption("02");
+  await picker.getByRole("button", { name: "2018-02-03", exact: true }).click();
   await navigate(page, "독서 통계");
   await expect(
     page.getByRole("combobox", { name: "통계 연도", exact: true }),

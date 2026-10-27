@@ -1,0 +1,9 @@
+# Direct calendar selection and first-time PDF login
+
+- [x] Replace the intermediate date form with a calendar popover immediately opened by its icon. Select year/month and a day directly; retain Today, outside/Escape dismissal, keyboard focus and responsive layout on PC, iPhone and iPad.
+- [x] Fix the verified `/reader/:path*` OAuth callback gap: match reader callbacks for the installed Neon SDK exchange, but let ordinary reader visits keep the existing owner-checked sign-in and original PDF page/signature. Keep API/file ownership checks unchanged.
+- [x] Verify with real-SDK failing/passing callback tests, responsive browser calendar tests, reading/PDF regressions, full unit checks, typecheck, production build and artifact privacy check. Deploy web/private PC with rollback and verify versions while preserving OCR.
+
+Diagnosis: the private Google sign-in API returned 200 with an OAuth redirect. A fresh isolated iPad-sized WebKit context successfully reached accounts.google.com after pressing the button. The reader return URL is outside the current middleware matcher, which can leave an unauthenticated device on its login screen after returning from Google. The user's physical iPad's apparent no-response symptom still needs the updated flow checked; no credentials, security settings, real notes or PDF contents were changed during investigation.
+
+Verification: full unit suite 616 passed / 4 skipped (178 files); responsive browser regression suite 30 passed in desktop Chromium, iPad WebKit and iPhone WebKit. Real Neon SDK callback and PDF ownership/routing checks passed 16/16. Typecheck and formatting passed. Calendar screenshots inspected. Build/activation identities and preservation of the running OCR processes are recorded in ignored operation evidence. The physical iPad's final Google login and PDF opening remain a user-device check.
