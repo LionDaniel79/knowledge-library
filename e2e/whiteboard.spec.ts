@@ -184,6 +184,68 @@ for (const failure of ["unsupported", "rejected"] as const) {
   });
 }
 
+test("unclassified topic selection is searchable and persists through board save", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  await choose(page, "주제", "미분류");
+  await expect(
+    page.getByRole("button", { name: "주제 선택", exact: true }),
+  ).toContainText("미분류");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(1);
+  expect(await page.locator(".wb-note").getAttribute("data-note-id")).toBe(
+    f.state.notes[4].id,
+  );
+  await expect
+    .poll(
+      () =>
+        f.calls.filter((c) => c.type === "saveWhiteboard").at(-1)?.payload.data
+          .filter.topics,
+    )
+    .toEqual(["unclassified"]);
+  await choose(page, "주제", "정서");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(4);
+});
+
+test("bulk folding preserves note positions and connections and can undo without resetting the camera", async ({
+  page,
+}) => {
+  const f = await mount(page, connectedFixture);
+  await page.getByRole("button", { name: "전체 보기", exact: true }).click();
+  const camera = await page.locator(".wb-world").getAttribute("style");
+  const positions = await page
+    .locator(".wb-note")
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.cssText));
+  const ids = await page
+    .locator(".wb-group")
+    .evaluateAll((els) => els.map((el) => el.getAttribute("data-group-id")));
+  await page.getByRole("button", { name: "전체 접음", exact: true }).click();
+  await expect(page.locator(".wb-group.collapsed")).toHaveCount(ids.length);
+  await expect(page.locator(".wb-note")).toHaveCount(0);
+  expect(await page.locator(".wb-world").getAttribute("style")).toBe(camera);
+  await expect
+    .poll(
+      () =>
+        f.calls.filter((c) => c.type === "saveWhiteboard").at(-1)?.payload.data
+          .collapsed,
+    )
+    .toEqual(ids);
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(5);
+  await page.getByRole("button", { name: "전체 접음", exact: true }).click();
+  await page.getByRole("button", { name: "전체 펼침", exact: true }).click();
+  await expect(page.locator(".wb-group.collapsed")).toHaveCount(0);
+  expect(
+    await page
+      .locator(".wb-note")
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.cssText)),
+  ).toEqual(positions);
+  expect(await page.locator(".wb-world").getAttribute("style")).toBe(camera);
+  expect(f.state.connections).toHaveLength(1);
+});
+
 test.beforeAll(async () => {
   bundle = (
     await build({

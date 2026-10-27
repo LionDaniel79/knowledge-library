@@ -989,6 +989,68 @@ progress::-moz-progress-bar {
   height: 220px;
   margin-bottom: 30px;
 }
+.calendar-jump {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.calendar-jump label {
+  min-width: 0;
+  margin: 0;
+}
+.calendar-jump input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  margin: 4px 0 0;
+}
+.calendar-jump button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.month-cover-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 16px 12px;
+  margin: 14px 0;
+}
+.month-cover-list > button {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+.month-cover-list .book-cover {
+  width: 100%;
+  max-width: 120px;
+  height: 164px;
+}
+.month-cover-list > button > strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.month-cover-list time {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.month-cover-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .year-chart button {
   display: flex;
   flex-direction: column;

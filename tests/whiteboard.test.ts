@@ -84,6 +84,36 @@ const source: WhiteboardSnapshot = {
   connections: [],
 };
 describe("whiteboard", () => {
+  it("filters unclassified topics with accepted note and inherited book memberships", () => {
+    const f = { ...emptyBoard().filter, topics: ["unclassified"] };
+    expect(boardSchema.safeParse({ ...emptyBoard(), filter: f }).success).toBe(
+      true,
+    );
+    expect(filterNotes(source, f).map((n) => n.id)).toEqual([n3]);
+    expect(
+      filterNotes(source, { ...f, topics: [topic, "unclassified"] }).map(
+        (n) => n.id,
+      ),
+    ).toEqual([n1, n2, n3]);
+    expect(
+      filterNotes(
+        {
+          ...source,
+          memberships: source.memberships.map((m) => ({
+            ...m,
+            status: "suggested",
+          })),
+        },
+        f,
+      ).map((n) => n.id),
+    ).toEqual([n1, n2, n3]);
+    expect(
+      boardSchema.safeParse({
+        ...emptyBoard(),
+        filter: { ...f, topics: ["invalid-topic"] },
+      }).success,
+    ).toBe(false);
+  });
   it("packs sparse filtered memos without changing hidden placements or relationships", () => {
     const many = {
       ...source,

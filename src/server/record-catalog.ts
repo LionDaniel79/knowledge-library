@@ -148,13 +148,23 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional(),
+      completedMonth: z
+        .string()
+        .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+        .optional(),
       offset: z.coerce.number().int().min(0).max(1000000).default(0),
       limit: z.coerce.number().int().min(1).max(100).default(24),
     })
     .parse(raw);
-  const args = [owner, p.book ?? null, p.date ?? null, p.id ?? null],
+  const args = [
+      owner,
+      p.book ?? null,
+      p.date ?? null,
+      p.id ?? null,
+      p.completedMonth ? p.completedMonth + "-01" : null,
+    ],
     where =
-      "owner_id=$1 AND ($2::uuid IS NULL OR book_id=$2::uuid) AND ($3::date IS NULL OR completed_on=$3::date) AND ($4::uuid IS NULL OR id=$4::uuid)";
+      "owner_id=$1 AND ($2::uuid IS NULL OR book_id=$2::uuid) AND ($3::date IS NULL OR completed_on=$3::date) AND ($4::uuid IS NULL OR id=$4::uuid) AND ($5::date IS NULL OR (status='completed' AND completed_on >= $5::date AND completed_on < $5::date + interval '1 month'))";
   const total = Number(
       (
         await db.query(
@@ -165,7 +175,7 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
     ),
     items = (
       await db.query(
-        `SELECT ${cycleSelect} FROM library_active_cycles WHERE ${where} ORDER BY completed_on DESC NULLS FIRST,id LIMIT $6 OFFSET $5`,
+        `SELECT ${cycleSelect} FROM library_active_cycles WHERE ${where} ORDER BY completed_on ${p.completedMonth ? "ASC NULLS LAST" : "DESC NULLS FIRST"},id LIMIT $7 OFFSET $6`,
         [...args, p.offset, p.limit],
       )
     ).rows as ReadingCycle[];

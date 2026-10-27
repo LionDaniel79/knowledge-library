@@ -32,7 +32,14 @@ export function ReadingCalendar({
 }) {
   const remote = !!library.readingSummary;
   const [calendar, setCalendar] = useState<any>(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [jumpOpen, setJumpOpen] = useState(false),
+    [jumpDate, setJumpDate] = useState(selected);
+  function jump(day: string) {
+    setMonth(day.slice(0, 7));
+    setSelected(day);
+    setJumpOpen(false);
+  }
   useEffect(() => {
     if (!remote) return;
     const c = new AbortController();
@@ -90,8 +97,44 @@ export function ReadingCalendar({
           <span className="eyebrow">READING DAYS</span>
           <h2>책으로 채운 달력</h2>
         </div>
-        <CalendarDays size={20} className="muted" />
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="날짜 이동"
+          aria-expanded={jumpOpen}
+          onClick={() => {
+            setJumpDate(selected.startsWith(month) ? selected : month + "-01");
+            setJumpOpen(!jumpOpen);
+          }}
+        >
+          <CalendarDays size={20} aria-hidden="true" />
+        </button>
       </div>
+      {jumpOpen && (
+        <form
+          className="calendar-jump"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(jumpDate)) jump(jumpDate);
+          }}
+        >
+          <label>
+            이동할 날짜
+            <input
+              type="date"
+              min="1000-01-01"
+              max="9999-12-31"
+              required
+              value={jumpDate}
+              onChange={(e) => setJumpDate(e.target.value)}
+            />
+          </label>
+          <button type="submit">이동</button>
+          <button type="button" onClick={() => jump(today)}>
+            오늘
+          </button>
+        </form>
+      )}
       <div className="month-selector">
         <button
           className="icon-button"

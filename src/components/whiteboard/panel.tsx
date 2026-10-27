@@ -684,7 +684,10 @@ export function WhiteboardPanel({
     () =>
       source
         ? {
-            topics: source.topics.map((t) => ({ value: t.id, label: t.name })),
+            topics: [
+              { value: "unclassified", label: "미분류" },
+              ...source.topics.map((t) => ({ value: t.id, label: t.name })),
+            ],
             tags: [...new Set(source.notes.flatMap((n) => n.tags ?? []))]
               .sort()
               .map((t) => ({ value: t, label: t })),
@@ -774,6 +777,30 @@ export function WhiteboardPanel({
       </form>
       <div className="wb-actions">
         <strong>{filtered.length}개 메모</strong>
+        {([false, true] as const).map((collapse) => (
+          <button
+            key={String(collapse)}
+            type="button"
+            disabled={
+              linkBusy || !scene.groups.some((g) => g.collapsed !== collapse)
+            }
+            onClick={() => {
+              const before = current.current;
+              const ids = new Set(scene.groups.map((g) => g.id));
+              update(
+                {
+                  ...before,
+                  collapsed: collapse
+                    ? [...new Set([...before.collapsed, ...ids])]
+                    : before.collapsed.filter((id) => !ids.has(id)),
+                },
+                before,
+              );
+            }}
+          >
+            {collapse ? "전체 접음" : "전체 펼침"}
+          </button>
+        ))}
         <button
           type="button"
           disabled={linkBusy || (!selectedNote && !selectedGroup)}

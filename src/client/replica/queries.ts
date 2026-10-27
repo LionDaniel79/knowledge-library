@@ -364,6 +364,10 @@ export function queryReading(data: LocalIndex, input: unknown) {
       id: z.string().uuid().optional(),
       book: z.string().uuid().optional(),
       date: z.string().optional(),
+      completedMonth: z
+        .string()
+        .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+        .optional(),
       ...paging,
     })
     .parse(input);
@@ -372,15 +376,21 @@ export function queryReading(data: LocalIndex, input: unknown) {
       (c) =>
         (!p.id || c.id === p.id) &&
         (!p.book || c.bookId === p.book) &&
-        (!p.date || c.completedOn === p.date),
+        (!p.date || c.completedOn === p.date) &&
+        (!p.completedMonth ||
+          (c.status === "completed" &&
+            !!c.completedOn?.startsWith(p.completedMonth + "-"))),
     )
     .sort((a, b) =>
-      a.completedOn === null && b.completedOn !== null
-        ? -1
-        : b.completedOn === null && a.completedOn !== null
-          ? 1
-          : binaryCompare(b.completedOn ?? "", a.completedOn ?? "") ||
-            binaryCompare(a.id, b.id),
+      p.completedMonth
+        ? binaryCompare(a.completedOn!, b.completedOn!) ||
+          binaryCompare(a.id, b.id)
+        : a.completedOn === null && b.completedOn !== null
+          ? -1
+          : b.completedOn === null && a.completedOn !== null
+            ? 1
+            : binaryCompare(b.completedOn ?? "", a.completedOn ?? "") ||
+              binaryCompare(a.id, b.id),
     );
   const items = rows.slice(p.offset, p.offset + p.limit),
     ids = new Set(items.map((c) => c.bookId));

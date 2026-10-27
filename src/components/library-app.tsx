@@ -42,6 +42,7 @@ import { authClient } from "@/lib/auth-client";
 import { BookCover } from "./book-cover";
 import { ReadingCarousel } from "./reading-carousel";
 import { ReadingCalendar } from "./reading-calendar";
+import { MonthCompletedBooks } from "./month-completed-books";
 import { LibraryForm, type Editor } from "./library-forms";
 import { Modal } from "./modal";
 import { RevisionContent } from "./revision-content";
@@ -1201,6 +1202,7 @@ export function LibraryApp({
                         {[
                           ...new Set([
                             today.slice(0, 4),
+                            month.slice(0, 4),
                             ...Object.keys(
                               data.readingSummary?.months ?? {},
                             ).map((m) => m.slice(0, 4)),
@@ -1250,10 +1252,11 @@ export function LibraryApp({
                       );
                     })}
                   </div>
-                  <p className="form-hint">
-                    같은 책을 두 번 읽으면 완독 2권으로 집계합니다. 날짜가 없는
-                    완독 {stats.undatedCount}권는 월별 통계에서 제외합니다.
-                  </p>
+                  <MonthCompletedBooks
+                    library={data}
+                    month={month}
+                    onOpenBook={setDetail}
+                  />
                 </section>
               )}
               {view === "knowledge" &&

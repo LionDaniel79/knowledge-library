@@ -17,7 +17,9 @@ const groupId = z
   .regex(/^(unclassified|(topic|manual):[a-f0-9-]{36})$/i);
 export const boardFilterSchema = z
   .object({
-    topics: z.array(z.string().uuid()).max(200),
+    topics: z
+      .array(z.union([z.string().uuid(), z.literal("unclassified")]))
+      .max(200),
     tags: z.array(z.string().max(100)).max(200),
     categories: z.array(z.string().max(50)).max(30),
     books: z.array(z.string().uuid()).max(500),
@@ -198,10 +200,12 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
   const books = new Map(source.books.map((b) => [b.id, b]));
   return source.notes.filter((n) => {
     const book = n.bookId ? books.get(n.bookId) : undefined,
-      text = normalized(n.title + "\n" + n.content);
+      text = normalized(n.title + "\n" + n.content),
+      topics = f.topics.length ? noteTopics(source, n) : [];
     return (
       (!f.topics.length ||
-        noteTopics(source, n).some((id) => f.topics.includes(id))) &&
+        (!topics.length && f.topics.includes("unclassified")) ||
+        topics.some((id) => f.topics.includes(id))) &&
       (!f.tags.length || f.tags.some((t) => (n.tags ?? []).includes(t))) &&
       (!f.books.length || (!!n.bookId && f.books.includes(n.bookId))) &&
       (!f.categories.length ||
