@@ -12,7 +12,11 @@ import {
 } from "../lib/whiteboard";
 import { LibraryError, type Database } from "./library-store";
 import { withSyncWrite } from "./sync/write";
-import { saveWhiteboard } from "./whiteboard-store";
+import {
+  saveWhiteboard,
+  setWhiteboardNoteVisibility,
+} from "./whiteboard-store";
+import { noteVisibilitySchema } from "../lib/whiteboard-visibility";
 
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
@@ -31,6 +35,7 @@ const command = z.object({
     "addResearchNote",
     "placeResearchItem",
     "saveWhiteboard",
+    "setWhiteboardNoteVisibility",
     "connectWhiteboardNotes",
   ]),
   payload: z.unknown(),
@@ -177,6 +182,10 @@ export function createKnowledgeStore(db: Database) {
       } = {};
       if (c.type === "saveWhiteboard") {
         result = await saveWhiteboard(tx, owner, c.payload);
+      } else if (c.type === "setWhiteboardNoteVisibility") {
+        const p = noteVisibilitySchema.parse(c.payload);
+        await own("note", p.noteId);
+        result = await setWhiteboardNoteVisibility(tx, owner, p);
       } else if (c.type === "connectWhiteboardNotes") {
         const p = boardNoteLinkSchema.parse(c.payload),
           [sourceId, targetId] = [p.sourceId, p.targetId].sort();

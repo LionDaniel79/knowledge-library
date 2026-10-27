@@ -15,6 +15,7 @@ import { formEditBase } from "@/lib/replica/command-envelope";
 import type { NewNoteContext } from "@/lib/note-context";
 import { NoteTopicField, type NoteTopicHandle } from "./note-topic-field";
 import { NoteTagInput } from "./note-tag-input";
+import { NoteWhiteboardVisibility } from "./note-whiteboard-visibility";
 export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
   | ({ kind: "note"; note?: Note } & NewNoteContext)
@@ -454,6 +455,13 @@ export function LibraryForm({
           )}
           {editor.kind === "note" && (
             <>
+              {editor.note && (
+                <NoteWhiteboardVisibility
+                  noteId={editor.note.id}
+                  disabled={busy}
+                  preview={preview}
+                />
+              )}
               {editor.note?.sourceData?.app === "PDF" && (
                 <p className="notice">
                   확인한 원문 인용은 보존됩니다. 제목과 태그를 수정할 수 있으며,

@@ -8,6 +8,9 @@ import { useReplicaOptional } from "../replica/provider";
 import { usePagedResource } from "../use-paged-resource";
 import { FacetPicker } from "./facet-picker";
 import { WhiteboardCanvas } from "./canvas";
+import { connectedMemoGroups } from "@/lib/memo-box";
+import { revealMemoGroup } from "@/lib/whiteboard-workflows";
+import { MemoGroupDetail } from "../memo-box/group-detail";
 import {
   boardSchema,
   boardStamp,
@@ -72,6 +75,7 @@ export function WhiteboardPanel({
     [searchRevision, setSearchRevision] = useState(0),
     [selectedNote, setSelectedNote] = useState<string | null>(null),
     [selectedGroup, setSelectedGroup] = useState<string | null>(null),
+    [focusedConnection, setFocusedConnection] = useState<string | null>(null),
     [linkSource, setLinkSource] = useState<{
       kind: "note" | "group";
       id: string;
@@ -184,6 +188,7 @@ export function WhiteboardPanel({
     return saveTask.current;
   };
   function update(next: Board, before?: Board) {
+    next = { ...next, hiddenNoteIds: current.current.hiddenNoteIds };
     current.current = next;
     setBoard(next);
     dirty.current = true;
@@ -284,6 +289,72 @@ export function WhiteboardPanel({
   }, [resource.data, localConnections]);
   const sourceRef = useRef(source);
   sourceRef.current = source;
+  const canvasHost = useRef<HTMLDivElement>(null);
+  const memoGroups = useMemo(
+    () => (source ? connectedMemoGroups(source) : []),
+    [source],
+  );
+  const focus = memoGroups.find((g) =>
+    g.connections.some((c) => c.id === focusedConnection),
+  );
+  const displaySource = useMemo(
+    () => (source && focus ? { ...source, notes: focus.notes } : source),
+    [source, focus],
+  );
+  const displayBoard = useMemo(
+    () => (focus ? { ...board, filter: emptyBoard().filter } : board),
+    [board, focus],
+  );
+  function showConnection(c: BoardConnection) {
+    const group = memoGroups.find((g) =>
+      g.connections.some((edge) => edge.id === c.id),
+    );
+    if (!group || linkBusy) return;
+    const id = "manual:" + group.id,
+      before = current.current;
+    update(
+      revealMemoGroup(
+        before,
+        group.notes.map((n) => n.id),
+        id,
+      ),
+      before,
+    );
+    setSelectedGroup(id);
+    setSelectedNote(null);
+    setLinkSource(null);
+    setFocusedConnection(c.id);
+    setSearchRevision((n) => n + 1);
+    canvasHost.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  async function editSelectedConnection(payload: unknown) {
+    if (linkBusy) return null;
+    const p = payload as Pick<
+      BoardConnection,
+      "id" | "relation" | "reason" | "status"
+    > & { expectedVersion: number };
+    const old = sourceRef.current?.connections.find((c) => c.id === p.id);
+    if (!old) return null;
+    setLinkBusy(true);
+    setError("");
+    try {
+      const result = await send("editConnection", p);
+      patchConnection({
+        ...old,
+        relation: p.relation,
+        reason: p.reason,
+        status: p.status,
+        version: result.version,
+      });
+      setMessage(result.queued ? "기기에 저장됨" : "저장됨");
+      return result;
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    } finally {
+      setLinkBusy(false);
+    }
+  }
   function patchConnection(c: BoardConnection) {
     setLocalConnections((old) => [...old.filter((x) => x.id !== c.id), c]);
   }
@@ -408,7 +479,7 @@ export function WhiteboardPanel({
         if (c)
           patchConnection({ ...c, status: l.status, version: result.version });
       }
-      update(undo.board);
+      update({ ...undo.board, hiddenNoteIds: current.current.hiddenNoteIds });
       criteriaEdited.current = false;
       setFilter(undo.board.filter);
       setUndo(null);
@@ -493,15 +564,17 @@ export function WhiteboardPanel({
     }
   }
   const derived = useMemo(() => {
-    if (!source) return null;
+    if (!source || !displaySource) return null;
     return {
-      filtered: filterNotes(source, board.filter),
-      scene: buildScene(source, board),
+      filtered: filterNotes(displaySource, displayBoard.filter).filter(
+        (n) => !(board.hiddenNoteIds ?? []).includes(n.id),
+      ),
+      scene: buildScene(displaySource, displayBoard),
       labels: new Map(
         source.notes.map((n) => [n.id, n.title || n.content.slice(0, 30)]),
       ),
     };
-  }, [source, board]);
+  }, [source, displaySource, displayBoard, board]);
   const facets = useMemo(
     () =>
       source
@@ -554,6 +627,7 @@ export function WhiteboardPanel({
             before,
           );
           setSelectedGroup(null);
+          setFocusedConnection(null);
           setSelectedNote(null);
         }}
       >
@@ -700,6 +774,11 @@ export function WhiteboardPanel({
             disabled={linkBusy}
             onClick={() => {
               version.current = source.board?.version ?? 0;
+              current.current = {
+                ...current.current,
+                hiddenNoteIds: source.board?.data.hiddenNoteIds,
+              };
+              setBoard(current.current);
               needsChoice.current = false;
               setConflict(false);
               pending.current = current.current;
@@ -732,10 +811,28 @@ export function WhiteboardPanel({
           </button>
         </div>
       )}
-      <div className={linkBusy ? "wb-saving-link" : ""} aria-busy={linkBusy}>
+      {focus && (
+        <div className="wb-focus-toolbar">
+          <strong>선택한 연결 · {focus.notes.length}개 메모</strong>
+          <button
+            type="button"
+            onClick={() => {
+              setFocusedConnection(null);
+              setSearchRevision((n) => n + 1);
+            }}
+          >
+            전체 보드 보기
+          </button>
+        </div>
+      )}
+      <div
+        ref={canvasHost}
+        className={linkBusy ? "wb-saving-link" : ""}
+        aria-busy={linkBusy}
+      >
         <WhiteboardCanvas
-          source={source}
-          board={board}
+          source={displaySource!}
+          board={displayBoard}
           onDrop={(...args) => {
             if (!linkBusy) void drop(...args);
           }}
@@ -758,7 +855,11 @@ export function WhiteboardPanel({
           onSelectGroup={selectGroup}
           selectedNote={selectedNote}
           selectedGroup={selectedGroup}
-          fitKey={JSON.stringify([board.filter, searchRevision])}
+          fitKey={JSON.stringify([
+            board.filter,
+            searchRevision,
+            focusedConnection,
+          ])}
           busy={linkBusy}
           onSelectLine={() => {
             setSelectedNote(null);
@@ -775,6 +876,20 @@ export function WhiteboardPanel({
           }}
         />
       </div>
+      {focus && (
+        <section
+          className="panel wb-relationship-detail"
+          aria-label="연결된 메모 내용"
+        >
+          <MemoGroupDetail
+            group={focus}
+            onOpen={onOpen}
+            busy={linkBusy}
+            onSave={editSelectedConnection}
+            onRemove={(c) => void removeConnection(c)}
+          />
+        </section>
+      )}
       <details className="wb-connection-list">
         <summary>
           연결 관리 · 메모{" "}
@@ -790,10 +905,16 @@ export function WhiteboardPanel({
           )
           .map((c) => (
             <div key={c.id}>
-              <span>
+              <button
+                className="wb-connection-select"
+                type="button"
+                disabled={linkBusy}
+                onClick={() => showConnection(c)}
+                aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 보드에서 보기`}
+              >
                 {labels.get(c.source_id)} ↔ {labels.get(c.target_id)}{" "}
                 <small>{relationNames[c.relation as Relation] ?? "관련"}</small>
-              </span>
+              </button>
               <button
                 type="button"
                 disabled={linkBusy}

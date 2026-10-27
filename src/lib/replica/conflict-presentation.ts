@@ -64,6 +64,7 @@ const operations: Record<string, string> = {
   addBook: "도서 추가",
   editBook: "도서 정보 수정",
   saveWhiteboard: "화이트보드 배치",
+  setWhiteboardNoteVisibility: "화이트보드 표시 설정",
   upsertTopic: "주제 수정",
   deleteTopic: "주제 삭제",
   restoreTopic: "주제 복원",
@@ -202,6 +203,19 @@ export function presentConflict(review: ReviewInput) {
         `${Array.isArray(data.links) ? data.links.length : 0}개`,
       );
       add("query", "검색어", data.filter?.q || "전체");
+      add(
+        "hidden_notes",
+        "가린 메모",
+        Array.isArray(data.hiddenNoteIds) && data.hiddenNoteIds.length
+          ? data.hiddenNoteIds
+              .slice(0, 20)
+              .map((id: string) => context.sourceTitles[`note:${id}`] || "메모")
+              .join(", ") +
+              (data.hiddenNoteIds.length > 20
+                ? ` 외 ${data.hiddenNoteIds.length - 20}개`
+                : "")
+          : "없음",
+      );
       const groupName = (id: string) =>
         id === "unclassified"
           ? "미분류 메모"
@@ -504,6 +518,7 @@ export function presentConflict(review: ReviewInput) {
       ["group_details", "묶음 구성", aData.groups, bData.groups],
       ["link_details", "묶음 연결", aData.links, bData.links],
       ["collapsed", "접힌 묶음", aData.collapsed, bData.collapsed],
+      ["hidden_notes", "가린 메모", aData.hiddenNoteIds, bData.hiddenNoteIds],
       [
         "group_positions",
         "묶음 배치",

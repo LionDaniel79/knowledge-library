@@ -206,6 +206,12 @@ for (const width of [390, 1280])
         0,
       );
     await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+    await expect(page.locator(".memo-box-list > button")).toHaveCount(1);
+    await expect(page.locator(".memo-box-list")).toContainText("처음 생각");
+    await expect(page.locator(".memo-box-list")).toContainText("지금 생각");
+    await expect(page.locator(".memo-box-list")).not.toContainText(
+      "에 관한 나의 문장",
+    );
     await page.locator(".memo-box-list > button").first().click();
     const detail = page.locator(".memo-box-detail");
     await expect(
@@ -216,7 +222,11 @@ for (const width of [390, 1280])
     await expect
       .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
       .toBe(1);
-    await detail.getByRole("button", { name: "관련 기록 남기기" }).click();
+    await detail
+      .locator(".memo-group-note")
+      .first()
+      .getByRole("button", { name: "관련 기록 남기기" })
+      .click();
     const dialog = page.getByRole("dialog", { name: "새로운 기록" });
     await expect(dialog).toBeVisible();
     await dialog.locator(".note-topic-field summary").click();
@@ -479,7 +489,7 @@ test("refresh keeps an unfinished connection reason and its original version", a
   f.source.notes[1].title = "갱신된 도착 메모";
   await page.evaluate(() => (window as any).refreshFixture());
   await expect(
-    detail.getByRole("button", { name: "갱신된 도착 메모", exact: true }),
+    detail.getByRole("heading", { name: "갱신된 도착 메모", exact: true }),
   ).toBeVisible();
   await expect(detail.getByLabel("연결 이유")).toHaveValue(
     "연결에 관한 내 초안",

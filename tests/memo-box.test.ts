@@ -1,6 +1,55 @@
 import { describe, expect, it } from "vitest";
 import { buildMemoBox } from "../src/lib/memo-box";
+import { connectedMemoGroups } from "../src/lib/memo-box";
 import { emptyBoard, type WhiteboardSnapshot } from "../src/lib/whiteboard";
+it("lists one title group per accepted connected component, including cycles but excluding rejected and missing notes", () => {
+  const s = {
+    notes: [
+      { id: "a", title: "첫 제목" },
+      { id: "b", title: "둘째 제목" },
+      { id: "c", title: "셋째 제목" },
+      { id: "d", title: "독립 제목" },
+    ],
+    connections: [
+      ...[
+        ["a", "b"],
+        ["b", "c"],
+        ["c", "a"],
+      ].map(([a, b], i) => ({
+        id: String(i),
+        source_kind: "note",
+        target_kind: "note",
+        source_id: a,
+        target_id: b,
+        status: "accepted",
+      })),
+      {
+        id: "x",
+        source_kind: "note",
+        target_kind: "note",
+        source_id: "c",
+        target_id: "d",
+        status: "rejected",
+      },
+      {
+        id: "y",
+        source_kind: "note",
+        target_kind: "note",
+        source_id: "c",
+        target_id: "gone",
+        status: "accepted",
+      },
+    ],
+  } as WhiteboardSnapshot;
+  const groups = connectedMemoGroups(s);
+  expect(groups).toHaveLength(1);
+  expect(groups[0].notes.map((n) => n.title)).toEqual([
+    "첫 제목",
+    "둘째 제목",
+    "셋째 제목",
+  ]);
+  expect(groups[0].connections).toHaveLength(3);
+});
 describe("memo box", () => {
   it("uses accepted active note edges and respects a direct rejection of an inherited book topic", () => {
     const s = {

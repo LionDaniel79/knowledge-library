@@ -38,7 +38,13 @@ import {
   boardNoteLinkSchema,
   connectionForPair,
   publicBoardConnection,
+  emptyBoard,
 } from "../../lib/whiteboard";
+import {
+  noteVisibilitySchema,
+  withWhiteboardNoteVisibility,
+  whiteboardSaveData,
+} from "../../lib/whiteboard-visibility";
 export interface OptimisticEffect {
   entity: SyncEntity;
   key: string;
@@ -367,7 +373,27 @@ export async function prepareOptimistic(
   } else if (path === "/api/knowledge") {
     const p = body.payload;
     body.entityId = id;
-    if (body.type === "saveWhiteboard") {
+    if (body.type === "setWhiteboardNoteVisibility") {
+      const p = noteVisibilitySchema.parse(body.payload);
+      await note(p.noteId);
+      const old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
+      base = old;
+      entityId = WHITEBOARD_ID;
+      body.entityId = WHITEBOARD_ID;
+      const original = old?.data ?? emptyBoard(),
+        data = withWhiteboardNoteVisibility(original, p.noteId, p.visible);
+      if (data !== original)
+        put("library_whiteboards", {
+          id: WHITEBOARD_ID,
+          data,
+          version: (old?.version ?? 0) + 1,
+          updated_at: at,
+        });
+      result = {
+        id: WHITEBOARD_ID,
+        version: (old?.version ?? 0) + (data === original ? 0 : 1),
+      };
+    } else if (body.type === "saveWhiteboard") {
       const v = boardSaveSchema.parse(p),
         old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
       check(old, v.expectedVersion);
@@ -376,7 +402,7 @@ export async function prepareOptimistic(
       body.entityId = WHITEBOARD_ID;
       put("library_whiteboards", {
         id: WHITEBOARD_ID,
-        data: v.data,
+        data: whiteboardSaveData(v.data, old?.data, v.includeVisibility),
         version: (old?.version ?? 0) + 1,
         updated_at: at,
       });

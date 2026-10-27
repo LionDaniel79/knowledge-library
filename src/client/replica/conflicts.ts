@@ -76,6 +76,11 @@ export async function readConflictContext(
         sources.set(`${kind}:${id}`, { kind, id });
     if (value.data && typeof value.data === "object") {
       const data = value.data;
+      for (const id of (Array.isArray(data.hiddenNoteIds)
+        ? data.hiddenNoteIds
+        : []
+      ).slice(0, 20))
+        sources.set(`note:${id}`, { kind: "note", id });
       for (const id of data.filter?.books ?? [])
         if (typeof id === "string") books.add(id);
       for (const id of data.filter?.topics ?? [])
@@ -153,9 +158,13 @@ export async function loadReplicaConflict(
     last = chain.at(-1) ?? entry,
     change = last.command as QueuedChange;
   const primary =
-    change.effects.find(
-      (e) => e.after?.id === entry.entityId && e.entity !== "library_revisions",
-    ) ?? first.effects.find((e) => e.entity !== "library_revisions");
+    [...chain]
+      .reverse()
+      .flatMap((e) => (e.command as QueuedChange).effects)
+      .find(
+        (e) =>
+          e.after?.id === entry.entityId && e.entity !== "library_revisions",
+      ) ?? first.effects.find((e) => e.entity !== "library_revisions");
   const cp = (await storage.checkpoint())!;
   const latest = primary
     ? await baseRow(storage, primary.entity, primary.key)
@@ -334,11 +343,30 @@ export async function applyReplicaResolution(
   const cp = (await storage.checkpoint())!,
     removed = new Set(current.chain.map((e) => e.requestId)),
     all = await storage.listOutbox();
+  const selectedEntry =
+    current.primary?.entity === "library_whiteboards" && current.local?.data
+      ? {
+          ...current.entry,
+          command: {
+            ...(current.entry.command as QueuedChange),
+            body: {
+              ...(current.entry.command as QueuedChange).body,
+              type: "saveWhiteboard",
+              payload: {
+                data: current.local.data,
+                expectedVersion: current.latest?.version ?? 0,
+                includeVisibility: true,
+              },
+            },
+            effects: [{ ...current.primary, after: current.local }],
+          },
+        }
+      : current.entry;
   const next =
     resolution.choice === "server"
       ? null
       : resolveReplicaConflict({
-          entry: current.entry,
+          entry: selectedEntry,
           base: current.base,
           latest: current.latest,
           ...resolution,

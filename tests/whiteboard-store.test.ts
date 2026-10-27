@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { createKnowledgeStore } from "../src/server/knowledge-store";
-import { readWhiteboard } from "../src/server/whiteboard-store";
+import {
+  readWhiteboard,
+  readWhiteboardVisibility,
+} from "../src/server/whiteboard-store";
 import { emptyBoard, WHITEBOARD_ID } from "../src/lib/whiteboard";
 let fixture: Awaited<ReturnType<typeof testDatabase>>;
 beforeAll(async () => {
@@ -16,6 +19,65 @@ const command = (type: string, payload: unknown) => ({
   requestId: randomUUID(),
   type,
   payload,
+});
+it("saves reversible owner-only visibility without losing layout, old-client saves or other hidden notes", async () => {
+  const owner = randomUUID(),
+    library = createLibraryStore(fixture.db),
+    store = createKnowledgeStore(fixture.db);
+  const a = await library.mutate(
+      owner,
+      command("addNote", { content: "안전하게 보존할 메모" }),
+    ),
+    b = await library.mutate(
+      owner,
+      command("addNote", { content: "다른 메모" }),
+    );
+  const data = emptyBoard();
+  data.filter.q = "내 배치";
+  await store.mutate(
+    owner,
+    command("saveWhiteboard", { data, expectedVersion: 0 }),
+  );
+  const hide = command("setWhiteboardNoteVisibility", {
+    noteId: a.id,
+    visible: false,
+  });
+  const first = await store.mutate(owner, hide);
+  await store.mutate(owner, hide);
+  expect(await readWhiteboardVisibility(fixture.db, owner, a.id)).toEqual({
+    visible: false,
+  });
+  await store.mutate(
+    owner,
+    command("setWhiteboardNoteVisibility", { noteId: b.id, visible: false }),
+  );
+  const oldClient = emptyBoard();
+  oldClient.hiddenNoteIds = [];
+  oldClient.filter.q = "새 배치";
+  await store.mutate(
+    owner,
+    command("saveWhiteboard", {
+      data: oldClient,
+      expectedVersion: (first.version ?? 0) + 1,
+    }),
+  );
+  await store.mutate(
+    owner,
+    command("setWhiteboardNoteVisibility", { noteId: a.id, visible: true }),
+  );
+  const latest = await readWhiteboard(fixture.db, owner);
+  expect(latest.board?.data.filter.q).toBe("새 배치");
+  expect(latest.board?.data.hiddenNoteIds).toEqual([b.id]);
+  expect(latest.notes).toHaveLength(2);
+  await expect(
+    store.mutate(
+      randomUUID(),
+      command("setWhiteboardNoteVisibility", { noteId: a.id, visible: false }),
+    ),
+  ).rejects.toMatchObject({ status: 404 });
+  await expect(
+    readWhiteboardVisibility(fixture.db, randomUUID(), a.id),
+  ).rejects.toMatchObject({ status: 404 });
 });
 it("saves board versions and rejects stale edits without overwriting the owner's board", async () => {
   const store = createKnowledgeStore(fixture.db),

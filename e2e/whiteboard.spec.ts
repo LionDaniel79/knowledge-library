@@ -285,6 +285,79 @@ test("arrange packs visible notes, preserves connections and can undo the layout
     .toEqual(original.positions[key]);
 });
 
+test("connection management reveals an editable memo group without creating extra relationships", async ({
+  page,
+}, testInfo) => {
+  const f = await mount(page, connectedFixture);
+  await page.locator(".wb-connection-list summary").click();
+  await page
+    .getByRole("button", {
+      name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(2);
+  await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(1);
+  const detail = page.getByRole("region", { name: "연결된 메모 내용" });
+  await expect(detail).toContainText("본문에만 나오는 수용의 의미");
+  await expect(detail).toContainText("두 번째 내 생각");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("connection-group.png"),
+    fullPage: true,
+  });
+  await detail
+    .getByRole("combobox", { name: "관계", exact: true })
+    .selectOption("supports");
+  await detail
+    .getByRole("textbox", { name: "연결 이유", exact: true })
+    .fill("새 주장을 뒷받침한다");
+  await detail
+    .getByRole("button", { name: "연결 수정 저장", exact: true })
+    .click();
+  await expect
+    .poll(() => f.state.connections[0].reason)
+    .toBe("새 주장을 뒷받침한다");
+  expect(f.state.connections[0].relation).toBe("supports");
+  expect(f.state.connections).toHaveLength(1);
+  await expect.poll(() => f.state.board.data.groups.length).toBe(1);
+  expect(f.state.board.data.groups[0].noteIds).toHaveLength(2);
+  expect(f.calls.some((c) => c.type === "connectWhiteboardNotes")).toBe(false);
+  await page
+    .getByRole("button", { name: "전체 보드 보기", exact: true })
+    .click();
+  await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(5);
+});
+test("layout undo keeps visibility changed by another note editor", async ({
+  page,
+}) => {
+  const f = await mount(page, connectedFixture);
+  await page.getByRole("button", { name: "메모 정렬", exact: true }).click();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBe(1);
+  f.state.board = {
+    ...f.state.board,
+    version: f.state.board.version + 1,
+    data: { ...f.state.board.data, hiddenNoteIds: [f.state.notes[0].id] },
+  };
+  await page.evaluate(() => (window as any).refreshBoard());
+  await expect(page.getByText("4개 메모", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBe(2);
+  expect(f.state.board.data.hiddenNoteIds).toEqual([f.state.notes[0].id]);
+  await expect(
+    page.locator(`.wb-note[data-note-id="${f.state.notes[0].id}"]`),
+  ).toHaveCount(0);
+  expect(f.state.notes).toHaveLength(5);
+});
+
 test("all whiteboard facets keep two selected choices until Search", async ({
   page,
 }) => {
@@ -574,6 +647,7 @@ test("touch line target and unlink controls keep a usable size when zoomed out",
     });
     const button = actions.getByRole("button", { name: /끊기/ });
     const rect = await button.boundingBox();
+    expect((await actions.boundingBox())!.width).toBeLessThanOrEqual(320);
     expect(rect!.width).toBeGreaterThanOrEqual(44);
     expect(rect!.height).toBeGreaterThanOrEqual(44);
     expect(

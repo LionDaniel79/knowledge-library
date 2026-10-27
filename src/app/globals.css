@@ -4413,10 +4413,10 @@ textarea {
   z-index: 20;
   top: 12px;
   left: 12px;
-  width: min(440px, calc(100% - 24px));
-  max-height: min(55dvh, 320px);
+  width: min(300px, calc(100% - 24px));
+  max-height: min(40dvh, 230px);
   overflow: auto;
-  padding: 8px 12px;
+  padding: 6px 8px;
   border: 1px solid #b9ccc1;
   border-radius: 10px;
   background: #fffffff7;
@@ -4834,8 +4834,72 @@ textarea {
   width: 100%;
   display: block;
   text-align: left;
-  padding: 12px;
+  padding: 8px 10px;
   white-space: normal;
+}
+.memo-group-title {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.memo-group-note + .memo-group-note {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 16px;
+}
+.memo-group-note h3 {
+  font-size: 17px;
+  margin: 0 0 6px;
+}
+.memo-box-edge h4 {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
+.note-whiteboard-visibility,
+.wb-focus-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.note-whiteboard-visibility {
+  padding: 6px 0;
+}
+.segmented-options {
+  display: flex;
+  gap: 0;
+}
+.segmented-options button {
+  border: 1px solid var(--line);
+  border-radius: 0;
+  min-height: 38px;
+  padding: 6px 14px;
+}
+.segmented-options button:first-child {
+  border-radius: 7px 0 0 7px;
+}
+.segmented-options button:last-child {
+  border-radius: 0 7px 7px 0;
+}
+.segmented-options button[aria-pressed="true"] {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+.wb-focus-toolbar {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.wb-relationship-detail {
+  margin-top: 12px;
+}
+.wb-connection-select {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  flex: 1;
 }
 .memo-box-list > button.selected {
   border-color: #284d40;

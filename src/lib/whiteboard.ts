@@ -49,6 +49,7 @@ export const boardSchema = z
     links: z
       .array(z.object({ source: groupId, target: groupId }).strict())
       .max(5000),
+    hiddenNoteIds: z.array(z.string().uuid()).max(10000).optional(),
   })
   .strict()
   .superRefine((b, ctx) => {
@@ -173,6 +174,7 @@ export const emptyBoard = (): Board => ({
   groups: [],
   collapsed: [],
   links: [],
+  hiddenNoteIds: [],
 });
 const normalized = (s: string) =>
   s.normalize("NFKC").toLocaleLowerCase().trim();
@@ -213,7 +215,12 @@ const safePoint = (p: Point): Point => ({
   y: Math.max(0, Math.min(50000, p.y)),
 });
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
-  const visible = new Set(filterNotes(source, b.filter).map((n) => n.id)),
+  const hidden = new Set(b.hiddenNoteIds ?? []);
+  const visible = new Set(
+      filterNotes(source, b.filter)
+        .filter((n) => !hidden.has(n.id))
+        .map((n) => n.id),
+    ),
     notes = new Map(source.notes.map((n) => [n.id, n])),
     assigned = new Map(source.notes.map((n) => [n.id, noteTopics(source, n)])),
     manual = new Set(b.groups.flatMap((g) => g.noteIds)),
@@ -436,6 +443,7 @@ export const boardSaveSchema = z
   .object({
     expectedVersion: z.number().int().nonnegative(),
     data: boardSchema,
+    includeVisibility: z.boolean().optional(),
   })
   .strict();
 export const boardNoteLinkSchema = z
@@ -445,6 +453,8 @@ export const boardNoteLinkSchema = z
     message: "다른 메모를 선택해 주세요.",
   });
 export function seedBoard(source: WhiteboardSnapshot, b: Board): Board {
+  if (b.hiddenNoteIds === undefined)
+    b = { ...b, hiddenNoteIds: source.board?.data.hiddenNoteIds ?? [] };
   const all = buildScene(source, {
       ...b,
       filter: { topics: [], tags: [], categories: [], books: [], q: "" },

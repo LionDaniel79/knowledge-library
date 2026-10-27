@@ -1,4 +1,9 @@
-import { WHITEBOARD_ID, boardSaveSchema } from "../lib/whiteboard";
+import { WHITEBOARD_ID, boardSaveSchema, emptyBoard } from "../lib/whiteboard";
+import {
+  noteVisibilitySchema,
+  withWhiteboardNoteVisibility,
+  whiteboardSaveData,
+} from "../lib/whiteboard-visibility";
 import { projectNote } from "../lib/replica/projections";
 import { LibraryError, type Executor, type Database } from "./library-store";
 import { randomUUID } from "node:crypto";
@@ -28,17 +33,20 @@ export async function saveWhiteboard(
       409,
       "화이트보드가 다른 곳에서 변경됐습니다. 현재 배치는 유지됩니다. 최신 보드와 비교해 주세요.",
     );
+  // Ordinary layout saves and undo cannot change note visibility. Only its
+  // dedicated command or a reviewed conflict replacement includes that setting.
+  const data = whiteboardSaveData(p.data, before?.data, p.includeVisibility);
   const after = before
     ? (
         await tx.query(
           "UPDATE library_whiteboards SET data=$3,version=version+1,updated_at=now() WHERE owner_id=$1 AND id=$2 RETURNING *",
-          [owner, WHITEBOARD_ID, JSON.stringify(p.data)],
+          [owner, WHITEBOARD_ID, JSON.stringify(data)],
         )
       ).rows[0]
     : (
         await tx.query(
           "INSERT INTO library_whiteboards(owner_id,id,data) VALUES($1,$2,$3) RETURNING *",
-          [owner, WHITEBOARD_ID, JSON.stringify(p.data)],
+          [owner, WHITEBOARD_ID, JSON.stringify(data)],
         )
       ).rows[0];
   await tx.query(
@@ -52,6 +60,44 @@ export async function saveWhiteboard(
     ],
   );
   return { id: WHITEBOARD_ID, version: after.version };
+}
+export async function setWhiteboardNoteVisibility(
+  tx: Executor,
+  owner: string,
+  input: unknown,
+) {
+  const p = noteVisibilitySchema.parse(input);
+  const before = (
+    await tx.query(
+      "SELECT id,data,version FROM library_whiteboards WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+      [owner, WHITEBOARD_ID],
+    )
+  ).rows[0];
+  const original = before?.data ?? emptyBoard(),
+    data = withWhiteboardNoteVisibility(original, p.noteId, p.visible);
+  if (data === original)
+    return { id: WHITEBOARD_ID, version: before?.version ?? 0 };
+  return saveWhiteboard(tx, owner, {
+    expectedVersion: before?.version ?? 0,
+    data,
+    includeVisibility: true,
+  });
+}
+export async function readWhiteboardVisibility(
+  db: Database,
+  owner: string,
+  noteId: string,
+) {
+  if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
+  noteVisibilitySchema.shape.noteId.parse(noteId);
+  const row = (
+    await db.query(
+      "SELECT NOT (COALESCE(w.data->'hiddenNoteIds','[]'::jsonb) ? $2::text) AS visible FROM library_active_notes n LEFT JOIN library_whiteboards w ON w.owner_id=n.owner_id AND w.id=$3 WHERE n.owner_id=$1 AND n.id=$2::uuid",
+      [owner, noteId, WHITEBOARD_ID],
+    )
+  ).rows[0];
+  if (!row) throw new LibraryError(404, "메모를 찾을 수 없습니다.");
+  return { visible: row.visible };
 }
 export async function readWhiteboard(db: Database, owner: string) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");

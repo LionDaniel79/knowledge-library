@@ -5,7 +5,6 @@ import { containsSearchField } from "@/lib/search-fields";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import type { Library } from "@/lib/domain";
 import type { NewNoteContext, NoteTopicSnapshot } from "@/lib/note-context";
-import { type Relation } from "@/lib/knowledge";
 import { usePagedResource } from "../use-paged-resource";
 import { useLibraryCommand } from "../use-library-command";
 import {
@@ -14,7 +13,7 @@ import {
   PageSizeSelect,
 } from "../list-pagination";
 import { TopicEditor } from "./topic-editor";
-import { ConnectionEditor } from "./connection-editor";
+import { MemoGroupDetail } from "./group-detail";
 import { WritingWorkbench } from "./writing-workbench";
 export function MemoBox({
   library,
@@ -48,12 +47,14 @@ export function MemoBox({
   );
   const shown = useMemo(
     () =>
-      model?.connected.filter((n) =>
-        containsSearchField([n.title, n.content].join(" "), query),
+      model?.groups.filter((group) =>
+        group.notes.some((n) =>
+          containsSearchField([n.title, n.content].join(" "), query),
+        ),
       ) ?? [],
     [model, query],
   );
-  const active = model?.notes.get(selected),
+  const active = model?.groups.find((g) => g.id === selected),
     pairs = (model?.topicPairs ?? []).filter((p) =>
       containsSearchField(
         [
@@ -116,20 +117,17 @@ export function MemoBox({
               <div className="memo-box-list">
                 {shown
                   .slice(paging.offset, paging.offset + paging.size)
-                  .map((n) => (
+                  .map((group) => (
                     <button
-                      className={selected === n.id ? "selected" : ""}
-                      key={n.id}
-                      onClick={() => setSelected(n.id)}
+                      className={selected === group.id ? "selected" : ""}
+                      key={group.id}
+                      onClick={() => setSelected(group.id)}
                     >
-                      <strong>{n.title || n.content.slice(0, 50)}</strong>
-                      <small>
-                        {model.connections.get(n.id)?.length}개 연결 ·{" "}
-                        {(model.noteTopics.get(n.id) ?? [])
-                          .map((id) => model.topics.get(id)?.name)
-                          .join(", ") || "미분류"}
-                      </small>
-                      <p>{n.content.slice(0, 150)}</p>
+                      {group.notes.map((n) => (
+                        <span className="memo-group-title" key={n.id}>
+                          {n.title || n.content.slice(0, 50)}
+                        </span>
+                      ))}
                     </button>
                   ))}
               </div>
@@ -146,68 +144,23 @@ export function MemoBox({
             </div>
             <div className="panel memo-box-detail">
               {active ? (
-                <>
-                  <h3>{active.title || "메모"}</h3>
-                  <p className="preserve-text">{active.content}</p>
-                  <div className="form-footer">
-                    <button onClick={() => onOpen("note", active.id)}>
-                      메모 수정·분류
-                    </button>
-                    <button
-                      onClick={() =>
-                        onNewNote({
-                          relatedNotes: [
-                            { id: active.id, title: active.title },
-                          ],
-                          topicIds: model.noteTopics.get(active.id),
-                        })
-                      }
-                    >
-                      관련 기록 남기기
-                    </button>
-                  </div>
-                  {(model.connections.get(active.id) ?? []).map((c) => {
-                    const other = model.notes.get(
-                      c.source_id === active.id ? c.target_id : c.source_id,
-                    )!;
-                    return (
-                      <article className="memo-box-edge" key={c.id}>
-                        <button
-                          className="thought-title"
-                          onClick={() => setSelected(other.id)}
-                        >
-                          {other.title || other.content.slice(0, 50)}
-                        </button>
-                        <p>{other.content.slice(0, 250)}</p>
-                        <small>
-                          {model.notes.get(c.source_id)?.title || "메모"} →{" "}
-                          {model.notes.get(c.target_id)?.title || "메모"}
-                        </small>
-                        <ConnectionEditor
-                          connection={c}
-                          busy={command.busy}
-                          onSave={(payload) =>
-                            command.send("editConnection", payload)
-                          }
-                        />
-                        <button
-                          disabled={command.busy}
-                          onClick={() =>
-                            void command.send("editConnection", {
-                              id: c.id,
-                              expectedVersion: c.version,
-                              relation: c.relation as Relation,
-                              reason: c.reason,
-                              status: "rejected",
-                            })
-                          }
-                        >
-                          연결 끊기
-                        </button>
-                      </article>
-                    );
-                  })}
-                </>
+                <MemoGroupDetail
+                  group={active}
+                  onOpen={onOpen}
+                  onNewNote={onNewNote}
+                  topicIdsForNote={(id) => model.noteTopics.get(id)}
+                  busy={command.busy}
+                  onSave={(p) => command.send("editConnection", p)}
+                  onRemove={(c) =>
+                    void command.send("editConnection", {
+                      id: c.id,
+                      expectedVersion: c.version,
+                      relation: c.relation,
+                      reason: c.reason,
+                      status: "rejected",
+                    })
+                  }
+                />
               ) : (
                 <p>메모를 선택하면 연결과 내용을 볼 수 있습니다.</p>
               )}
