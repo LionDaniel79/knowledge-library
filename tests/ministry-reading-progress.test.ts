@@ -174,3 +174,114 @@ it("allows corrections and the final page without silently completing a book", a
     ).status,
   ).toBe(400);
 });
+
+it("completes reading with one revision and removes it from reading while preserving the completed date", async () => {
+  const store = createLibraryStore(fixture.db);
+  const book = await store.mutate(owner, {
+    requestId: randomUUID(),
+    type: "addBook",
+    payload: { title: "가상 완독 책", totalPages: 120, formats: ["paper"] },
+  });
+  const cycle = await store.mutate(owner, {
+    requestId: randomUUID(),
+    type: "startReading",
+    payload: { bookId: book.id, startedOn: "2026-10-20" },
+  });
+  const body = {
+    action: "complete-reading",
+    requestId: randomUUID(),
+    completion: { id: cycle.id, expectedVersion: 1, completedOn: "2026-10-27" },
+  };
+  const response = await call(body);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ id: cycle.id, version: 2 });
+  expect(await (await call(body)).json()).toEqual({ id: cycle.id, version: 2 });
+  expect(
+    (await (await call({ action: "reading" })).json()).items.some(
+      (item: any) => item.cycleId === cycle.id,
+    ),
+  ).toBe(false);
+  const saved = (
+    await fixture.db.query(
+      "SELECT status,current_page,completed_on::text AS date FROM library_cycles WHERE id=$1",
+      [cycle.id],
+    )
+  ).rows[0];
+  expect(saved).toEqual({
+    status: "completed",
+    current_page: 120,
+    date: "2026-10-27",
+  });
+  expect(
+    (await store.revisions(owner, cycle.id)).filter(
+      (r) => r.action === "completeReading",
+    ),
+  ).toHaveLength(1);
+});
+
+it("rejects invalid completion, foreign ownership and stale versions without changing reading status", async () => {
+  const store = createLibraryStore(fixture.db);
+  const book = await store.mutate(owner, {
+    requestId: randomUUID(),
+    type: "addBook",
+    payload: { title: "가상 쪽수 미정 책", formats: ["paper"] },
+  });
+  const cycle = await store.mutate(owner, {
+    requestId: randomUUID(),
+    type: "startReading",
+    payload: { bookId: book.id, startedOn: "2026-10-20" },
+  });
+  const send = (completion: unknown) =>
+    call({ action: "complete-reading", requestId: randomUUID(), completion });
+  for (const completedOn of ["2026-02-30", "2026-10-19"])
+    expect(
+      (await send({ id: cycle.id, expectedVersion: 1, completedOn })).status,
+    ).toBe(400);
+  expect(
+    (
+      await send({
+        id: cycle.id,
+        expectedVersion: 2,
+        completedOn: "2026-10-27",
+      })
+    ).status,
+  ).toBe(409);
+  for (const id of [foreignCycle, randomUUID()])
+    expect(
+      (await send({ id, expectedVersion: 1, completedOn: "2026-10-27" }))
+        .status,
+    ).toBe(404);
+  expect(
+    (
+      await send({
+        id: cycle.id,
+        expectedVersion: 1,
+        completedOn: "2026-10-27",
+        ownerId: "other",
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (await (await call({ action: "reading" })).json()).items.find(
+      (item: any) => item.cycleId === cycle.id,
+    ).cycleVersion,
+  ).toBe(1);
+  expect(
+    (
+      await send({
+        id: cycle.id,
+        expectedVersion: 1,
+        completedOn: "2026-10-27",
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await send({
+        id: cycle.id,
+        expectedVersion: 2,
+        completedOn: "2026-10-27",
+      })
+    ).status,
+  ).toBe(409);
+});

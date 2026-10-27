@@ -4,7 +4,7 @@ import {
   LibraryError,
   type Database,
 } from "./library-store";
-import { noteInput } from "../lib/domain";
+import { dateInput, noteInput } from "../lib/domain";
 import { readNoteDetail, readNotePage } from "./record-catalog";
 import { readMinistryBookCover } from "./ministry-book-cover";
 
@@ -42,6 +42,19 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("book"), id, offset }).strict(),
   z.object({ action: z.literal("note"), id }).strict(),
   z.object({ action: z.literal("cover"), id }).strict(),
+  z
+    .object({
+      action: z.literal("complete-reading"),
+      requestId: id,
+      completion: z
+        .object({
+          id,
+          expectedVersion: z.number().int().positive(),
+          completedOn: dateInput,
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       action: z.literal("update-progress"),
@@ -211,6 +224,14 @@ export function createMinistryEndpoint(options: {
         return json({
           note: noteDto(await readNoteDetail(options.db, owner, command.id)),
         });
+      if (command.action === "complete-reading")
+        return json(
+          await createLibraryStore(options.db).mutate(owner, {
+            requestId: command.requestId,
+            type: "completeReading",
+            payload: command.completion,
+          }),
+        );
       if (command.action === "update-progress")
         return json(
           await createLibraryStore(options.db).mutate(owner, {
