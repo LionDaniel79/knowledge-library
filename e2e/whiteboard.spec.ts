@@ -3,6 +3,187 @@ import { build } from "esbuild";
 import { randomUUID } from "node:crypto";
 import { emptyBoard } from "../src/lib/whiteboard";
 let bundle: string;
+
+test("ordinary wheel zooms around the cursor without moving notes or scrolling the page", async ({
+  page,
+  browserName,
+}) => {
+  await mount(page);
+  const viewport = page.locator(".wb-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  const box = (await viewport.boundingBox())!;
+  const cursor = { x: Math.round(box.x + 180), y: Math.round(box.y + 170) };
+  const wheel = async (deltaY: number) => {
+    if (browserName === "webkit")
+      await viewport.dispatchEvent("wheel", {
+        deltaY,
+        clientX: cursor.x,
+        clientY: cursor.y,
+        cancelable: true,
+      });
+    else await page.mouse.wheel(0, deltaY);
+  };
+  const camera = () =>
+    page.locator(".wb-world").evaluate((el) => {
+      const m = new DOMMatrix(getComputedStyle(el).transform);
+      return { x: m.e, y: m.f, zoom: m.a, scroll: window.scrollY };
+    });
+  const before = await camera();
+  const positions = await page
+    .locator(".wb-note")
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.cssText));
+  await page.mouse.move(cursor.x, cursor.y);
+  await wheel(-100);
+  await expect
+    .poll(async () => (await camera()).zoom)
+    .toBeGreaterThan(before.zoom);
+  const after = await camera();
+  expect((cursor.x - box.x - after.x) / after.zoom).toBeCloseTo(
+    (cursor.x - box.x - before.x) / before.zoom,
+    3,
+  );
+  expect((cursor.y - box.y - after.y) / after.zoom).toBeCloseTo(
+    (cursor.y - box.y - before.y) / before.zoom,
+    3,
+  );
+  expect(after.scroll).toBe(before.scroll);
+  expect(
+    await page
+      .locator(".wb-note")
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.cssText)),
+  ).toEqual(positions);
+  await wheel(100);
+  await expect
+    .poll(async () => (await camera()).zoom)
+    .toBeCloseTo(before.zoom, 3);
+  await viewport.dispatchEvent("wheel", {
+    deltaY: -100000,
+    clientX: cursor.x,
+    clientY: cursor.y,
+    cancelable: true,
+  });
+  await expect.poll(async () => (await camera()).zoom).toBe(1.8);
+  await viewport.dispatchEvent("wheel", {
+    deltaY: 100000,
+    clientX: cursor.x,
+    clientY: cursor.y,
+    cancelable: true,
+  });
+  await expect.poll(async () => (await camera()).zoom).toBe(0.1);
+});
+
+test("fullscreen fills the display and returns without resetting camera or page scroll", async ({
+  page,
+}, testInfo) => {
+  await mount(page);
+  const shell = page.locator(".wb-canvas-shell");
+  await shell.scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "축소", exact: true }).click();
+  const before = await shell.boundingBox();
+  const camera = await page.locator(".wb-world").getAttribute("style");
+  const scroll = await page.evaluate(() => window.scrollY);
+  const enter = page.getByRole("button", { name: "전체화면", exact: true });
+  await expect(page.locator(".wb-zoom button").last()).toHaveText("전체화면");
+  await enter.click();
+  await expect(
+    page.getByRole("button", { name: "이전화면", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      shell.evaluate((el) => {
+        const b = el.getBoundingClientRect();
+        return (
+          Math.abs(b.x) +
+          Math.abs(b.y) +
+          Math.abs(b.width - innerWidth) +
+          Math.abs(b.height - innerHeight)
+        );
+      }),
+    )
+    .toBeLessThan(3);
+  const supportsNative = await page.evaluate(() => document.fullscreenEnabled);
+  if (supportsNative)
+    await expect
+      .poll(() => shell.evaluate((el) => document.fullscreenElement === el))
+      .toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("fullscreen.png") });
+  expect(await page.locator(".wb-world").getAttribute("style")).toBe(camera);
+  await page.getByRole("button", { name: "이전화면", exact: true }).click();
+  await expect(enter).toBeVisible();
+  await expect
+    .poll(async () => (await shell.boundingBox())!.height)
+    .toBeCloseTo(before!.height, 0);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeCloseTo(scroll, 0);
+  expect(await page.locator(".wb-world").getAttribute("style")).toBe(camera);
+  await enter.click();
+  await page.keyboard.press("Escape");
+  await expect(enter).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement === null))
+    .toBe(true);
+  await page.evaluate(() => {
+    (window as any).fixtureEditor = true;
+  });
+  await enter.click();
+  await page.getByRole("button", { name: "첫 생각 열기", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "기록 수정" })).toBeVisible();
+  expect(await page.evaluate(() => document.fullscreenElement)).toBe(null);
+});
+
+for (const failure of ["unsupported", "rejected"] as const) {
+  test(`fullscreen ${failure} uses a reversible viewport fallback and details remain accessible`, async ({
+    page,
+  }) => {
+    await mount(page);
+    await page.evaluate((failure) => {
+      (window as any).fixtureEditor = true;
+      Object.defineProperty(Element.prototype, "requestFullscreen", {
+        configurable: true,
+        value:
+          failure === "unsupported"
+            ? undefined
+            : () => Promise.reject(new Error("denied")),
+      });
+    }, failure);
+    const enter = page.getByRole("button", { name: "전체화면", exact: true });
+    const oldOverflow = await page.evaluate(() => document.body.style.overflow);
+    await enter.click();
+    await expect(
+      page.getByRole("button", { name: "이전화면", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
+    await page.keyboard.press("Escape");
+    await expect(enter).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe(
+      oldOverflow,
+    );
+    await enter.click();
+    await page
+      .getByRole("button", { name: "첫 생각 열기", exact: true })
+      .click();
+    await expect(page.getByRole("dialog", { name: "기록 수정" })).toBeVisible();
+    await expect(enter).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
+      "hidden",
+    );
+    await page
+      .getByRole("dialog", { name: "기록 수정" })
+      .getByRole("button", { name: "닫기", exact: true })
+      .click();
+    await enter.click();
+    await page.evaluate(() => {
+      (window as any).fixtureMount++;
+      (window as any).flushBoard();
+    });
+    await expect(enter).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe(
+      oldOverflow,
+    );
+  });
+}
+
 test.beforeAll(async () => {
   bundle = (
     await build({

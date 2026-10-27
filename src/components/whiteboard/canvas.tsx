@@ -19,6 +19,7 @@ import {
   type WhiteboardSnapshot,
 } from "@/lib/whiteboard";
 import { relationNames, type Relation } from "@/lib/knowledge";
+import { useBoardFullscreen } from "./use-fullscreen";
 import {
   buildConnectionLines,
   hitPolygon,
@@ -79,6 +80,7 @@ export function WhiteboardCanvas({
   onRemoveGroupConnection: (source: string, target: string) => void;
   onArrange: () => void;
 }) {
+  const fullscreen = useBoardFullscreen();
   const viewport = useRef<HTMLDivElement>(null),
     active = useRef<Drag | null>(null),
     [drag, setDrag] = useState<Drag | null>(null),
@@ -156,17 +158,23 @@ export function WhiteboardCanvas({
     if (!el) return;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      setView((v) =>
-        e.ctrlKey
-          ? {
-              ...v,
-              zoom: Math.min(
-                1.8,
-                Math.max(0.1, v.zoom * (e.deltaY < 0 ? 1.1 : 0.9)),
-              ),
-            }
-          : { ...v, x: v.x - e.deltaX, y: v.y - e.deltaY },
-      );
+      if (active.current) return;
+      const unit =
+        e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      const dx = e.deltaX * unit,
+        dy = e.deltaY * unit;
+      const rect = el.getBoundingClientRect();
+      setView((v) => {
+        if (e.shiftKey || !dy) return { ...v, x: v.x - dx, y: v.y - dy };
+        const zoom = Math.min(
+          1.8,
+          Math.max(0.1, v.zoom * Math.exp(-dy * 0.002)),
+        );
+        const ratio = zoom / v.zoom;
+        const x = e.clientX - rect.left,
+          y = e.clientY - rect.top;
+        return { zoom, x: x - (x - v.x) * ratio, y: y - (y - v.y) * ratio };
+      });
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => {
@@ -307,7 +315,8 @@ export function WhiteboardCanvas({
   };
   return (
     <div
-      className="wb-canvas-shell"
+      ref={fullscreen.shell}
+      className={`wb-canvas-shell${fullscreen.fullscreen ? " wb-fullscreen" : ""}`}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
@@ -428,6 +437,13 @@ export function WhiteboardCanvas({
         >
           정렬
         </button>
+        <button
+          type="button"
+          aria-pressed={fullscreen.fullscreen}
+          onClick={() => void fullscreen.toggle()}
+        >
+          {fullscreen.fullscreen ? "이전화면" : "전체화면"}
+        </button>
       </div>
       <div
         className="wb-viewport"
@@ -478,7 +494,10 @@ export function WhiteboardCanvas({
                   <button
                     type="button"
                     aria-label={`${g.title} 묶음 선택`}
-                    onClick={() => onSelectGroup(g.id)}
+                    onClick={async () => {
+                      await fullscreen.exit();
+                      onSelectGroup(g.id);
+                    }}
                   >
                     선택
                   </button>
@@ -585,7 +604,10 @@ export function WhiteboardCanvas({
                   </small>
                   <button
                     type="button"
-                    onClick={() => onOpen(n.noteId)}
+                    onClick={async () => {
+                      await fullscreen.exit();
+                      onOpen(n.noteId);
+                    }}
                     aria-label={`${n.note.title || "메모"} 열기`}
                   >
                     열기
