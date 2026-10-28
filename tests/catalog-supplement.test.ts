@@ -13,6 +13,7 @@ import {
 } from "../src/local/curation/catalog-supplement";
 import { bookSelect } from "../src/server/book-records";
 import { collectBookReference } from "../src/local/curation/catalog";
+import { importCatalogReviewBatch } from "../src/server/catalog-review-store";
 import {
   claimCatalogSupplement,
   catalogCollectorScope,
@@ -352,4 +353,48 @@ it("does not treat absent library credits as independent confirmation of conflic
     facts: { ...facts, author: "", publisher: "" },
   };
   expect(libraryCorroborates(facts, [lib])).toBe(false);
+});
+it("keeps a pending candidate usable when automatic classification advances the book version", async () => {
+  const owner = randomUUID(),
+    b = await createLibraryStore(f.db).mutate(owner, {
+      type: "addBook",
+      requestId: randomUUID(),
+      payload: { ...facts, coverUrl: "", formats: ["paper"] },
+    });
+  const record = {
+    provider: "예스24" as const,
+    title: facts.title,
+    isbn: facts.isbn,
+    url: "https://www.yes24.com/product/goods/1",
+    facts: { ...facts, coverUrl: "" },
+  };
+  await importCatalogReviewBatch(f.db, owner, [
+    { bookId: b.id!, sourceVersion: 1, record },
+  ]);
+  const book = (
+    await f.db.query(`SELECT ${bookSelect} FROM library_books WHERE id=$1`, [
+      b.id,
+    ])
+  ).rows[0];
+  await supplementBook(f.db, owner, book, [
+    {
+      ...record,
+      provider: "도서관 정보나루",
+      url: "https://www.data4library.kr",
+      facts: {
+        ...record.facts,
+        category: "100",
+        classification: { verified: true, code: "100", method: "ISBN 일치" },
+      },
+    },
+  ]);
+  const review = (
+    await f.db.query(
+      "SELECT source_version,version,book_snapshot FROM library_catalog_reviews WHERE book_id=$1",
+      [b.id],
+    )
+  ).rows[0];
+  expect(review.source_version).toBe(2);
+  expect(review.version).toBe(2);
+  expect(review.book_snapshot.version).toBe(2);
 });

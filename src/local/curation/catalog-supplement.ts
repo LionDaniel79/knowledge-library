@@ -203,6 +203,25 @@ export async function supplementBook(
     }
     const version = String(current.version + (changed ? 1 : 0));
     if (changed)
+      await tx.query(
+        "UPDATE library_catalog_reviews SET source_version=$4,book_snapshot=$5,decision=coalesce(decision,'{}')||jsonb_build_object('sourceRefreshedBy','catalog_supplement','previousSourceVersion',source_version),version=version+1,updated_at=now() WHERE owner_id=$1 AND book_id=$2 AND source_version=$3 AND status IN ('pending','deferred')",
+        [
+          owner,
+          book.id,
+          current.version,
+          current.version + 1,
+          JSON.stringify({
+            id: book.id,
+            title: next.title,
+            author: next.author,
+            publisher: next.publisher,
+            isbn: next.isbn,
+            coverUrl: next.coverUrl,
+            version: current.version + 1,
+          }),
+        ],
+      );
+    if (changed)
       await carryCuration(tx, owner, book.id, String(current.version), version);
     const protection = await protectedCuration(tx, current.version);
     const latest = new Map<string, any>();
