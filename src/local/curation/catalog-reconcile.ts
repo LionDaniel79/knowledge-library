@@ -6,7 +6,8 @@ import { bookSelect } from "../../server/book-records";
 import { withSyncWrite } from "../../server/sync/write";
 import { mirrorCover } from "../../server/cover-mirrors";
 import type { Database } from "../../server/library-store";
-import { supplementBook } from "./catalog-supplement";
+import { supplementBook, libraryCorroborates } from "./catalog-supplement";
+import type { CollectedBook } from "./catalog";
 /** Reversible operator cleanup. Copies are never merged, and private records are untouched. */
 export async function reconcileCatalogReviews(
   db: Database,
@@ -15,6 +16,7 @@ export async function reconcileCatalogReviews(
   storeCover = mirrorCover,
   maxErrors = Infinity,
   bookId?: string,
+  corroboratingRecords: CollectedBook[] = [],
 ) {
   if (!owner) throw Error("Owner required.");
   const rows = (
@@ -40,15 +42,21 @@ export async function reconcileCatalogReviews(
     errorCodes: {} as Record<string, number>,
   };
   for (const [id, choices] of byBook) {
+    const proof = (book: any, facts: any) =>
+      catalogEditionProof(
+        book,
+        facts,
+        libraryCorroborates(book, corroboratingRecords),
+      );
     const ranked = [...choices].sort((a, b) => {
       const score = (r: any) =>
-        (catalogEditionProof(r, r.facts).certain ? 1000 : 0) +
+        (proof(r, r.facts).certain ? 1000 : 0) +
         (r.facts.coverUrl ? 100 : 0) +
         Math.min(r.toc_count, 50) +
         (r.source_version === r.current_version ? 10 : 0);
       return score(b) - score(a) || a.id.localeCompare(b.id);
     });
-    const winner = ranked.find((r) => catalogEditionProof(r, r.facts).certain);
+    const winner = ranked.find((r) => proof(r, r.facts).certain);
     if (winner) {
       if (!apply) {
         report.resolvedBooks++;
@@ -73,12 +81,12 @@ export async function reconcileCatalogReviews(
         ).rows;
         const records = full
           .map((r) => collectedReviewSchema.parse(r.record))
-          .filter((r) => catalogEditionProof(book, r.facts).certain);
+          .filter((r) => proof(book, r.facts).certain);
         const result = await supplementBook(
           db,
           owner,
           book,
-          records,
+          [...records, ...corroboratingRecords],
           false,
           storeCover,
         );
@@ -98,7 +106,7 @@ export async function reconcileCatalogReviews(
               winner.id,
               JSON.stringify({
                 reviewedBy: "isbn_reconciliation",
-                precheck: catalogEditionProof(book, winner.facts),
+                precheck: proof(book, winner.facts),
                 reason: "confirmed_owned_isbn",
               }),
               randomUUID(),

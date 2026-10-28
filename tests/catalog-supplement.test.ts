@@ -296,3 +296,47 @@ it("keeps a human-hidden cover and contents hidden after an unrelated edit", asy
     ).rows,
   ).toHaveLength(0);
 });
+it("uses independent library identity to corroborate a bookstore credit variant without rewriting the reader author", async () => {
+  const owner = randomUUID(),
+    b = await createLibraryStore(f.db).mutate(owner, {
+      type: "addBook",
+      requestId: randomUUID(),
+      payload: { ...facts, coverUrl: "", formats: ["paper"] },
+    });
+  const book = (
+    await f.db.query(`SELECT ${bookSelect} FROM library_books WHERE id=$1`, [
+      b.id,
+    ])
+  ).rows[0];
+  const yes = {
+    provider: "예스24" as const,
+    title: facts.title,
+    isbn: facts.isbn,
+    url: "https://www.yes24.com/product/goods/1",
+    facts: { ...facts, author: "편집자로 표기된 다른 이름" },
+    toc: ["서점의 목차"],
+  };
+  const lib = {
+    provider: "도서관 정보나루" as const,
+    title: facts.title,
+    isbn: facts.isbn,
+    url: "https://www.data4library.kr",
+    facts: { ...facts, coverUrl: "" },
+  };
+  await supplementBook(f.db, owner, book, [yes, lib], false, async () => ({
+    id: randomUUID(),
+    url: "/api/book-covers/fixture",
+  }));
+  expect(
+    (
+      await f.db.query(
+        "SELECT value FROM library_curation_items WHERE owner_id=$1 AND kind='toc' AND state='active'",
+        [owner],
+      )
+    ).rows[0]?.value,
+  ).toEqual(["서점의 목차"]);
+  expect(
+    (await f.db.query("SELECT author FROM library_books WHERE id=$1", [b.id]))
+      .rows[0].author,
+  ).toBe(facts.author);
+});

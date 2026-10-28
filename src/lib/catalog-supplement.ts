@@ -72,7 +72,11 @@ export function catalogSupplementProof(book: Identity, candidate: Identity) {
   return proof;
 }
 /** Use only to attach ISBN-bound evidence/cover, never to replace populated identity fields. */
-export function catalogEditionProof(book: Identity, candidate: Identity) {
+export function catalogEditionProof(
+  book: Identity,
+  candidate: Identity,
+  corroborated = false,
+) {
   const proof = catalogSupplementProof(book, candidate);
   const clean = (s: string) =>
     s
@@ -111,9 +115,10 @@ export function catalogEditionProof(book: Identity, candidate: Identity) {
     ...proof,
     certain:
       proof.matches.isbn &&
-      identityCompatible &&
+      (identityCompatible || corroborated) &&
       !volumeConflict &&
       (proof.matches.title || compatibleTitle),
     volumeConflict,
+    libraryCorroborated: corroborated,
   };
 }

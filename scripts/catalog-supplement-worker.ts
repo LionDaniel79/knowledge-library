@@ -108,6 +108,7 @@ try {
               undefined,
               Infinity,
               item.id,
+              result.records,
             );
           } else stats.pending++;
         } catch {

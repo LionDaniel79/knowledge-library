@@ -11,6 +11,12 @@ import type { Database } from "../../server/library-store";
 import { collectBookReference, type CollectedBook } from "./catalog";
 import { carryCuration } from "../../server/book-curation-history";
 type Provider = "yes24" | "library";
+export const libraryCorroborates = (book: any, records: CollectedBook[]) =>
+  records.some(
+    (r) =>
+      r.provider === "도서관 정보나루" &&
+      catalogSupplementProof(book, r.facts).certain,
+  );
 export async function collectSupplementRecords(
   isbn: string,
   lookup: (provider: Provider, isbn: string) => Promise<CollectedBook[]>,
@@ -37,8 +43,9 @@ export async function supplementBook(
   retry = false,
   storeCover = mirrorCover,
 ) {
+  const corroborated = libraryCorroborates(book, records);
   const compatible = records.filter(
-    (r) => catalogEditionProof(book, r.facts).certain,
+    (r) => catalogEditionProof(book, r.facts, corroborated).certain,
   );
   let cover = compatible.find((r) => r.facts.coverUrl)?.facts.coverUrl;
   const protectedCuration = async (
