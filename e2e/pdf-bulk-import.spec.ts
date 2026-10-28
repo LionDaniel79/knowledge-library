@@ -116,3 +116,59 @@ for (const width of [320, 390, 1440])
       ),
     ).toBe(true);
   });
+
+test("a lost scan response recovers its accepted job and shows progress instead of a JSON parsing error", async ({
+  page,
+}) => {
+  let accepted: any = null;
+  await page.route("https://library.test/**", async (r) => {
+    const u = new URL(r.request().url());
+    if (u.pathname === "/")
+      return r.fulfill({
+        contentType: "text/html",
+        body: `<!doctype html><style>${css}</style><div id="root"></div><script>${bundle.replace(/<\/script/gi, "<\\/script")}</script>`,
+      });
+    if (u.pathname === "/api/pdf/connection")
+      return r.fulfill({
+        json: {
+          available: true,
+          root: "D:\\books",
+          connected: false,
+          version: 0,
+        },
+      });
+    if (u.pathname === "/api/pdf/import") {
+      if (r.request().method() === "POST") {
+        const p = r.request().postDataJSON();
+        expect(p.requestId).toMatch(/^[a-f0-9-]{36}$/);
+        accepted = {
+          job: {
+            id: p.requestId,
+            owner: "owner",
+            root: p.root,
+            state: "scanning",
+            phase: "scanning",
+            updatedAt: Date.now(),
+            pauseRequested: false,
+            error: "",
+          },
+          counts: { existing: 120 },
+          total: 120,
+        };
+        return r.fulfill({ status: 502, body: "" });
+      }
+      return r.fulfill({ json: accepted ?? { job: null } });
+    }
+    return r.fulfill({ json: {} });
+  });
+  await page.goto("https://library.test/");
+  await page
+    .getByRole("button", { name: "PDF 보관 폴더 설정", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "PDF 일괄 등록", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toHaveText("폴더 조사 중");
+  await expect(page.getByText(/조사 120개/)).toBeVisible();
+  await expect(page.getByText(/Unexpected end|execute 'json'/)).toHaveCount(0);
+});

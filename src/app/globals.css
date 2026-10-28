@@ -4500,7 +4500,8 @@ textarea {
   bottom: max(12px, env(safe-area-inset-bottom));
   left: max(12px, env(safe-area-inset-left));
 }
-.wb-fullscreen .modal.memo-editor {
+.wb-fullscreen .modal.memo-editor,
+.modal.memo-editor.wb-memo-editor {
   inset: 0;
   margin: auto;
   width: min(305px, calc((100vw - 16px) / 2));
@@ -4509,47 +4510,50 @@ textarea {
   padding: 12px;
   overflow-y: auto;
 }
-.wb-fullscreen .memo-editor > header {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) > header {
   gap: 7px;
   margin-bottom: 12px;
   padding-block: 3px;
 }
-.wb-fullscreen .memo-editor > header h2 {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) > header h2 {
   font-size: 16px;
 }
-.wb-fullscreen .memo-editor > header .icon-button {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor)
+  > header
+  .icon-button {
   width: 28px;
   height: 28px;
   min-height: 28px;
   padding: 2px;
   flex-shrink: 0;
 }
-.wb-fullscreen .memo-editor .editor-form,
-.wb-fullscreen .memo-editor .editor-fields {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .editor-form,
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .editor-fields {
   gap: 9px;
 }
-.wb-fullscreen .memo-editor .form-row {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .form-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
   gap: 8px;
 }
-.wb-fullscreen .memo-editor input:not([type="checkbox"]),
-.wb-fullscreen .memo-editor select,
-.wb-fullscreen .memo-editor textarea {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor)
+  input:not([type="checkbox"]),
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) select,
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) textarea {
   min-width: 0;
   min-height: 32px;
   padding: 6px 7px;
 }
-.wb-fullscreen .memo-editor textarea {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) textarea {
   height: 112px;
   min-height: 80px;
 }
-.wb-fullscreen .memo-editor .primary,
-.wb-fullscreen .memo-editor .secondary {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .primary,
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .secondary {
   min-height: 32px;
   padding: 5px 7px;
 }
-.wb-fullscreen .memo-editor .form-footer {
+:is(.wb-fullscreen .memo-editor, .memo-editor.wb-memo-editor) .form-footer {
   gap: 6px;
   flex-wrap: wrap;
 }

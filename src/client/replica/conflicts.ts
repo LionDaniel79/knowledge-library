@@ -191,7 +191,7 @@ export async function loadReplicaConflict(
       primary?.entity === "library_books"
         ? await baseRow(storage, "library_book_exclusions", primary.key)
         : null;
-  const unavailable =
+  let unavailable =
     trash?.restored_at === null
       ? "다른 기기에서 휴지통으로 이동했습니다."
       : excluded?.state === "excluded"
@@ -202,6 +202,52 @@ export async function loadReplicaConflict(
             ? "서버에서 자료를 찾을 수 없습니다."
             : null;
   const local = primary?.after ?? change.body.payload ?? change.body;
+  const topic =
+    primary?.entity === "library_topic_memberships" && local?.topic_id
+      ? await baseRow(
+          storage,
+          "library_topics",
+          JSON.stringify([local.topic_id]),
+        )
+      : null;
+  const source =
+    primary?.entity === "library_topic_memberships" &&
+    ["note", "book"].includes(local?.source_kind)
+      ? await baseRow(
+          storage,
+          local.source_kind === "note" ? "library_notes" : "library_books",
+          JSON.stringify([local.source_id]),
+        )
+      : null;
+  const topicsToRestore: any[] = [];
+  if (primary?.entity === "library_topic_memberships") {
+    if (!topic)
+      unavailable =
+        "분류할 주제가 없습니다. 온라인 서재를 선택하면 이 확인 항목을 정리합니다. 메모는 유지됩니다.";
+    if (!source)
+      unavailable =
+        "분류할 자료를 찾을 수 없습니다. 온라인 서재를 선택해 이 확인 항목을 정리하세요.";
+    let cursor = topic;
+    const visited = new Set<string>();
+    while (
+      cursor?.archived_at &&
+      !visited.has(cursor.id) &&
+      topicsToRestore.length < 3
+    ) {
+      visited.add(cursor.id);
+      topicsToRestore.unshift(cursor);
+      if (!cursor.parent_id) break;
+      cursor = await baseRow(
+        storage,
+        "library_topics",
+        JSON.stringify([cursor.parent_id]),
+      );
+      if (!cursor)
+        unavailable =
+          "상위 주제를 찾을 수 없습니다. 온라인 서재를 선택해 확인 항목을 정리하세요.";
+    }
+  }
+  const deletedTopic = topic?.archived_at ? topic : null;
   const token = contentHash(
     JSON.stringify([
       cp.generation,
@@ -209,6 +255,9 @@ export async function loadReplicaConflict(
       cp.localRevision ?? 0,
       latest,
       unavailable,
+      topic,
+      topicsToRestore,
+      source,
       chain.map((e) => [e.requestId, e.command, e.state]),
     ]),
   );
@@ -221,6 +270,9 @@ export async function loadReplicaConflict(
     local,
     primary,
     unavailable,
+    deletedTopic,
+    topicsToRestore,
+    source,
     token,
     context: await readConflictContext(
       storage,
@@ -233,6 +285,7 @@ export type ConflictReview = Awaited<ReturnType<typeof loadReplicaConflict>>;
 export type Resolution = {
   choice: "mine" | "server" | "merge" | "copy";
   text?: { title: string; content: string };
+  restoreTopic?: boolean;
 };
 export function resolveReplicaConflict(input: {
   entry: OutboxEntry;
@@ -340,7 +393,7 @@ export function resolveReplicaConflict(input: {
 }
 /** Rebuild an unsent creation and its edits against the downloaded state. A
  * missing server row is normal here; the original commands remain archived. */
-async function replayUnsentCreation(
+async function replayReviewedChanges(
   storage: ReplicaStorage,
   review: ConflictReview,
   all: OutboxEntry[],
@@ -370,6 +423,50 @@ async function replayUnsentCreation(
     return entry;
   };
   try {
+    if (resolution.restoreTopic && review.deletedTopic) {
+      preparingOrder = review.firstEntry.order;
+      for (const [index, topic] of review.topicsToRestore.entries()) {
+        repository.invalidate();
+        const row = await repository.raw("library_topics", topic.id);
+        if (!row?.archived_at) continue;
+        const requestId = crypto.randomUUID(),
+          at = new Date().toISOString();
+        const prepared = await prepareOptimistic(
+          repository,
+          "/api/thought-map",
+          {
+            requestId,
+            type: "restoreTopic",
+            payload: { id: row.id, expectedVersion: row.version },
+          },
+          at,
+        );
+        entries.push({
+          ...review.firstEntry,
+          requestId,
+          entityId: prepared.entityId,
+          family: "thought-map",
+          order:
+            review.firstEntry.order - review.topicsToRestore.length + index,
+          state: "pending",
+          baseVersion: row.version,
+          baseRevision: null,
+          dependsOn: entries.length ? [entries.at(-1)!.requestId] : [],
+          command: {
+            path: "/api/thought-map",
+            body: prepared.body,
+            at,
+            base: prepared.base,
+            effects: prepared.effects,
+            result: prepared.result,
+            inputHash: contentHash(
+              JSON.stringify({ path: "/api/thought-map", body: prepared.body }),
+            ),
+          } satisfies QueuedChange,
+        });
+      }
+    }
+    const restorationRequest = entries.at(-1)?.requestId;
     for (const original of review.chain) {
       preparingOrder = original.order;
       repository.invalidate();
@@ -384,6 +481,15 @@ async function replayUnsentCreation(
       delete body.editBase;
       if (body.payload && Object.hasOwn(body.payload, "expectedVersion"))
         body.payload.expectedVersion = row?.version ?? 0;
+      if (body.type === "assignTopic" && body.payload) {
+        const source = await repository.raw(
+          body.payload.sourceKind === "note"
+            ? "library_notes"
+            : "library_books",
+          body.payload.sourceId,
+        );
+        if (source) body.payload.sourceVersion = String(source.version);
+      }
       if (Object.hasOwn(body, "version")) body.version = row?.version ?? 0;
       if (Object.hasOwn(body, "expectedVersion"))
         body.expectedVersion = row?.version ?? 0;
@@ -408,7 +514,12 @@ async function replayUnsentCreation(
         state: "pending",
         // Keep chronology relative to other pending topic/connection changes.
         order: original.order,
-        dependsOn: old.dependsOn.map((id) => requestMap.get(id) ?? id),
+        dependsOn: [
+          ...new Set([
+            ...old.dependsOn.map((id) => requestMap.get(id) ?? id),
+            ...(restorationRequest ? [restorationRequest] : []),
+          ]),
+        ],
         command: {
           path: c.path,
           body: prepared.body,
@@ -480,6 +591,15 @@ export async function applyReplicaResolution(
     );
   if (current.unavailable && !["server", "copy"].includes(resolution.choice))
     throw new ReplicaQueryError(409, current.unavailable);
+  if (
+    current.deletedTopic &&
+    resolution.choice !== "server" &&
+    !resolution.restoreTopic
+  )
+    throw new ReplicaQueryError(
+      409,
+      "삭제된 주제입니다. 주제 복원 후 적용을 선택하거나 온라인 상태를 유지하세요.",
+    );
   const cp = (await storage.checkpoint())!,
     removed = new Set(current.chain.map((e) => e.requestId)),
     all = await storage.listOutbox();
@@ -504,13 +624,16 @@ export async function applyReplicaResolution(
       : current.entry;
   const first = current.firstEntry.command as QueuedChange;
   const replay =
-    !current.latest &&
-    !current.unavailable &&
-    current.firstEntry.baseVersion === null &&
-    !first.base &&
-    first.effects.some((e) => e.entity !== "library_revisions" && !!e.after) &&
+    (current.primary?.entity === "library_topic_memberships" ||
+      (!current.latest &&
+        !current.unavailable &&
+        current.firstEntry.baseVersion === null &&
+        !first.base &&
+        first.effects.some(
+          (e) => e.entity !== "library_revisions" && !!e.after,
+        ))) &&
     ["mine", "merge"].includes(resolution.choice)
-      ? await replayUnsentCreation(storage, current, all, resolution)
+      ? await replayReviewedChanges(storage, current, all, resolution)
       : null;
   const next = replay
     ? null

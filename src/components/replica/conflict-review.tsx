@@ -107,6 +107,9 @@ export function ConflictReviewPanel() {
     try {
       await applyReplicaResolution(runtime.storage, review, {
         choice,
+        ...(choice === "mine" && review.deletedTopic
+          ? { restoreTopic: true }
+          : {}),
         ...(["merge", "copy"].includes(choice)
           ? { text: drafts[review.firstEntry.requestId] }
           : {}),
@@ -199,7 +202,11 @@ export function ConflictReviewPanel() {
               <ConflictChoice
                 name="서버 내용 선택"
                 title="온라인 서재"
-                description="서버에 저장된 최신 내용"
+                description={
+                  review.deletedTopic
+                    ? "주제 삭제 상태 유지 · 메모 보존"
+                    : "서버에 저장된 최신 내용"
+                }
                 preview={presentation.server}
                 selected={selected === "server"}
                 disabled={busy}
@@ -208,7 +215,11 @@ export function ConflictReviewPanel() {
               <ConflictChoice
                 name="PC 내용 선택"
                 title="이 PC"
-                description="이 기기에 보관한 수정 내용"
+                description={
+                  review.deletedTopic
+                    ? `‘${review.deletedTopic.name}’ 주제를 복원하고 분류 적용`
+                    : "이 기기에 보관한 수정 내용"
+                }
                 preview={presentation.pc}
                 selected={selected === "mine"}
                 disabled={busy || !!review.unavailable}
@@ -256,6 +267,13 @@ export function ConflictReviewPanel() {
             {review.unavailable && (
               <p role="status" className="notice">
                 {review.unavailable}
+              </p>
+            )}
+            {review.deletedTopic && !review.unavailable && (
+              <p className="notice" role="status">
+                삭제된 주제:{" "}
+                {review.topicsToRestore.map((t) => t.name).join(" · ")}. 이 PC를
+                선택하면 주제를 복원한 뒤 분류합니다.
               </p>
             )}
             {isNote &&
@@ -335,7 +353,11 @@ export function ConflictReviewPanel() {
                   if (selected) void resolve(selected);
                 }}
               >
-                {busy ? "반영 중…" : "선택한 내용 적용"}
+                {busy
+                  ? "반영 중…"
+                  : selected === "mine" && review.deletedTopic
+                    ? "주제 복원 후 적용"
+                    : "선택한 내용 적용"}
               </button>
             </div>
             <small className="sync-archive-hint">

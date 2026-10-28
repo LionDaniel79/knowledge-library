@@ -1,5 +1,6 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
+import type { ModalAnchor } from "@/lib/modal-placement";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
@@ -181,7 +182,10 @@ export function LibraryApp({
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [openingNote, setOpeningNote] = useState<string | null>(null);
+  const [openingNote, setOpeningNote] = useState<{
+    id: string;
+    anchor?: ModalAnchor;
+  } | null>(null);
   const noteRequest = useRef<{
     id: string;
     controller: AbortController;
@@ -370,17 +374,17 @@ export function LibraryApp({
     setFilter("all");
     bookPaging.setPage(0);
   };
-  async function openNote(id: string) {
+  async function openNote(id: string, anchor?: ModalAnchor) {
     if (preview || !remote) {
       const note = data.notes.find((n) => n.id === id);
-      if (note) setEditor({ kind: "note", note });
+      if (note) setEditor({ kind: "note", note, anchor });
       return;
     }
     if (noteRequest.current?.id === id) return;
     noteRequest.current?.controller.abort();
     const controller = new AbortController();
     noteRequest.current = { id, controller };
-    setOpeningNote(id);
+    setOpeningNote({ id, anchor });
     try {
       const r = await libraryRequest("/api/notes/" + id, {
           cache: "no-store",
@@ -393,7 +397,7 @@ export function LibraryApp({
         ...d,
         notes: d.notes.map((n) => (n.id === id ? note : n)),
       }));
-      setEditor({ kind: "note", note });
+      setEditor({ kind: "note", note, anchor });
     } catch (e) {
       if (!controller.signal.aborted) setFailure((e as Error).message);
     } finally {
@@ -1273,10 +1277,10 @@ export function LibraryApp({
                         setEditor({ kind: "note", ...context })
                       }
                       library={data}
-                      onOpen={(kind, id) => {
+                      onOpen={(kind, id, anchor) => {
                         if (kind === "book") setDetail(id);
                         else {
-                          void openNote(id);
+                          void openNote(id, anchor);
                         }
                       }}
                     />
@@ -1399,6 +1403,8 @@ export function LibraryApp({
       {openingNote && (
         <Modal
           title="기록 불러오기"
+          className={openingNote.anchor ? "memo-editor wb-memo-editor" : ""}
+          anchor={openingNote.anchor}
           onClose={() => {
             noteRequest.current?.controller.abort();
             noteRequest.current = null;

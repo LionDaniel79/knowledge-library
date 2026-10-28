@@ -195,6 +195,24 @@ async function mount(page: Page) {
   await page.addScriptTag({ content: bundle });
   return { topics, notes, commands, state, source };
 }
+
+test("knowledge and memo-box tabs remember the last selection after remount", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.getByRole("button", { name: "화이트보드", exact: true }).click();
+  await expect(page.locator(".wb-canvas-shell")).toBeVisible();
+  await mount(page);
+  await expect(page.locator(".wb-canvas-shell")).toBeVisible();
+  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
+  await expect(page.locator(".memo-box-list")).toBeVisible();
+  await mount(page);
+  await expect(page.locator(".memo-box-list")).toBeVisible();
+  await expect(
+    page.locator(".memo-box .knowledge-tabs button.primary"),
+  ).toHaveText("연결된 메모");
+});
 test("My records is the first memo-box tab and retains its filters and new-note entry without loading connection data", async ({
   page,
 }, testInfo) => {

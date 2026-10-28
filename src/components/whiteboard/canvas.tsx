@@ -20,6 +20,7 @@ import {
 } from "@/lib/whiteboard";
 import { relationNames, type Relation } from "@/lib/knowledge";
 import { useBoardFullscreen } from "./use-fullscreen";
+import type { ModalAnchor } from "@/lib/modal-placement";
 import {
   buildConnectionLines,
   hitPolygon,
@@ -68,7 +69,7 @@ export function WhiteboardCanvas({
     near: string | null,
   ) => void;
   onToggle: (id: string) => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, anchor?: ModalAnchor) => void;
   onSelectNote: (id: string) => void;
   onSelectGroup: (id: string) => void;
   selectedNote: string | null;
@@ -615,7 +616,17 @@ export function WhiteboardCanvas({
                   </small>
                   <button
                     type="button"
-                    onClick={() => onOpen(n.noteId)}
+                    onClick={(e) => {
+                      const r = e.currentTarget
+                        .closest(".wb-note")!
+                        .getBoundingClientRect();
+                      onOpen(n.noteId, {
+                        left: r.left,
+                        right: r.right,
+                        top: r.top,
+                        bottom: r.bottom,
+                      });
+                    }}
                     aria-label={`${n.note.title || "메모"} 열기`}
                   >
                     열기

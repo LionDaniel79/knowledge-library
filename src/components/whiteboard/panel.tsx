@@ -1,4 +1,5 @@
 "use client";
+import type { ModalAnchor } from "@/lib/modal-placement";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Library } from "@/lib/domain";
 import { categories } from "@/lib/catalog";
@@ -53,7 +54,7 @@ export function WhiteboardPanel({
   revision = 0,
 }: {
   library: Library;
-  onOpen: (kind: string, id: string) => void;
+  onOpen: (kind: string, id: string, anchor?: ModalAnchor) => void;
   ownerId: string;
   revision?: number;
 }) {
@@ -989,7 +990,7 @@ export function WhiteboardPanel({
               before,
             );
           }}
-          onOpen={(id) => onOpen("note", id)}
+          onOpen={(id, anchor) => onOpen("note", id, anchor)}
           onSelectNote={selectNote}
           onSelectGroup={selectGroup}
           selectedNote={selectedNote}

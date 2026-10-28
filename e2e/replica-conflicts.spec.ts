@@ -22,7 +22,12 @@ import {WHITEBOARD_ID} from './src/lib/whiteboard';
   };
   const queue=(type,payload,path='/api/library')=>queueReplicaCommand({storage:s,repository:f.repo,path,body:{requestId:crypto.randomUUID(),type,payload}});
   const mode=new URL(location.href).searchParams.get('mode');
-  if(mode==='new-board'){
+  if(mode==='archived-topic'){
+    const topic={id:crypto.randomUUID(),name:'영성',parent_id:null,aliases:[],description:'',kdc_codes:[],confirmed:true,archived_at:null,version:1};
+    await stage('library_topics',topic);
+    await queue('assignTopic',{topicId:topic.id,sourceKind:'note',sourceId:f.note,sourceVersion:'1',status:'accepted',expectedVersion:0},'/api/thought-map');
+    await stage('library_topics',{...topic,archived_at:'2026-10-28T00:00:00Z',version:2});
+  }else if(mode==='new-board'){
     await queue('saveWhiteboard',{expectedVersion:0,data:{schema:1,filter:{topics:[],tags:[],categories:[],books:[],q:''},positions:{},groupPositions:{},groups:[],collapsed:[],links:[]}},'/api/knowledge');
   }else if(mode==='new-topic'){
     await queue('upsertTopic',{name:'새로운 주제',parentId:null,aliases:[],description:'새 주제 내용',kdcCodes:[]},'/api/thought-map');
@@ -69,6 +74,26 @@ import {WHITEBOARD_ID} from './src/lib/whiteboard';
       },
     })
   ).outputFiles[0].text;
+});
+
+test("an archived-topic review explicitly offers restoration and queues it before classification", async ({
+  page,
+}) => {
+  await mount(page, "archived-topic");
+  const dialog = page.getByRole("dialog", { name: "동기화 내용 선택" });
+  await expect(dialog).toContainText("‘영성’ 주제를 복원하고 분류 적용");
+  await dialog.getByRole("radio", { name: "PC 내용 선택" }).check();
+  await dialog
+    .getByRole("button", { name: "주제 복원 후 적용", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".sync-issue-card")).toHaveCount(0);
+  const types = await page.evaluate(async () =>
+    (await (window as any).runtime.storage.listOutbox()).map(
+      (e: any) => e.command.body.type,
+    ),
+  );
+  expect(types).toEqual(["restoreTopic", "assignTopic"]);
 });
 
 for (const mode of ["new-note", "new-board", "new-topic"])

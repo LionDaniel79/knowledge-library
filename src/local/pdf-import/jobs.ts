@@ -56,13 +56,21 @@ export class PdfImportJobs {
   close() {
     this.db.close();
   }
-  create(owner: string, root: string): ImportJob {
+  create(owner: string, root: string, requestId?: string): ImportJob {
+    if (requestId) {
+      const existing = this.get(owner, requestId);
+      if (existing) {
+        if (existing.root !== root)
+          throw new LibraryError(409, "같은 등록 요청의 폴더가 달라졌습니다.");
+        return existing;
+      }
+    }
     if (this.latest(owner)?.state !== "complete" && this.latest(owner))
       throw new LibraryError(
         409,
         "진행 중인 등록 작업을 먼저 완료하거나 취소해 주세요.",
       );
-    const id = randomUUID();
+    const id = requestId ?? randomUUID();
     try {
       this.db
         .prepare(
@@ -128,9 +136,9 @@ export class PdfImportJobs {
   startupFailed(id: string) {
     this.db
       .prepare(
-        "UPDATE jobs SET state='failed',error='PC 작업자를 시작하지 못했습니다. 설치 경로·Python 설정을 확인하세요.' WHERE id=? AND worker IS NULL",
+        "UPDATE jobs SET state='failed',updated=?,error='PC 작업자를 시작하지 못했습니다. 설치 경로·Python 설정을 확인하세요.' WHERE id=? AND worker IS NULL AND state IN ('scanning','registering','enriching','indexing')",
       )
-      .run(id);
+      .run(Date.now(), id);
   }
   phase(id: string, worker: string, phase: ImportJob["phase"]) {
     this.db
@@ -204,6 +212,21 @@ export class PdfImportJobs {
     this.db
       .prepare("INSERT OR IGNORE INTO items VALUES(?,?,?)")
       .run(job, document.id, JSON.stringify({ document, kind, reason }));
+  }
+  addItems(
+    job: string,
+    items: { document: PdfCatalogDocument; kind: ItemKind; reason: string }[],
+  ) {
+    if (!items.length) return;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const item of items)
+        this.addItem(job, item.document, item.kind, item.reason);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
   items(job: string): ImportItem[] {
     return this.db

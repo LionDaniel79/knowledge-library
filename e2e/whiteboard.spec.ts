@@ -219,8 +219,17 @@ test("fullscreen note editor is half sized, scrolls vertically and retains the f
   await open.click();
   await expect(dialog).toBeVisible();
   const compact = (await dialog.boundingBox())!;
-  expect(compact.width).toBeCloseTo(normal.width / 2, 0);
-  expect(compact.height).toBeCloseTo(normal.height / 2, 0);
+  expect(compact.width).toBeCloseTo(normal.width, 0);
+  expect(compact.height).toBeCloseTo(normal.height, 0);
+  expect(compact.width).toBeLessThanOrEqual(306);
+  const noteRect = (await page.locator(".wb-note").first().boundingBox())!;
+  const screen = page.viewportSize()!;
+  expect(compact.x).toBeGreaterThanOrEqual(8);
+  expect(compact.x + compact.width).toBeLessThanOrEqual(screen.width - 7);
+  if (screen.width >= 900) {
+    expect(compact.x).toBeGreaterThanOrEqual(noteRect.x + noteRect.width);
+    expect(compact.x - noteRect.x - noteRect.width).toBeLessThanOrEqual(14);
+  }
   expect(
     await dialog.evaluate(
       (el) =>
@@ -401,7 +410,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import{flushSync}from'react-dom';import{useState}from'react';import {WhiteboardPanel} from './src/components/whiteboard/panel';import{LibraryForm}from'./src/components/library-forms';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;function App(){const[editor,setEditor]=useState(null);const library={...window.fixture,notes:[...window.fixture.notes]};return <><WhiteboardPanel library={library} ownerId='whiteboard-fixture' onOpen={(k,id)=>{window.opened=id;if(window.fixtureEditor)setEditor({kind:'note',note:library.notes.find(n=>n.id===id)});}}/>{editor&&<LibraryForm editor={editor} library={library} today='2026-10-27' preview={false} onClose={()=>setEditor(null)} onSave={async()=>{throw Error('검수 중 메모 본문 변경 금지')}}/>}</>}window.refreshBoard=()=>root.render(<App key={window.fixtureMount}/>);window.flushBoard=()=>flushSync(window.refreshBoard);window.refreshBoard();`,
+        contents: `import {createRoot} from 'react-dom/client';import{flushSync}from'react-dom';import{useState}from'react';import {WhiteboardPanel} from './src/components/whiteboard/panel';import{LibraryForm}from'./src/components/library-forms';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;function App(){const[editor,setEditor]=useState(null);const library={...window.fixture,notes:[...window.fixture.notes]};return <><WhiteboardPanel library={library} ownerId='whiteboard-fixture' onOpen={(k,id,anchor)=>{window.opened=id;if(window.fixtureEditor)setEditor({kind:'note',note:library.notes.find(n=>n.id===id),anchor});}}/>{editor&&<LibraryForm editor={editor} library={library} today='2026-10-27' preview={false} onClose={()=>setEditor(null)} onSave={async()=>{throw Error('검수 중 메모 본문 변경 금지')}}/>}</>}window.refreshBoard=()=>root.render(<App key={window.fixtureMount}/>);window.flushBoard=()=>flushSync(window.refreshBoard);window.refreshBoard();`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },

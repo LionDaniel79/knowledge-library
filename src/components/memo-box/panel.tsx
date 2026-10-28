@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildMemoBox } from "@/lib/memo-box";
 import { containsSearchField } from "@/lib/search-fields";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
@@ -38,6 +38,21 @@ export function MemoBox({
   const [tab, setTab] = useState("records"),
     [query, setQuery] = useState(""),
     [selected, setSelected] = useState("");
+  const tabKey = "library:memo-box-tab:" + ownerId;
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(tabKey);
+      setTab(
+        initialTag !== "all"
+          ? "records"
+          : saved && ["records", "notes", "topics", "writing"].includes(saved)
+            ? saved
+            : "records",
+      );
+    } catch {
+      setTab("records");
+    }
+  }, [tabKey, initialTag]);
   const refresh = useMemo(
     () => ({ notes: library.notes, revision }),
     [library.notes, revision],
@@ -87,6 +102,9 @@ export function MemoBox({
             className={tab === id ? "primary" : ""}
             onClick={() => {
               setTab(id);
+              try {
+                localStorage.setItem(tabKey, id);
+              } catch {}
               setQuery("");
             }}
           >

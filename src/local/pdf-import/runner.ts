@@ -11,7 +11,8 @@ import {
   verifiedPdfRoot,
 } from "../../server/pdf-reconnect";
 import type { CollectedBook } from "../curation/catalog";
-import { PdfImportJobs } from "./jobs";
+import { PdfImportJobs, type ItemKind } from "./jobs";
+import type { PdfCatalogDocument } from "../../server/pdf-catalog-import";
 import {
   applyImportMetadata,
   extractPdfIdentity,
@@ -83,31 +84,45 @@ export async function runPdfImport(
         for (const old of current)
           byPath.set(resolve(job.root, old.relative_path), old);
       }
-      await rpc.call("inventory", {}, (doc) => {
-        const old = byPath.get(resolve(doc.path));
-        const kind =
-          old?.exclusion === "excluded"
-            ? "excluded"
-            : old
-              ? String(old.bytes) === String(doc.bytes) &&
-                old.mtime_ns === doc.mtime_ns
-                ? "existing"
-                : "changed"
-              : doc.material_kind === "paper" ||
-                  doc.material_kind === "periodical"
-                ? "excluded"
-                : doc.processing_scope !== "full"
-                  ? "review"
-                  : "new";
-        jobs.addItem(
-          id,
-          doc,
-          kind,
-          kind === "changed"
-            ? "기존 원본 변경: 인용 보존을 위해 자동 교체하지 않음"
-            : doc.scope_reason,
-        );
-      });
+      const batch: {
+        document: PdfCatalogDocument;
+        kind: ItemKind;
+        reason: string;
+      }[] = [];
+      const flush = () => {
+        jobs.addItems(id, batch);
+        batch.length = 0;
+      };
+      try {
+        await rpc.call("inventory", {}, (doc) => {
+          const old = byPath.get(resolve(doc.path));
+          const kind =
+            old?.exclusion === "excluded"
+              ? "excluded"
+              : old
+                ? String(old.bytes) === String(doc.bytes) &&
+                  old.mtime_ns === doc.mtime_ns
+                  ? "existing"
+                  : "changed"
+                : doc.material_kind === "paper" ||
+                    doc.material_kind === "periodical"
+                  ? "excluded"
+                  : doc.processing_scope !== "full"
+                    ? "review"
+                    : "new";
+          batch.push({
+            document: doc,
+            kind,
+            reason:
+              kind === "changed"
+                ? "기존 원본 변경: 인용 보존을 위해 자동 교체하지 않음"
+                : doc.scope_reason,
+          });
+          if (batch.length >= 100) flush();
+        });
+      } finally {
+        flush();
+      }
       jobs.release(id, worker, stop() ? "paused" : "preview");
       return;
     }

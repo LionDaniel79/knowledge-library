@@ -16,9 +16,10 @@ import type { NewNoteContext } from "@/lib/note-context";
 import { NoteTopicField, type NoteTopicHandle } from "./note-topic-field";
 import { NoteTagInput } from "./note-tag-input";
 import { NoteWhiteboardVisibility } from "./note-whiteboard-visibility";
+import type { ModalAnchor } from "@/lib/modal-placement";
 export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
-  | ({ kind: "note"; note?: Note } & NewNoteContext)
+  | ({ kind: "note"; note?: Note; anchor?: ModalAnchor } & NewNoteContext)
   | { kind: "start"; book: Book }
   | { kind: "progress" | "complete" | "date"; cycle: ReadingCycle };
 export function LibraryForm({
@@ -253,7 +254,12 @@ export function LibraryForm({
   return (
     <Modal
       title={heading}
-      className={editor.kind === "note" ? "memo-editor" : ""}
+      className={
+        editor.kind === "note"
+          ? `memo-editor${editor.anchor ? " wb-memo-editor" : ""}`
+          : ""
+      }
+      anchor={editor.kind === "note" ? editor.anchor : undefined}
       canClose={!busy && !topicBusy}
       onClose={() => {
         if (!busy && !topicBusy) onClose();

@@ -698,7 +698,8 @@ export async function prepareOptimistic(
       result = { id: entityId, version: (old?.version ?? 0) + 1 };
     } else if (body.type === "assignTopic") {
       const v = assignmentCommand.parse(p);
-      await own("library_topics", v.topicId);
+      if ((await own("library_topics", v.topicId)).archived_at)
+        throw new ReplicaQueryError(409, "삭제한 주제는 먼저 복원해 주세요.");
       const old = (await repository.all("library_topic_memberships")).find(
         (m) =>
           m.topic_id === v.topicId &&

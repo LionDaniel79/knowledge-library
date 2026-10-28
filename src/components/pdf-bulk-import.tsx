@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReplicaOptional } from "./replica/provider";
 import type { ImportItem, ImportJob } from "@/local/pdf-import/jobs";
+import { pdfImportRequest } from "@/client/pdf-import-request";
 type Status = {
   job: ImportJob | null;
   counts?: Record<string, number>;
@@ -36,6 +37,8 @@ export function PdfBulkImport({
     [error, setError] = useState(""),
     [page, setPage] = useState(1),
     [selected, setSelected] = useState("");
+  const [action, setAction] = useState("");
+  const pendingScan = useRef<{ root: string; id: string } | null>(null);
   const replica = useReplicaOptional(),
     lastSynced = useRef(""),
     lastSyncTime = useRef(0);
@@ -46,18 +49,19 @@ export function PdfBulkImport({
       ["scanning", "registering", "enriching", "indexing"].includes(job.state);
   useEffect(() => {
     let closed = false;
+    let loading = false;
     const controller = new AbortController();
     async function load() {
+      if (loading) return;
+      loading = true;
       try {
-        const r = await fetch(
-            `/api/pdf/import?page=${page}${selected ? `&id=${encodeURIComponent(selected)}` : ""}`,
-            {
-              cache: "no-store",
-              signal: controller.signal,
-            },
-          ),
-          j = await r.json();
-        if (!r.ok) throw Error(j.error);
+        const j = await pdfImportRequest<Status>(
+          `/api/pdf/import?page=${page}${selected ? `&id=${encodeURIComponent(selected)}` : ""}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
         if (!closed) {
           setStatus(j);
           setError("");
@@ -65,6 +69,8 @@ export function PdfBulkImport({
       } catch (e) {
         if (!closed && !(e instanceof DOMException && e.name === "AbortError"))
           setError((e as Error).message);
+      } finally {
+        loading = false;
       }
     }
     void load();
@@ -106,20 +112,48 @@ export function PdfBulkImport({
   ]);
   async function command(action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
+    setAction(action);
     setError("");
+    const requestId =
+      action === "scan"
+        ? pendingScan.current?.root === root
+          ? pendingScan.current.id
+          : crypto.randomUUID()
+        : undefined;
+    if (requestId) pendingScan.current = { root, id: requestId };
     try {
-      const r = await fetch("/api/pdf/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, id: job?.id, ...extra }),
-        }),
-        j = await r.json();
-      if (!r.ok) throw Error(j.error);
+      const j = await pdfImportRequest<Status>("/api/pdf/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, id: job?.id, requestId, ...extra }),
+      });
       setStatus(j);
-      if (action === "scan") setSelected("");
+      if (action === "scan") {
+        setSelected("");
+        pendingScan.current = null;
+      }
       setPage(1);
     } catch (e) {
-      setError((e as Error).message);
+      let recovered = false;
+      if (requestId) {
+        try {
+          const j = await pdfImportRequest<Status>(
+            `/api/pdf/import?id=${encodeURIComponent(requestId)}`,
+            {},
+            10000,
+          );
+          if (j.job?.id === requestId) {
+            setStatus(j);
+            setSelected(requestId);
+            setPage(1);
+            pendingScan.current = null;
+            recovered = true;
+          }
+        } catch {
+          /* A retry retains the same scan identity to avoid duplicate jobs. */
+        }
+      }
+      if (!recovered) setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -139,13 +173,35 @@ export function PdfBulkImport({
           }
           onClick={() => void command("scan", { root })}
         >
-          PDF 일괄 등록
+          {busy && action === "scan" ? "폴더 조사 요청 중…" : "PDF 일괄 등록"}
         </button>
       </div>
       {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
+        <div>
+          <p role="alert" className="error">
+            {error}
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                setStatus(await pdfImportRequest<Status>("/api/pdf/import"));
+                setError("");
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            진행 현황 새로고침
+          </button>
+        </div>
+      )}
+      {busy && action === "scan" && !job && (
+        <p role="status">폴더 조사를 요청하고 있습니다…</p>
       )}
       {job && (
         <section className="pdf-import-status" aria-label="PDF 일괄 등록 현황">

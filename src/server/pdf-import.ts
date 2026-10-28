@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { isAbsolute, resolve, dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { realpath, stat } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import { PdfImportJobs } from "../local/pdf-import/jobs";
@@ -73,7 +74,7 @@ export function startPdfImportWorker(owner: string, id: string) {
   mkdirSync(dirname(process.env.LIBRARY_PDF_INDEX!), { recursive: true });
   const child = spawn(
     process.execPath,
-    ["--import", loader, script, owner, id],
+    ["--import", pathToFileURL(loader).href, script, owner, id],
     {
       cwd: process.cwd(),
       env,
@@ -82,13 +83,17 @@ export function startPdfImportWorker(owner: string, id: string) {
       stdio: "ignore",
     },
   );
-  child.on("error", () => {
+  const failed = () => {
     const jobs = pdfImportStore();
     try {
       jobs.startupFailed(id);
     } finally {
       jobs.close();
     }
+  };
+  child.on("error", failed);
+  child.on("exit", (code) => {
+    if (code !== 0) failed();
   });
   child.unref();
 }
