@@ -235,3 +235,75 @@ test("a delayed progress lookup keeps the known scan running and automatically d
     }),
   ).toHaveCount(0);
 });
+
+for (const transient of [true, false])
+  test(`a retry ${transient ? "recovers an accepted command after a lost acknowledgement" : "keeps a real validation failure visible"}`, async ({
+    page,
+  }) => {
+    const job = {
+      id: "11111111-1111-4111-8111-111111111111",
+      owner: "owner",
+      root: "D:\\books",
+      state: "complete",
+      phase: "indexing",
+      updatedAt: Date.now(),
+      pauseRequested: false,
+      error: "",
+    };
+    let state: any = {
+      job,
+      counts: { registered: 2, enriched: 2, indexed: 0, errors: 1 },
+      total: 3,
+    };
+    await page.route("https://library.test/**", async (r) => {
+      const path = new URL(r.request().url()).pathname;
+      if (path === "/")
+        return r.fulfill({
+          contentType: "text/html",
+          body: `<!doctype html><style>${css}</style><div id="root"></div><script>${bundle.replace(/<\/script/gi, "<\\/script")}</script>`,
+        });
+      if (path === "/api/pdf/connection")
+        return r.fulfill({
+          json: {
+            available: true,
+            root: job.root,
+            connected: true,
+            version: 1,
+          },
+        });
+      if (path === "/api/pdf/import") {
+        if (r.request().method() === "POST") {
+          expect(r.request().postDataJSON().action).toBe("retry");
+          if (!transient)
+            return r.fulfill({
+              status: 400,
+              json: { error: "먼저 작업을 중지해 주세요." },
+            });
+          state = {
+            job: { ...job, updatedAt: job.updatedAt + 1000 },
+            counts: { registered: 3, enriched: 3, indexed: 3, errors: 0 },
+            total: 3,
+          };
+          return r.fulfill({ status: 502, body: "" });
+        }
+        return r.fulfill({ json: state });
+      }
+      return r.fulfill({ json: {} });
+    });
+    await page.goto("https://library.test/");
+    await page
+      .getByRole("button", { name: "PDF 보관 폴더 설정", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "오류 재시도", exact: true })
+      .click();
+    if (transient) {
+      await expect(
+        page.getByText(/기본 등록 3개 · 서지 보완 확인 3개 · 본문 색인 3개/),
+      ).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } else
+      await expect(page.getByRole("alert")).toHaveText(
+        "먼저 작업을 중지해 주세요.",
+      );
+  });

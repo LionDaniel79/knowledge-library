@@ -151,22 +151,38 @@ export function PdfBulkImport({
       setPage(1);
     } catch (e) {
       let recovered = false;
-      if (requestId) {
+      const recoveryId =
+        requestId ??
+        (job &&
+        e instanceof PdfImportRequestError &&
+        e.retryable &&
+        ["start", "resume", "retry", "pause", "discard"].includes(action)
+          ? job.id
+          : undefined);
+      if (recoveryId) {
         try {
           const j = await pdfImportRequest<Status>(
-            `/api/pdf/import?id=${encodeURIComponent(requestId)}`,
+            `/api/pdf/import?id=${encodeURIComponent(recoveryId)}`,
             {},
             10000,
           );
-          if (j.job?.id === requestId) {
+          const acknowledged =
+            !!requestId ||
+            (!!j.job &&
+              !!job &&
+              (action === "pause"
+                ? j.job.pauseRequested && !job.pauseRequested
+                : j.job.updatedAt > job.updatedAt &&
+                  (action !== "discard" || j.job.state === "complete")));
+          if (j.job?.id === recoveryId && acknowledged) {
             setStatus(j);
-            setSelected(requestId);
+            setSelected(recoveryId);
             setPage(1);
             pendingScan.current = null;
             recovered = true;
           }
         } catch {
-          /* A retry retains the same scan identity to avoid duplicate jobs. */
+          /* A lost response must not duplicate work or assume a command succeeded. */
         }
       }
       if (!recovered) setError((e as Error).message);
