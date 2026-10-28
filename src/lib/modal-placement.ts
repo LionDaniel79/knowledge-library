@@ -3,6 +3,7 @@ export type ModalAnchor = {
   right: number;
   top: number;
   bottom: number;
+  whiteboardId?: string;
 };
 export function placeNearNote(
   anchor: ModalAnchor,

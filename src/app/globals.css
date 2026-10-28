@@ -5766,3 +5766,148 @@ textarea {
   -webkit-appearance: none;
   appearance: none;
 }
+
+.writing-project-create,
+.writing-tools {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+.writing-project-create > input {
+  width: 18rem;
+  max-width: 100%;
+}
+.writing-project-create strong {
+  align-self: center;
+  margin-left: 0.4rem;
+}
+.writing-tools label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  max-width: 18rem;
+  min-width: 9rem;
+}
+.writing-tools select {
+  max-width: 100%;
+  min-height: 2.5rem;
+}
+.writing-tools button {
+  font-size: 0.85rem;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.65rem;
+}
+.writing-chapter {
+  position: absolute;
+  border: 2px solid #709985;
+  border-radius: 10px;
+  background: #f2f7f0c4;
+  box-sizing: border-box;
+  z-index: 0;
+}
+.writing-chapter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  cursor: grab;
+  background: #dce8db;
+  border-radius: 8px 8px 0 0;
+  touch-action: none;
+}
+.writing-chapter input,
+.writing-chapter textarea {
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  font-size: 14px;
+  padding: 5px 8px;
+  border: 1px solid #ccd6cc;
+  border-radius: 5px;
+  background: white;
+}
+.writing-chapter-head input[type="number"] {
+  width: 62px;
+}
+.writing-chapter-head input:not([type="number"]) {
+  flex: 1;
+}
+.writing-chapter-head button {
+  font-size: 12px;
+  padding: 4px 8px;
+  min-height: 28px;
+}
+.writing-chapter-content {
+  padding: 8px 12px;
+  height: 124px;
+  overflow: auto;
+  position: relative;
+  z-index: 2;
+}
+.writing-chapter textarea {
+  width: 100%;
+  height: 62px;
+  resize: vertical;
+}
+.writing-material-orders summary {
+  font-size: 13px;
+  cursor: pointer;
+}
+.writing-material-orders > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  margin: 4px 0;
+}
+.writing-material-orders input {
+  width: 56px;
+}
+.writing-material-orders span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.writing-material-orders button {
+  font-size: 12px;
+  padding: 2px 6px;
+  min-height: 26px;
+}
+.writing-project-list {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.writing-project-list > div {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 1rem;
+}
+.writing-project-list h3 {
+  margin: 0;
+}
+.writing-project-list .selected {
+  background: #244b3e;
+  color: white;
+}
+@media (max-width: 640px) {
+  .writing-tools label {
+    flex: 1;
+    max-width: none;
+  }
+  .writing-tools {
+    gap: 0.4rem;
+  }
+  .writing-tools button {
+    min-height: 40px;
+  }
+  .writing-project-list > div {
+    flex-wrap: wrap;
+  }
+}

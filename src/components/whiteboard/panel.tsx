@@ -10,12 +10,21 @@ import { usePagedResource } from "../use-paged-resource";
 import { FacetPicker } from "./facet-picker";
 import { WhiteboardCanvas } from "./canvas";
 import { HiddenWhiteboardNotes } from "./hidden-notes";
-import { connectedMemoGroups } from "@/lib/memo-box";
+import { connectedMemoGroups, buildMemoBox } from "@/lib/memo-box";
 import {
   revealMemoGroup,
   connectionGroupsForView,
 } from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
+import { WritingTools } from "./writing-tools";
+import { WritingAssist } from "./writing-assist";
+import {
+  addChapterMaterial,
+  chapterAt,
+  moveChapter,
+  placeChapterMaterials,
+  type WritingChapter,
+} from "@/lib/writing-board";
 import {
   boardSchema,
   boardStamp,
@@ -47,16 +56,25 @@ type LinkUndo = {
   relation: string;
   reason: string;
 };
+const NO_LEGACY_NOTES: WhiteboardSnapshot["notes"] = [];
 export function WhiteboardPanel({
   library,
   onOpen,
   ownerId,
   revision = 0,
+  boardId = WHITEBOARD_ID,
+  writingTitle,
+  initialBoard,
+  legacyNotes = NO_LEGACY_NOTES,
 }: {
   library: Library;
   onOpen: (kind: string, id: string, anchor?: ModalAnchor) => void;
   ownerId: string;
   revision?: number;
+  boardId?: string;
+  writingTitle?: string;
+  initialBoard?: Board;
+  legacyNotes?: WhiteboardSnapshot["notes"];
 }) {
   const replica = useReplicaOptional(),
     runtime = replica?.runtime;
@@ -65,7 +83,9 @@ export function WhiteboardPanel({
     [library.notes, revision],
   );
   const resource = usePagedResource<WhiteboardSnapshot>(
-    "/api/whiteboard",
+    boardId === WHITEBOARD_ID
+      ? "/api/whiteboard"
+      : "/api/whiteboard?boardId=" + boardId,
     true,
     refresh,
     { keepPreviousData: true },
@@ -90,7 +110,8 @@ export function WhiteboardPanel({
       id: string;
     } | null>(null),
     [undo, setUndo] = useState<{ board: Board; link?: LinkUndo } | null>(null),
-    [localConnections, setLocalConnections] = useState<BoardConnection[]>([]);
+    [localConnections, setLocalConnections] = useState<BoardConnection[]>([]),
+    [removedTopicLinks, setRemovedTopicLinks] = useState<string[]>([]);
   const current = useRef(board),
     version = useRef(0),
     initialized = useRef(false),
@@ -108,10 +129,12 @@ export function WhiteboardPanel({
     lastDraft = useRef<string | null>(null),
     runSave = useRef<() => Promise<void>>(async () => {}),
     saveTask = useRef<Promise<void> | null>(null);
-  const key = ownerId ? `library:whiteboard-draft:${ownerId}` : "";
+  const key = ownerId
+    ? `library:whiteboard-draft:${ownerId}${boardId === WHITEBOARD_ID ? "" : ":" + boardId}`
+    : "";
   function layoutStamp(data: Board | undefined) {
     return boardStamp({
-      id: WHITEBOARD_ID,
+      id: boardId,
       version: 0,
       data: { ...(data ?? emptyBoard()), hiddenNoteIds: [] },
     });
@@ -166,6 +189,7 @@ export function WhiteboardPanel({
           pending.current = null;
           try {
             const result = await send("saveWhiteboard", {
+              boardId,
               data: value,
               expectedVersion: version.current,
             });
@@ -173,7 +197,7 @@ export function WhiteboardPanel({
             observedLayout.current = layoutStamp(value);
             acknowledged.current.add(
               boardStamp({
-                id: WHITEBOARD_ID,
+                id: boardId,
                 data: value,
                 version: result.version,
               }),
@@ -216,11 +240,18 @@ export function WhiteboardPanel({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void runSave.current(), 350);
   }
+  async function updateRevealing(next: Board, before = current.current) {
+    const hidden = new Set(next.hiddenNoteIds ?? []);
+    const reveal = (before.hiddenNoteIds ?? []).filter((id) => !hidden.has(id));
+    if (reveal.length && !(await showHiddenNotes(reveal))) return;
+    update(next, before);
+  }
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
       if (timer.current) clearTimeout(timer.current);
+      if (pending.current) void runSave.current();
     };
   }, []);
   useEffect(() => {
@@ -235,7 +266,11 @@ export function WhiteboardPanel({
       observedLayout.current = layoutStamp(data.board?.data);
       observedResolution.current = resolution;
       version.current = v;
-      let value = data.board?.data ?? emptyBoard();
+      let value = data.board?.data ?? initialBoard ?? emptyBoard();
+      if (!data.board && initialBoard?.writing?.chapters.length) {
+        dirty.current = true;
+        pending.current = value;
+      }
       if (key)
         try {
           const saved = JSON.parse(localStorage.getItem(key) ?? "null");
@@ -254,7 +289,20 @@ export function WhiteboardPanel({
             }
           }
         } catch {}
-      value = seedBoard(data, value);
+      const initialSource = {
+        ...data,
+        notes: [
+          ...new Map(
+            [...legacyNotes, ...data.notes].map((n) => [n.id, n]),
+          ).values(),
+        ],
+      };
+      if (!data.board && value.writing?.chapters.length)
+        value = value.writing.chapters.reduce(
+          (b, c) => placeChapterMaterials(b, c.id, initialSource),
+          value,
+        );
+      value = seedBoard(initialSource, value);
       if (!needsChoice.current) {
         const repaired = repairSparseSearchLayout(data, value);
         if (repaired !== value) {
@@ -331,8 +379,121 @@ export function WhiteboardPanel({
       const old = map.get(c.id);
       if (!old || c.version > old.version) map.set(c.id, c);
     }
-    return { ...resource.data, connections: [...map.values()] };
-  }, [resource.data, localConnections]);
+    const notes = new Map(legacyNotes.map((n) => [n.id, n]));
+    for (const note of resource.data.notes) notes.set(note.id, note);
+    return {
+      ...resource.data,
+      notes: [...notes.values()],
+      connections: [...map.values()],
+      topicLinks: resource.data.topicLinks?.filter(
+        (l) => !removedTopicLinks.includes(l.id),
+      ),
+    };
+  }, [resource.data, localConnections, legacyNotes, removedTopicLinks]);
+  const topicModel = useMemo(
+    () =>
+      source
+        ? buildMemoBox({
+            ...source,
+            board: { id: boardId, data: board, version: version.current },
+          })
+        : null,
+    [source, board, boardId],
+  );
+  async function showTopicPair(
+    pair: NonNullable<typeof topicModel>["topicPairs"][number],
+  ) {
+    if (!source || !topicModel) return;
+    const ids = source.notes
+      .filter((n) =>
+        (topicModel.noteTopics.get(n.id) ?? []).some(
+          (t) => t === pair.source || t === pair.target,
+        ),
+      )
+      .map((n) => n.id);
+    const before = current.current;
+    const next = {
+      ...before,
+      hiddenNoteIds: (before.hiddenNoteIds ?? []).filter(
+        (id) => !ids.includes(id),
+      ),
+      filter: { ...emptyBoard().filter, topics: [pair.source, pair.target] },
+    };
+    await updateRevealing(next, before);
+    setFilter(next.filter);
+    setConnectionView(null);
+    setSearchRevision((n) => n + 1);
+  }
+  async function removeTopicPair(
+    pair: NonNullable<typeof topicModel>["topicPairs"][number],
+  ) {
+    if (!source || linkBusy) return;
+    setError("");
+    setLinkBusy(true);
+    try {
+      for (const id of pair.topicLinkIds) {
+        let link = source.topicLinks?.find((l) => l.id === id);
+        if (!link?.version) {
+          const r = await libraryRequest("/api/thought-map", {
+              cache: "no-store",
+            }),
+            j = await r.json();
+          if (!r.ok) throw Error(j.error);
+          link = j.topicLinks.find((l: { id: string }) => l.id === id);
+        }
+        if (!link?.version) throw Error("주제 연결을 다시 불러와 주세요.");
+        const r = await libraryRequest("/api/thought-map", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestId: crypto.randomUUID(),
+              type: "decideTopicLink",
+              payload: {
+                id,
+                expectedVersion: link.version,
+                status: "rejected",
+              },
+            }),
+          }),
+          j = await r.json();
+        if (!r.ok) throw Error(j.error);
+        setRemovedTopicLinks((old) => [...old, id]);
+      }
+      for (const id of pair.connectionIds) {
+        const c = source.connections.find((c) => c.id === id);
+        if (!c || c.status !== "accepted") continue;
+        const result = await send("editConnection", {
+          id,
+          expectedVersion: c.version,
+          status: "rejected",
+          relation: c.relation,
+          reason: c.reason,
+        });
+        patchConnection({ ...c, version: result.version, status: "rejected" });
+      }
+      if (pair.board) {
+        const before = current.current;
+        update(
+          {
+            ...before,
+            links: before.links.filter(
+              (l) =>
+                !(
+                  [l.source, l.target].includes("topic:" + pair.source) &&
+                  [l.source, l.target].includes("topic:" + pair.target)
+                ),
+            ),
+          },
+          before,
+        );
+      }
+      setMessage("주제 연결을 해제했습니다.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLinkBusy(false);
+    }
+  }
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -444,10 +605,20 @@ export function WhiteboardPanel({
           "먼저 배치의 저장 오류를 해결해 주세요. 메모와 선택은 유지됩니다.",
         );
       const result = await send("setWhiteboardNotesVisibility", {
+        boardId,
         noteIds,
         visible: true,
       });
       version.current = result.version;
+      const updated = {
+        ...current.current,
+        hiddenNoteIds: (current.current.hiddenNoteIds ?? []).filter(
+          (id) => !noteIds.includes(id),
+        ),
+      };
+      current.current = updated;
+      setBoard(updated);
+      remember(updated, false);
       resource.reload();
       setMessage(
         result.queued ? "기기에 저장됨" : "선택한 메모를 보이게 했습니다.",
@@ -504,6 +675,32 @@ export function WhiteboardPanel({
   ) {
     const before = current.current,
       moved = moveNote(before, node, p);
+    const chapter = writingTitle
+      ? chapterAt(before, p.x + 110, p.y + 83)
+      : undefined;
+    if (chapter && sourceRef.current) {
+      if (chapter.items.some((item) => item.noteIds.includes(node.noteId))) {
+        update(moved, before);
+        return;
+      }
+      update(
+        addChapterMaterial(
+          moved,
+          chapter.id,
+          {
+            id: crypto.randomUUID(),
+            order: Math.max(0, ...chapter.items.map((i) => i.order)) + 1,
+            kind: "note",
+            label: node.note.title || node.note.content.slice(0, 40),
+            noteIds: [node.noteId],
+            groupIds: [],
+          },
+          sourceRef.current,
+        ),
+        before,
+      );
+      return;
+    }
     update(moved, before);
     if (!target) return;
     setLinkBusy(true);
@@ -566,6 +763,32 @@ export function WhiteboardPanel({
     if (linkBusy) return;
     const before = current.current;
     let next = moveGroup(before, group, dx, dy);
+    const chapter = writingTitle
+      ? chapterAt(before, group.x + dx + group.width / 2, group.y + dy + 60)
+      : undefined;
+    if (chapter && sourceRef.current) {
+      if (chapter.items.some((item) => item.groupIds.includes(group.id))) {
+        update(next, before);
+        return;
+      }
+      update(
+        addChapterMaterial(
+          next,
+          chapter.id,
+          {
+            id: crypto.randomUUID(),
+            order: Math.max(0, ...chapter.items.map((i) => i.order)) + 1,
+            kind: group.id.startsWith("topic:") ? "topics" : "notes",
+            label: group.title,
+            noteIds: group.allNodes.map((n) => n.noteId),
+            groupIds: [group.id],
+          },
+          sourceRef.current,
+        ),
+        before,
+      );
+      return;
+    }
     if (near) next = connectGroups(next, group.id, near);
     update(next, before);
   }
@@ -651,13 +874,14 @@ export function WhiteboardPanel({
       const next = { ...before, links };
       writing.current = true;
       const result = await send("saveWhiteboard", {
+        boardId,
         data: next,
         expectedVersion: version.current,
       });
       version.current = result.version;
       observedLayout.current = layoutStamp(next);
       acknowledged.current.add(
-        boardStamp({ id: WHITEBOARD_ID, data: next, version: result.version }),
+        boardStamp({ id: boardId, data: next, version: result.version }),
       );
       current.current = next;
       setBoard(next);
@@ -722,7 +946,22 @@ export function WhiteboardPanel({
   const { filtered, scene, labels } = derived;
   const selected = board.groups.find((g) => g.id === selectedGroup);
   return (
-    <section className="whiteboard-panel" aria-label="사유의 지도 화이트보드">
+    <section
+      className="whiteboard-panel"
+      aria-label={
+        writingTitle ? "글감엮기 화이트보드" : "사유의 지도 화이트보드"
+      }
+    >
+      {writingTitle && (
+        <WritingTools
+          title={writingTitle}
+          board={board}
+          source={source}
+          selectedNote={selectedNote}
+          selectedGroup={selectedGroup}
+          onChange={(next) => void updateRevealing(next)}
+        />
+      )}
       <form
         className="wb-search"
         onSubmit={(e) => {
@@ -764,6 +1003,7 @@ export function WhiteboardPanel({
           />
         ))}
         <input
+          type="search"
           className="wb-keyword"
           aria-label="메모 제목·내용 검색"
           placeholder="메모 제목·내용"
@@ -779,7 +1019,12 @@ export function WhiteboardPanel({
         </button>
       </form>
       <div className="wb-actions">
-        <strong>{filtered.length}개 메모</strong>
+        <strong>
+          {writingTitle
+            ? new Set(scene.nodes.map((n) => n.noteId)).size
+            : filtered.length}
+          개 메모
+        </strong>
         {([false, true] as const).map((collapse) => (
           <button
             key={String(collapse)}
@@ -973,6 +1218,82 @@ export function WhiteboardPanel({
         <WhiteboardCanvas
           source={displaySource!}
           board={displayBoard}
+          saving={saving}
+          onSave={
+            writingTitle
+              ? () => {
+                  if (timer.current) clearTimeout(timer.current);
+                  pending.current = current.current;
+                  void runSave.current();
+                }
+              : undefined
+          }
+          onChapterChange={
+            writingTitle
+              ? (chapter: WritingChapter) => {
+                  const before = current.current;
+                  update(
+                    {
+                      ...before,
+                      writing: {
+                        ...before.writing!,
+                        chapters: before.writing!.chapters.map((c) =>
+                          c.id === chapter.id ? chapter : c,
+                        ),
+                      },
+                    },
+                    before,
+                  );
+                }
+              : undefined
+          }
+          onChapterMove={
+            writingTitle
+              ? (id, dx, dy) =>
+                  update(
+                    moveChapter(current.current, id, dx, dy),
+                    current.current,
+                  )
+              : undefined
+          }
+          onChapterRemove={
+            writingTitle
+              ? (id) => {
+                  const before = current.current;
+                  update(
+                    {
+                      ...before,
+                      writing: {
+                        ...before.writing!,
+                        chapters: before.writing!.chapters.filter(
+                          (c) => c.id !== id,
+                        ),
+                      },
+                    },
+                    before,
+                  );
+                }
+              : undefined
+          }
+          onViewChange={
+            writingTitle
+              ? (view) => {
+                  const before = current.current;
+                  if (
+                    JSON.stringify(before.writing?.viewport) ===
+                    JSON.stringify(view)
+                  )
+                    return;
+                  update({
+                    ...before,
+                    writing: {
+                      chapters: before.writing?.chapters ?? [],
+                      viewport: view,
+                    },
+                  });
+                }
+              : undefined
+          }
           onDrop={(...args) => {
             if (!linkBusy) void drop(...args);
           }}
@@ -990,7 +1311,13 @@ export function WhiteboardPanel({
               before,
             );
           }}
-          onOpen={(id, anchor) => onOpen("note", id, anchor)}
+          onOpen={(id, anchor) =>
+            onOpen(
+              "note",
+              id,
+              anchor ? { ...anchor, whiteboardId: boardId } : undefined,
+            )
+          }
           onSelectNote={selectNote}
           onSelectGroup={selectGroup}
           selectedNote={selectedNote}
@@ -1039,7 +1366,7 @@ export function WhiteboardPanel({
         <summary>
           <span className="wb-connection-counts">
             연결 관리 · 메모 {availableConnections.length} · 묶음{" "}
-            {board.links.length}
+            {board.links.length} · 주제 {topicModel?.topicPairs.length ?? 0}
           </span>
           <span className="wb-connection-actions">
             <button
@@ -1116,7 +1443,39 @@ export function WhiteboardPanel({
             </button>
           </div>
         ))}
+        {topicModel?.topicPairs.map((p) => (
+          <div key={"topic:" + p.id}>
+            <button
+              type="button"
+              className="wb-connection-select"
+              disabled={linkBusy}
+              onClick={() => showTopicPair(p)}
+            >
+              {topicModel.topics.get(p.source)?.name} ↔{" "}
+              {topicModel.topics.get(p.target)?.name} <small>주제 연결</small>
+            </button>
+            <button
+              type="button"
+              disabled={linkBusy}
+              onClick={() => void removeTopicPair(p)}
+            >
+              주제 연결 해제
+            </button>
+          </div>
+        ))}
       </details>
+      {writingTitle && (
+        <WritingAssist
+          library={library}
+          board={board}
+          source={source}
+          boardId={boardId}
+          title={writingTitle}
+          ownerId={ownerId}
+          onOpen={onOpen}
+          onChange={(next) => void updateRevealing(next)}
+        />
+      )}
       <HiddenWhiteboardNotes
         notes={source.notes.filter((n) =>
           (board.hiddenNoteIds ?? []).includes(n.id),

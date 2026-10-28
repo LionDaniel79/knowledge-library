@@ -10,6 +10,11 @@ const WhiteboardPanel = lazy(() =>
 const MemoBox = lazy(() =>
   import("./memo-box/panel").then((m) => ({ default: m.MemoBox })),
 );
+const WritingBoardPanel = lazy(() =>
+  import("./writing-board/panel").then((m) => ({
+    default: m.WritingBoardPanel,
+  })),
+);
 export function KnowledgePanel({
   library,
   onOpen,
@@ -35,8 +40,10 @@ export function KnowledgePanel({
       setTab(
         initialTag !== "all"
           ? "memo-box"
-          : localStorage.getItem(tabKey) === "whiteboard"
-            ? "whiteboard"
+          : ["whiteboard", "writing"].includes(
+                localStorage.getItem(tabKey) ?? "",
+              )
+            ? localStorage.getItem(tabKey)!
             : "memo-box",
       );
     } catch {
@@ -49,6 +56,7 @@ export function KnowledgePanel({
         {[
           ["whiteboard", "화이트보드"],
           ["memo-box", "메모 상자"],
+          ["writing", "글감엮기"],
         ].map(([id, name]) => (
           <button
             key={id}
@@ -75,6 +83,12 @@ export function KnowledgePanel({
             onOpen={onOpen}
             ownerId={ownerId}
             revision={0}
+          />
+        ) : tab === "writing" ? (
+          <WritingBoardPanel
+            library={library}
+            ownerId={ownerId}
+            onOpen={onOpen}
           />
         ) : (
           <MemoBox

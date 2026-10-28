@@ -15,7 +15,7 @@ import { resolveThoughtRecord, withEvent } from "../../lib/thought-map/records";
 import { ReplicaQueryError } from "./queries";
 import type { LocalIndex } from "./queries";
 import { createWhiteboardReader } from "./whiteboard-reader";
-import { WHITEBOARD_ID } from "../../lib/whiteboard";
+import { WHITEBOARD_ID, boardSaveSchema } from "../../lib/whiteboard";
 import {
   noteVisibilitySchema,
   whiteboardNoteVisible,
@@ -464,15 +464,23 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     ): Promise<{ handled: true; value: unknown } | { handled: false }> {
       let value: unknown;
       if (path === "/api/whiteboard") {
+        const boardId =
+          boardSaveSchema.shape.boardId.parse(p.get("boardId") ?? undefined) ??
+          WHITEBOARD_ID;
         if (p.get("view") === "visibility") {
+          if (
+            boardId !== WHITEBOARD_ID &&
+            !(await reader.raw("library_research", boardId))
+          )
+            throw new ReplicaQueryError(404, "글감 묶음을 찾을 수 없습니다.");
           const id = noteVisibilitySchema.shape.noteId.parse(p.get("noteId"));
           const n = await reader.raw("library_notes", id),
             trash = await reader.raw("library_note_trash", id);
           if (!n || trash?.restored_at === null)
             throw new ReplicaQueryError(404, "메모를 찾을 수 없습니다.");
-          const board = await reader.raw("library_whiteboards", WHITEBOARD_ID);
+          const board = await reader.raw("library_whiteboards", boardId);
           value = { visible: whiteboardNoteVisible(board?.data, id) };
-        } else value = await readWhiteboard();
+        } else value = await readWhiteboard(boardId);
       } else if (path === "/api/knowledge") {
         const notes = new Set((await all("library_notes")).map((n) => n.id)),
           books = new Set((await all("library_books")).map((b) => b.id));

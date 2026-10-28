@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_ANALYSIS_NOTES } from "./assist-selection";
 export const assistModels = {
   "gpt-6-luna": {
     name: "GPT-6 Luna · 균형",
@@ -17,6 +18,30 @@ export const assistModels = {
 } as const;
 export const assistModelSchema = z.enum(["gpt-6-luna", "gpt-6.1-sol"]);
 export type AssistModel = z.infer<typeof assistModelSchema>;
+export const writingContextSchema = z
+  .object({
+    boardId: z.string().uuid(),
+    title: z.string().max(300),
+    request: z.enum(["ideas", "titles", "materials"]),
+    targetChapterId: z.string().uuid().nullable(),
+    chapters: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            order: z.number().int().positive(),
+            title: z.string().max(300),
+            text: z.string().max(20000),
+            noteIds: z.array(z.string().uuid()).max(5000),
+          })
+          .strict(),
+      )
+      .max(500),
+    visibleNoteIds: z.array(z.string().uuid()).max(10000),
+    candidateNoteIds: z.array(z.string().uuid()).max(1000),
+  })
+  .strict();
+export type WritingContext = z.infer<typeof writingContextSchema>;
 export const synthesisFocusSchema = z.enum([
   "all",
   "note_connection",
@@ -30,12 +55,24 @@ export const synthesisTopicSchema = z
     name: z.string().min(1).max(80),
     description: z.string().max(500),
     version: z.number().int().positive(),
-    noteIndices: z.array(z.number().int().min(0).max(23)).max(24),
+    noteIndices: z
+      .array(
+        z
+          .number()
+          .int()
+          .min(0)
+          .max(MAX_ANALYSIS_NOTES - 1),
+      )
+      .max(MAX_ANALYSIS_NOTES),
   })
   .strict();
 export const synthesisEvidenceSchema = z
   .object({
-    sourceIndex: z.number().int().min(0).max(23),
+    sourceIndex: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_ANALYSIS_NOTES - 1),
     start: z.number().int().nonnegative(),
     end: z.number().int().positive(),
     quote: z.string().min(1).max(2000),
@@ -56,9 +93,15 @@ export const synthesisResultSchema = z
             title: z.string().trim().min(1).max(200),
             reason: z.string().trim().min(1).max(2000),
             sourceIndices: z
-              .array(z.number().int().min(0).max(23))
+              .array(
+                z
+                  .number()
+                  .int()
+                  .min(0)
+                  .max(MAX_ANALYSIS_NOTES - 1),
+              )
               .min(1)
-              .max(24),
+              .max(MAX_ANALYSIS_NOTES),
             topicIds: z.array(z.string().uuid()).max(2),
             outline: z.array(z.string().trim().min(1).max(150)).max(12),
             evidence: z.array(synthesisEvidenceSchema).min(1).max(24),

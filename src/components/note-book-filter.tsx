@@ -7,15 +7,17 @@ export function NoteBookFilter({
   library,
   value,
   onChange,
+  values,
+  onValuesChange,
 }: {
   library: Library;
   value: string;
   onChange: (id: string) => void;
+  values?: string[];
+  onValuesChange?: (ids: string[]) => void;
 }) {
   const [query, setQuery] = useState(""),
-    [chosen, setChosen] = useState<{ value: string; label: string } | null>(
-      null,
-    );
+    [chosen, setChosen] = useState<{ value: string; label: string }[]>([]);
   const catalog = useBookCatalog({
     enabled: !!library.catalog,
     query: { q: query, sort: "title", limit: 30 },
@@ -25,7 +27,7 @@ export function NoteBookFilter({
     ...new Map(
       [
         { value: "unlinked", label: "책과 연결하지 않은 생각" },
-        ...(chosen ? [chosen] : []),
+        ...chosen,
         ...(library.catalog ? catalog.items : library.books).map((b) => ({
           value: b.id,
           label: b.title,
@@ -39,14 +41,15 @@ export function NoteBookFilter({
       <FacetPicker
         compact
         label="도서명"
-        multiple={false}
+        multiple={!!onValuesChange}
         options={options}
-        values={value === "all" ? [] : [value]}
+        values={values ?? (value === "all" ? [] : [value])}
         onSearch={setQuery}
         onChange={(ids) => {
           const id = ids[0] ?? "all";
-          setChosen(options.find((o) => o.value === id) ?? null);
-          onChange(id);
+          setChosen(options.filter((o) => ids.includes(o.value)));
+          if (onValuesChange) onValuesChange(ids);
+          else onChange(id);
         }}
       />
     </label>

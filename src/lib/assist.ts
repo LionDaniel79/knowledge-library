@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_ANALYSIS_NOTES } from "./assist-selection";
 import { sourceRefSchema } from "./curation";
 import { comparisonSchema } from "./thought-map/types";
 import {
@@ -6,6 +7,7 @@ import {
   synthesisFocusSchema,
   synthesisTopicSchema,
   synthesisResultSchema,
+  writingContextSchema,
 } from "./assist-synthesis";
 export const ASSIST_PROMPT_VERSION = "human-assist-v2";
 export const ASSIST_SCHEMA_VERSION = "assist-v2";
@@ -58,8 +60,9 @@ export const assistInputSchema = z.discriminatedUnion("purpose", [
     .object({
       purpose: z.literal("synthesis"),
       focus: synthesisFocusSchema,
-      sources: z.array(assistSourceSchema).min(2).max(24),
+      sources: z.array(assistSourceSchema).min(2).max(MAX_ANALYSIS_NOTES),
       topics: z.array(synthesisTopicSchema).max(30),
+      writingContext: writingContextSchema.optional(),
     })
     .strict(),
   z

@@ -38,6 +38,23 @@ async function baseRow(
         ),
       );
 }
+async function reviewedRow(
+  repository: ReturnType<typeof createLocalReplicaRepository>,
+  entity: SyncEntity | undefined,
+  entry: OutboxEntry,
+) {
+  const body = (entry.command as QueuedChange).body;
+  if (entity === "library_topic_memberships" && body.type === "assignTopic") {
+    const p = body.payload;
+    return (await repository.all(entity)).find(
+      (row) =>
+        row.topic_id === p.topicId &&
+        row.source_kind === p.sourceKind &&
+        row.source_id === p.sourceId,
+    );
+  }
+  return entity ? repository.raw(entity, entry.entityId) : undefined;
+}
 export async function readConflictContext(
   storage: ReplicaStorage,
   entries: OutboxEntry[],
@@ -180,9 +197,20 @@ export async function loadReplicaConflict(
           e.after?.id === entry.entityId && e.entity !== "library_revisions",
       ) ?? first.effects.find((e) => e.entity !== "library_revisions");
   const cp = (await storage.checkpoint())!;
-  const latest = primary
+  let latest = primary
     ? await baseRow(storage, primary.entity, primary.key)
     : null;
+  if (primary?.entity === "library_topic_memberships") {
+    const downloaded = createLocalReplicaRepository({
+      ...storage,
+      listOutbox: async () => [],
+    });
+    try {
+      latest = (await reviewedRow(downloaded, primary.entity, entry)) ?? null;
+    } finally {
+      downloaded.close();
+    }
+  }
   const trash =
       primary?.entity === "library_notes"
         ? await baseRow(storage, "library_note_trash", primary.key)
@@ -391,15 +419,19 @@ export function resolveReplicaConflict(input: {
     order: Date.now() * 1000,
   };
 }
-/** Rebuild an unsent creation and its edits against the downloaded state. A
- * missing server row is normal here; the original commands remain archived. */
+/** Rebuild the chosen command chain against the downloaded state, retaining
+ * context edits and chronology. The original commands remain archived. */
 async function replayReviewedChanges(
   storage: ReplicaStorage,
   review: ConflictReview,
   all: OutboxEntry[],
   resolution: Resolution,
+  dependentEntries: OutboxEntry[] = [],
 ) {
-  const removed = new Set(review.chain.map((e) => e.requestId)),
+  const originals = [...review.chain, ...dependentEntries].sort(
+      (a, b) => a.order - b.order || a.requestId.localeCompare(b.requestId),
+    ),
+    removed = new Set(originals.map((e) => e.requestId)),
     requestMap = new Map<string, string>(),
     aliases = new Map<string, string>(),
     entries: OutboxEntry[] = [];
@@ -412,12 +444,6 @@ async function replayReviewedChanges(
       ...entries,
     ],
   });
-  const first = review.firstEntry.command as QueuedChange,
-    entity = first.effects.find(
-      (e) =>
-        e.entity !== "library_revisions" &&
-        e.after?.id === review.firstEntry.entityId,
-    )?.entity;
   const remap = (entry: OutboxEntry) => {
     for (const [from, to] of aliases) entry = remapQueuedEntry(entry, from, to);
     return entry;
@@ -467,7 +493,7 @@ async function replayReviewedChanges(
       }
     }
     const restorationRequest = entries.at(-1)?.requestId;
-    for (const original of review.chain) {
+    for (const original of originals) {
       preparingOrder = original.order;
       repository.invalidate();
       const old = remap(original),
@@ -475,13 +501,20 @@ async function replayReviewedChanges(
         body = structuredClone(c.body),
         requestId = crypto.randomUUID(),
         at = new Date().toISOString(),
-        row = entity ? await repository.raw(entity, old.entityId) : undefined;
+        entity =
+          c.effects.find(
+            (e) =>
+              e.entity !== "library_revisions" && e.after?.id === old.entityId,
+          )?.entity ??
+          c.effects.find((e) => e.entity !== "library_revisions")?.entity,
+        row = await reviewedRow(repository, entity, old);
       body.requestId = requestId;
       body.entityId = old.entityId;
       delete body.editBase;
       if (body.payload && Object.hasOwn(body.payload, "expectedVersion"))
         body.payload.expectedVersion = row?.version ?? 0;
       if (body.type === "assignTopic" && body.payload) {
+        body.payload.expectedVersion = row?.version ?? 0;
         const source = await repository.raw(
           body.payload.sourceKind === "note"
             ? "library_notes"
@@ -497,6 +530,41 @@ async function replayReviewedChanges(
         body.payload.expectedTitle = row?.title;
       if (body.payload && Object.hasOwn(body.payload, "expectedQuestion"))
         body.payload.expectedQuestion = row?.question;
+      if (["addNote", "editNote"].includes(body.type)) {
+        const memberships = body.payload.topicChanges?.length
+          ? await repository.all("library_topic_memberships")
+          : [];
+        for (const change of body.payload.topicChanges ?? []) {
+          const membership = memberships.find(
+            (m) =>
+              m.topic_id === change.topicId &&
+              m.source_kind === "note" &&
+              m.source_id === old.entityId,
+          );
+          change.expectedVersion = membership?.version ?? 0;
+        }
+      }
+      if (body.type === "moveResearchItems")
+        for (const item of body.payload.items) {
+          const placement = await repository.raw(
+            "library_research_placements",
+            item.itemId,
+          );
+          item.expectedVersion = placement?.version ?? 0;
+        }
+      if (body.type === "addResearchNote") {
+        const note = await repository.raw("library_notes", body.payload.noteId);
+        if (note) body.payload.expectedNoteVersion = note.version;
+      }
+      if (c.path === "/api/book-introduction") {
+        const book = await repository.raw("library_books", body.bookId);
+        if (book) body.bookVersion = book.version;
+      }
+      if (c.path === "/api/book-relations")
+        for (const side of ["left", "right"] as const) {
+          const book = await repository.raw("library_books", body[side + "Id"]);
+          if (book) body[side + "Version"] = book.version;
+        }
       if (
         resolution.text &&
         original === review.chain.at(-1) &&
@@ -570,7 +638,7 @@ async function replayReviewedChanges(
       );
       repository.invalidate();
     }
-    return { entries, requestMap, aliases };
+    return { entries, requestMap, aliases, dependentEntries };
   } finally {
     repository.close();
   }
@@ -613,6 +681,7 @@ export async function applyReplicaResolution(
               ...(current.entry.command as QueuedChange).body,
               type: "saveWhiteboard",
               payload: {
+                boardId: current.local.id,
                 data: current.local.data,
                 expectedVersion: current.latest?.version ?? 0,
                 includeVisibility: true,
@@ -623,8 +692,20 @@ export async function applyReplicaResolution(
         }
       : current.entry;
   const first = current.firstEntry.command as QueuedChange;
+  const dependentEntries: OutboxEntry[] = [],
+    blocked = new Set(removed);
+  for (const entry of [...all].sort((a, b) => a.order - b.order))
+    if (
+      !blocked.has(entry.requestId) &&
+      entry.state === "pending" &&
+      !(entry.command as QueuedChange).ack &&
+      entry.dependsOn.some((id) => blocked.has(id))
+    ) {
+      blocked.add(entry.requestId);
+      dependentEntries.push(entry);
+    }
   const replay =
-    (current.primary?.entity === "library_topic_memberships" ||
+    (current.primary?.entity !== "library_whiteboards" ||
       (!current.latest &&
         !current.unavailable &&
         current.firstEntry.baseVersion === null &&
@@ -633,8 +714,16 @@ export async function applyReplicaResolution(
           (e) => e.entity !== "library_revisions" && !!e.after,
         ))) &&
     ["mine", "merge"].includes(resolution.choice)
-      ? await replayReviewedChanges(storage, current, all, resolution)
+      ? await replayReviewedChanges(
+          storage,
+          current,
+          all,
+          resolution,
+          dependentEntries,
+        )
       : null;
+  for (const entry of replay?.dependentEntries ?? [])
+    removed.add(entry.requestId);
   const next = replay
     ? null
     : resolution.choice === "server"
@@ -645,6 +734,49 @@ export async function applyReplicaResolution(
           latest: current.latest,
           ...resolution,
         });
+  if (next && resolution.choice === "copy") {
+    const repository = createLocalReplicaRepository({
+      ...storage,
+      listOutbox: async () => all.filter((e) => !removed.has(e.requestId)),
+    });
+    try {
+      const change = next.command as QueuedChange,
+        topics = new Map<string, any>(),
+        related = new Map<string, any>();
+      for (const entry of current.chain) {
+        const body = (entry.command as QueuedChange).body;
+        if (!["addNote", "editNote"].includes(body.type)) continue;
+        for (const topic of body.payload.topicChanges ?? [])
+          topics.set(topic.topicId, { ...topic, expectedVersion: 0 });
+        for (const note of body.payload.relatedNotes ?? [])
+          related.set(note.noteId, structuredClone(note));
+      }
+      if (topics.size) change.body.payload.topicChanges = [...topics.values()];
+      if (related.size)
+        change.body.payload.relatedNotes = [...related.values()];
+      const prepared = await prepareOptimistic(
+        repository,
+        change.path,
+        change.body,
+        change.at,
+      );
+      next.baseVersion = null;
+      next.baseRevision = null;
+      next.command = {
+        path: change.path,
+        body: prepared.body,
+        at: change.at,
+        base: prepared.base,
+        effects: prepared.effects,
+        result: prepared.result,
+        inputHash: contentHash(
+          JSON.stringify({ path: change.path, body: prepared.body }),
+        ),
+      } satisfies QueuedChange;
+    } finally {
+      repository.close();
+    }
+  }
   if (next) {
     next.order = all.reduce(
       (max, e) => Math.max(max, e.order + 1),
@@ -670,18 +802,22 @@ export async function applyReplicaResolution(
     resolution: {
       choice: resolution.choice,
       entries: current.chain,
+      ...(replay?.dependentEntries.length
+        ? { dependentEntries: replay.dependentEntries }
+        : {}),
       nextRequestId: replacements[0]?.requestId ?? null,
       nextRequestIds: replacements.map((e) => e.requestId),
     },
   };
   const localEntityRevisions = { ...cp.localEntityRevisions };
-  for (const e of current.chain)
+  const originals = [...current.chain, ...(replay?.dependentEntries ?? [])];
+  for (const e of originals)
     for (const effect of (e.command as QueuedChange).effects)
       localEntityRevisions[effect.entity] =
         (localEntityRevisions[effect.entity] ?? 0) + 1;
   await storage.transaction((tx) => {
     tx.expectCheckpoint(cp.generation, cp);
-    for (const e of current.chain) {
+    for (const e of originals) {
       tx.removeOutbox(e.requestId);
       tx.removeConflict(e.requestId);
     }

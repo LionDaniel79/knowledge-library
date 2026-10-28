@@ -42,12 +42,17 @@ export function AssistRequestCard({
   act,
   library,
   onOpen,
+  onWritingSuggestion,
 }: {
   request: any;
   busy: boolean;
   act: (action: string, payload: any) => Promise<any>;
   library: Library;
   onOpen?: (kind: string, id: string) => void;
+  onWritingSuggestion?: (
+    suggestion: SynthesisResult["suggestions"][number],
+    scope: any,
+  ) => void;
 }) {
   const [open, setOpen] = useState(false),
     [detail, setDetail] = useState<any>(null),
@@ -144,12 +149,27 @@ export function AssistRequestCard({
                       ))}
                     </ol>
                   )}
-                  <button
-                    disabled={busy || adopted(index)}
-                    onClick={() => void adopt(index)}
-                  >
-                    {adopted(index) ? "저장함" : adoptNames[s.kind]}
-                  </button>
+                  {onWritingSuggestion && value.scope?.writingContext ? (
+                    <button
+                      disabled={busy}
+                      onClick={() => onWritingSuggestion(s, value.scope)}
+                    >
+                      {value.scope.writingContext.request === "materials"
+                        ? "추천 메모를 목차에 넣기"
+                        : value.scope.writingContext.request === "titles"
+                          ? "목차 제목으로 사용"
+                          : "목차로 추가"}
+                    </button>
+                  ) : value.scope?.writingContext ? (
+                    <small>해당 글감에서 제안을 적용할 수 있습니다.</small>
+                  ) : (
+                    <button
+                      disabled={busy || adopted(index)}
+                      onClick={() => void adopt(index)}
+                    >
+                      {adopted(index) ? "저장함" : adoptNames[s.kind]}
+                    </button>
+                  )}
                   <details>
                     <summary>근거 기록</summary>
                     {s.evidence.map((e, i) => {

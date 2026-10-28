@@ -13,6 +13,8 @@ export function NoteTagFilter({
   tags,
   value,
   onChange,
+  values,
+  onValuesChange,
   onUpdated,
   preview,
   searchable = false,
@@ -21,12 +23,15 @@ export function NoteTagFilter({
   tags: string[];
   value: string;
   onChange: (tag: string) => void;
+  values?: string[];
+  onValuesChange?: (tags: string[]) => void;
   onUpdated: () => Promise<void>;
   preview: boolean;
   searchable?: boolean;
   onRemoved?: (tag: string) => void;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
+  const selected = values ?? (value === "all" ? [] : [value]);
   const [items, setItems] = useState<Tag[]>([]),
     [pending, setPending] = useState<(Tag & { requestId: string }) | null>(
       null,
@@ -62,7 +67,9 @@ export function NoteTagFilter({
         }),
         body = await r.json();
       if (!r.ok) throw Error(body.error);
-      if (value === pending.tag) onChange("all");
+      if (onValuesChange)
+        onValuesChange(selected.filter((tag) => tag !== pending.tag));
+      else if (value === pending.tag) onChange("all");
       setPending(null);
       setItems((items) => items.filter((t) => t.tag !== pending.tag));
       onRemoved?.(pending.tag);
@@ -83,8 +90,43 @@ export function NoteTagFilter({
     .filter((t) => !searchable || containsSearchField(t, query))
     .sort((a, b) => a.localeCompare(b, "ko"));
   function choose(tag: string) {
+    if (onValuesChange) {
+      onValuesChange(
+        tag === "all"
+          ? []
+          : selected.includes(tag)
+            ? selected.filter((value) => value !== tag)
+            : [...selected, tag],
+      );
+      return;
+    }
     onChange(tag);
     if (details.current) details.current.open = false;
+  }
+  function choice(tag: string, label: string) {
+    return onValuesChange ? (
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 0",
+        }}
+      >
+        <input
+          type="checkbox"
+          aria-label={label}
+          checked={tag === "all" ? !selected.length : selected.includes(tag)}
+          onChange={() => choose(tag)}
+          style={{ width: 18, height: 18, margin: 0 }}
+        />
+        <span>{label}</span>
+      </label>
+    ) : (
+      <button type="button" onClick={() => choose(tag)}>
+        {label}
+      </button>
+    );
   }
   return (
     <div className="tag-filter">
@@ -107,11 +149,19 @@ export function NoteTagFilter({
           role={searchable ? "button" : undefined}
           aria-label={searchable ? "태그 선택" : "기록 태그 필터 · 태그 관리"}
         >
-          {value === "all"
-            ? "모든 태그"
-            : value === "untagged"
-              ? "태그 없는 기록"
-              : value}
+          {onValuesChange
+            ? selected.length === 1
+              ? selected[0] === "untagged"
+                ? "태그 없는 기록"
+                : selected[0]
+              : selected.length
+                ? `${selected.length}개 선택`
+                : "모든 태그"
+            : value === "all"
+              ? "모든 태그"
+              : value === "untagged"
+                ? "태그 없는 기록"
+                : value}
           <span>관리 ▾</span>
         </summary>
         <div className="tag-dropdown">
@@ -129,17 +179,11 @@ export function NoteTagFilter({
               }}
             />
           )}
-          <button type="button" onClick={() => choose("all")}>
-            모든 태그
-          </button>
-          <button type="button" onClick={() => choose("untagged")}>
-            태그 없는 기록
-          </button>
+          {choice("all", "모든 태그")}
+          {choice("untagged", "태그 없는 기록")}
           {options.map((tag) => (
             <div className="tag-option" key={tag}>
-              <button type="button" onClick={() => choose(tag)}>
-                {tag}
-              </button>
+              {choice(tag, tag)}
               <button
                 type="button"
                 className="tag-remove"
@@ -157,6 +201,16 @@ export function NoteTagFilter({
               </button>
             </div>
           ))}
+          {onValuesChange && (
+            <button
+              type="button"
+              onClick={() => {
+                if (details.current) details.current.open = false;
+              }}
+            >
+              선택 완료
+            </button>
+          )}
           {error && (
             <p className="error" role="alert">
               {error}

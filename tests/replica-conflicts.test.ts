@@ -236,9 +236,13 @@ it("compares the original, latest server text and newest dependent draft, then a
     text: { title: "합친 생각", content: "두 기기의 생각을 합친 글" },
   });
   const remaining = await f.s.listOutbox();
-  expect(remaining).toHaveLength(1);
+  expect(remaining).toHaveLength(2);
   expect(remaining[0].requestId).not.toBe(ids[0]);
   expect((remaining[0].command as any).body.payload.expectedVersion).toBe(2);
+  expect((remaining[1].command as any).body.payload).toMatchObject({
+    expectedVersion: 3,
+    content: "두 기기의 생각을 합친 글",
+  });
   expect((await f.repo.note(f.note)).content).toBe("두 기기의 생각을 합친 글");
   expect(await f.s.listConflicts()).toHaveLength(0);
   expect((await f.s.listConflicts(true))[0].resolution.entries).toHaveLength(2);

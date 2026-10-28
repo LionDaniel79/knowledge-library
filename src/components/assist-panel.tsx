@@ -2,13 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { libraryRequest } from "@/client/replica/request";
 import type { Library, Note } from "@/lib/domain";
-import type { TopicMaterial } from "@/lib/topic-materials";
 import {
   assistModels,
   assistModelSchema,
   type AssistModel,
+  type WritingContext,
+  type SynthesisResult,
 } from "@/lib/assist-synthesis";
-import { analysisExcerpt, representativeNotes } from "@/lib/assist-selection";
+import {
+  analysisExcerpt,
+  representativeNotes,
+  collectAnalysisNotes,
+} from "@/lib/assist-selection";
 import { useReplicaOptional } from "./replica/provider";
 import { AssistHelp } from "./assist-help";
 import { AssistRequestCard } from "./assist-request-card";
@@ -19,6 +24,11 @@ export type AssistProps = {
   onOpen?: (kind: string, id: string) => void;
   scope?: Record<string, string | number>;
   ownerId?: string;
+  analysis?: { notes: Note[]; context: WritingContext };
+  onWritingSuggestion?: (
+    suggestion: SynthesisResult["suggestions"][number],
+    scope: any,
+  ) => void;
 };
 export const focusNames = {
   all: "종합 검토",
@@ -48,6 +58,8 @@ export function AssistPanel({
   onOpen,
   scope,
   ownerId,
+  analysis,
+  onWritingSuggestion,
 }: AssistProps) {
   const replica = useReplicaOptional(),
     key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
@@ -77,6 +89,7 @@ export function AssistPanel({
     } catch {}
   }, [key, hiddenKey]);
   const query = {
+    ...scope,
     kind: "note",
     category: scope?.category ?? "all",
     topic: scope?.topic ?? "all",
@@ -86,7 +99,15 @@ export function AssistPanel({
     q: scope?.q ?? "",
     sort: "newest",
   };
-  const context = JSON.stringify([query, model, focus, maximum, noteId]),
+  const context = JSON.stringify([
+      query,
+      model,
+      focus,
+      maximum,
+      noteId,
+      analysis?.context,
+      analysis?.notes.map((n) => [n.id, n.version]),
+    ]),
     contextRef = useRef(context);
   contextRef.current = context;
   const load = useCallback(async () => {
@@ -166,24 +187,37 @@ export function AssistPanel({
     try {
       if (typeof navigator !== "undefined" && !navigator.onLine)
         throw Error("AI 분석에는 인터넷 연결이 필요합니다.");
-      const candidates: TopicMaterial[] = [];
-      let total = 0;
-      for (let offset = 0; offset < 200; offset += 50) {
-        const params = new URLSearchParams(
-            Object.entries({ ...query, offset, limit: 50 }).map(([k, v]) => [
-              k,
-              String(v),
-            ]),
-          ),
-          r = await libraryRequest("/api/library-materials?" + params, {
-            cache: "no-store",
-          }),
-          j = await r.json();
-        if (!r.ok) throw Error(j.error ?? "분석할 기록을 찾지 못했습니다.");
-        total = j.total;
-        candidates.push(...j.items);
-        if (candidates.length >= total || !j.items.length) break;
-      }
+      const { candidates, total } = analysis
+        ? {
+            total: analysis.notes.length,
+            candidates: analysis.notes.map((n) => ({
+              id: n.id,
+              kind: "note" as const,
+              title: n.title,
+              text: n.content,
+              category: "",
+              version: n.version,
+              bookId: n.bookId,
+              bookTitle: "",
+              topicIds: [],
+              topicNames: [],
+              createdAt: n.createdAt,
+              updatedAt: n.updatedAt,
+            })),
+          }
+        : await collectAnalysisNotes(async (offset) => {
+            const params = new URLSearchParams(
+                Object.entries({ ...query, offset, limit: 50 }).map(
+                  ([k, v]) => [k, String(v)],
+                ),
+              ),
+              r = await libraryRequest("/api/library-materials?" + params, {
+                cache: "no-store",
+              }),
+              j = await r.json();
+            if (!r.ok) throw Error(j.error ?? "분석할 기록을 찾지 못했습니다.");
+            return j;
+          }, maximum === 0);
       if (noteId && !scope && !candidates.some((n) => n.id === noteId)) {
         const r = await libraryRequest("/api/notes/" + noteId, {
             cache: "no-store",
@@ -205,7 +239,10 @@ export function AssistPanel({
           updatedAt: n.updatedAt,
         });
       }
-      const chosen = representativeNotes(candidates, maximum, noteId);
+      const chosen =
+        maximum === 0
+          ? candidates
+          : representativeNotes(candidates, maximum, noteId);
       if (chosen.length < 2)
         throw Error(
           "함께 검토할 기록이 두 개 이상 필요합니다. 필터를 넓혀 주세요.",
@@ -215,7 +252,7 @@ export function AssistPanel({
         full.push(
           ...(await Promise.all(
             chosen.slice(i, i + 4).map(async (c) => {
-              const local = library.notes.find(
+              const local = [...(analysis?.notes ?? []), ...library.notes].find(
                 (n) => n.id === c.id && !n.summary && n.version === c.version,
               );
               if (local) return local;
@@ -232,13 +269,22 @@ export function AssistPanel({
         );
       const budget = Math.min(1200, Math.floor(10000 / full.length)),
         sources = full.map((n) => {
-          const selection = analysisExcerpt(n.content, String(query.q), budget);
+          const selection =
+            maximum === 0
+              ? undefined
+              : analysisExcerpt(n.content, String(query.q), budget);
           return {
             source: { kind: "note", id: n.id, version: String(n.version) },
             ...(selection ? { selection } : {}),
           };
         });
-      const selection = { purpose: "synthesis", model, focus, sources },
+      const selection = {
+          purpose: "synthesis",
+          model,
+          focus: analysis ? "writing_idea" : focus,
+          sources,
+          ...(analysis ? { writingContext: analysis.context } : {}),
+        },
         r = await libraryRequest("/api/assist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -287,22 +333,24 @@ export function AssistPanel({
       )}
       {message && <p role="status">{message}</p>}
       <div className="assist-synthesis-controls">
-        <label>
-          도움 방향
-          <select
-            aria-label="도움 방향"
-            value={focus}
-            onChange={(e) =>
-              setFocus(e.target.value as keyof typeof focusNames)
-            }
-          >
-            {Object.entries(focusNames).map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!analysis && (
+          <label>
+            도움 방향
+            <select
+              aria-label="도움 방향"
+              value={focus}
+              onChange={(e) =>
+                setFocus(e.target.value as keyof typeof focusNames)
+              }
+            >
+              {Object.entries(focusNames).map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button disabled={busy} onClick={() => void prepare()}>
           {busy ? "처리 중…" : "분석할 기록 확인"}
         </button>
@@ -329,11 +377,12 @@ export function AssistPanel({
             </select>
           </label>
           <label>
-            대표 기록 수
+            전송 메모 수
             <select
               value={maximum}
               onChange={(e) => setMaximum(Number(e.target.value))}
             >
+              <option value={0}>전체</option>
               <option value={24}>최대 24개</option>
               <option value={12}>최대 12개</option>
               <option value={6}>최대 6개</option>
@@ -342,7 +391,9 @@ export function AssistPanel({
         </details>
       </div>
       <small>
-        현재 선택한 조건의 기록을 바탕으로 검토합니다. 확인한 제안만 저장합니다.
+        {analysis
+          ? `현재 글감의 메모와 목차를 검토합니다. 추가 후보 ${analysis.context.candidateNoteIds.length}개 포함.`
+          : "현재 선택한 조건의 기록을 바탕으로 검토합니다. 확인한 제안만 저장합니다."}
       </small>
       {currentPreview && (
         <section className="assist-preview">
@@ -360,7 +411,7 @@ export function AssistPanel({
                 <blockquote>{s.text}</blockquote>
               </div>
             ))}
-            {currentPreview.total > 200 && (
+            {maximum !== 0 && currentPreview.total > 200 && (
               <p>
                 최대 200개 후보에서 대표 기록을 골랐습니다. 범위를 좁히면 다른
                 기록도 검토할 수 있습니다.
@@ -438,16 +489,23 @@ export function AssistPanel({
         </div>
         {!state && <p role="status">요청 목록을 불러오는 중…</p>}
         {state && !state.requests?.length && <p>요청한 기록이 없습니다.</p>}
-        {state?.requests?.map((r: any) => (
-          <AssistRequestCard
-            key={r.id}
-            request={r}
-            busy={busy}
-            act={act}
-            library={library}
-            onOpen={onOpen}
-          />
-        ))}
+        {state?.requests
+          ?.filter((r: any) =>
+            analysis
+              ? r.scope?.writingContext?.boardId === analysis.context.boardId
+              : !r.scope?.writingContext,
+          )
+          .map((r: any) => (
+            <AssistRequestCard
+              key={r.id}
+              request={r}
+              busy={busy}
+              act={act}
+              library={library}
+              onOpen={onOpen}
+              onWritingSuggestion={analysis ? onWritingSuggestion : undefined}
+            />
+          ))}
       </div>
     </section>
   );

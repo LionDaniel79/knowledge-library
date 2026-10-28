@@ -20,6 +20,8 @@ import {
 } from "@/lib/whiteboard";
 import { relationNames, type Relation } from "@/lib/knowledge";
 import { useBoardFullscreen } from "./use-fullscreen";
+import { ChapterBox } from "./chapter-box";
+import type { WritingChapter } from "@/lib/writing-board";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import {
   buildConnectionLines,
@@ -27,7 +29,7 @@ import {
   connectionLinesAtPoint,
 } from "@/lib/whiteboard-lines";
 type Drag = {
-  kind: "note" | "group" | "pan";
+  kind: "note" | "group" | "pan" | "chapter";
   id: string;
   start: Point;
   dx: number;
@@ -53,6 +55,12 @@ export function WhiteboardCanvas({
   onRemoveConnection,
   onRemoveGroupConnection,
   onArrange,
+  onChapterChange,
+  onChapterMove,
+  onChapterRemove,
+  onViewChange,
+  onSave,
+  saving = false,
 }: {
   source: WhiteboardSnapshot;
   board: Board;
@@ -81,6 +89,12 @@ export function WhiteboardCanvas({
   onRemoveConnection: (connection: BoardConnection) => Promise<void>;
   onRemoveGroupConnection: (source: string, target: string) => void;
   onArrange: () => void;
+  onChapterChange?: (chapter: WritingChapter) => void;
+  onChapterMove?: (id: string, dx: number, dy: number) => void;
+  onChapterRemove?: (id: string) => void;
+  onViewChange?: (view: { x: number; y: number; zoom: number }) => void;
+  onSave?: () => void;
+  saving?: boolean;
 }) {
   const fullscreen = useBoardFullscreen();
   const viewport = useRef<HTMLDivElement>(null),
@@ -88,10 +102,20 @@ export function WhiteboardCanvas({
     [drag, setDrag] = useState<Drag | null>(null),
     [selectedLineId, setSelectedLineId] = useState<string | null>(null),
     [lineChoiceIds, setLineChoiceIds] = useState<string[]>([]),
-    [view, setView] = useState({ x: 18, y: 18, zoom: 0.85 }),
+    [view, setView] = useState(
+      board.writing?.viewport ?? { x: 18, y: 18, zoom: 0.85 },
+    ),
     viewRef = useRef(view),
     frame = useRef(0);
   viewRef.current = view;
+  const viewCallback = useRef(onViewChange),
+    firstFit = useRef(true);
+  viewCallback.current = onViewChange;
+  useEffect(() => {
+    if (!viewCallback.current) return;
+    const timer = setTimeout(() => viewCallback.current?.(view), 600);
+    return () => clearTimeout(timer);
+  }, [view]);
   const scene = useMemo(() => buildScene(source, board), [source, board]);
   const noteLabels = useMemo(
     () =>
@@ -133,6 +157,7 @@ export function WhiteboardCanvas({
     const el = viewport.current;
     if (!el) return;
     const rects = [
+      ...(board.writing?.chapters ?? []),
       ...scene.groups,
       ...scene.nodes
         .filter((n) => !n.groupId)
@@ -153,6 +178,11 @@ export function WhiteboardCanvas({
     setView({ x: 18 - x * zoom, y: 18 - y * zoom, zoom });
   }
   useEffect(() => {
+    if (firstFit.current && board.writing?.viewport) {
+      firstFit.current = false;
+      return;
+    }
+    firstFit.current = false;
     fit(overviewOnFit);
   }, [fitKey]); // Fit only after an explicit search, not after a drag/save.
   useEffect(() => {
@@ -188,7 +218,7 @@ export function WhiteboardCanvas({
     if (
       busy ||
       e.button !== 0 ||
-      (e.target as Element).closest("button,input,a")
+      (e.target as Element).closest("button,input,textarea,select,a,summary")
     )
       return;
     if (kind !== "pan" || !id) setSelectedLineId(null);
@@ -270,6 +300,8 @@ export function WhiteboardCanvas({
           }
         : undefined;
       onDrop(n, p, target, groupOrigin);
+    } else if (d.kind === "chapter") {
+      if (d.moved) onChapterMove?.(d.id, d.dx, d.dy);
     } else {
       const g = scene.groups.find((g) => g.id === d.id);
       if (!g) return;
@@ -456,13 +488,29 @@ export function WhiteboardCanvas({
         >
           {fullscreen.fullscreen ? "이전화면" : "전체화면"}
         </button>
+        {onSave && (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              onViewChange?.(viewRef.current);
+              onSave();
+            }}
+          >
+            {saving ? "저장 중…" : "저장"}
+          </button>
+        )}
       </div>
       <div
         className="wb-viewport"
         ref={viewport}
         aria-label="메모 화이트보드"
         onPointerDown={(e) => {
-          if (!(e.target as Element).closest(".wb-note,.wb-group-head"))
+          if (
+            !(e.target as Element).closest(
+              ".wb-note,.wb-group-head,.writing-chapter",
+            )
+          )
             start(e, "pan", "");
         }}
         onPointerMove={move}
@@ -476,6 +524,17 @@ export function WhiteboardCanvas({
             transform: `translate(${view.x + (drag?.kind === "pan" ? drag.dx : 0)}px,${view.y + (drag?.kind === "pan" ? drag.dy : 0)}px) scale(${view.zoom})`,
           }}
         >
+          {(board.writing?.chapters ?? []).map((c) => (
+            <ChapterBox
+              key={c.id}
+              chapter={c}
+              dx={drag?.kind === "chapter" && drag.id === c.id ? drag.dx : 0}
+              dy={drag?.kind === "chapter" && drag.id === c.id ? drag.dy : 0}
+              onDrag={(e) => start(e, "chapter", c.id)}
+              onChange={(chapter) => onChapterChange?.(chapter)}
+              onRemove={() => onChapterRemove?.(c.id)}
+            />
+          ))}
           {scene.groups.map((g) => {
             const p = groupPoint(g);
             return (

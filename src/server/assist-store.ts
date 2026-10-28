@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { MAX_ANALYSIS_NOTES } from "../lib/assist-selection";
 import { z } from "zod";
 import {
   ASSIST_COMPARISON_ENABLED,
@@ -12,6 +13,7 @@ import {
 import {
   assistModelSchema,
   synthesisFocusSchema,
+  writingContextSchema,
 } from "../lib/assist-synthesis";
 import { sourceRefSchema, type CurationItem } from "../lib/curation";
 import {
@@ -55,10 +57,11 @@ const chosen = z
 export const assistSelectionSchema = z
   .object({
     purpose: assistPurposeSchema,
-    sources: z.array(chosen).min(1).max(24),
+    sources: z.array(chosen).min(1).max(MAX_ANALYSIS_NOTES),
     model: assistModelSchema.optional(),
     focus: synthesisFocusSchema.optional(),
     topicIds: z.array(z.string().uuid()).max(30).optional(),
+    writingContext: writingContextSchema.optional(),
   })
   .strict();
 const requestSchema = assistSelectionSchema
@@ -204,7 +207,13 @@ async function buildTask(
       purpose: input.purpose,
       sources,
       ...(input.purpose === "synthesis"
-        ? { focus: input.focus ?? "all", topics }
+        ? {
+            focus: input.focus ?? "all",
+            topics,
+            ...(input.writingContext
+              ? { writingContext: input.writingContext }
+              : {}),
+          }
         : {}),
     },
   } as AiTask;
@@ -226,6 +235,9 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
               ? {
                   focus: task.payload.focus,
                   topicIds: task.payload.topics.map((t) => t.id),
+                  ...(task.payload.writingContext
+                    ? { writingContext: task.payload.writingContext }
+                    : {}),
                 }
               : {}),
             sources: task.payload.sources.map((s) => ({
@@ -697,7 +709,7 @@ export function createAssistStore(
     const policy = await getLibraryAiPolicy(db, owner);
     const requests = (
       await db.query(
-        `SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,${queryOptions.compact ? "jsonb_build_object('valid',s.result->'valid','costUsd',s.result->'costUsd','provenance',s.result->'provenance','suggestionCount',coalesce(jsonb_array_length(s.result->'output'->'suggestions'),0))" : "s.result"} AS result,s.adoption,jsonb_build_object('model',coalesce(r.task->>'model','gpt-6-luna'),'focus',r.task->'payload'->>'focus','sources',(SELECT jsonb_agg(source.value->'source' ORDER BY source.position) FROM jsonb_array_elements(r.task->'payload'->'sources') WITH ORDINALITY AS source(value,position))) AS scope FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.hidden_at IS NULL AND ($2::uuid IS NULL OR r.id=$2::uuid) ORDER BY r.created_at DESC,r.id LIMIT 30`,
+        `SELECT r.id,r.purpose,r.status,r.error_code,r.created_at,r.updated_at,${queryOptions.compact ? "jsonb_build_object('valid',s.result->'valid','costUsd',s.result->'costUsd','provenance',s.result->'provenance','suggestionCount',coalesce(jsonb_array_length(s.result->'output'->'suggestions'),0))" : "s.result"} AS result,s.adoption,jsonb_build_object('model',coalesce(r.task->>'model','gpt-6-luna'),'focus',r.task->'payload'->>'focus','writingContext',CASE WHEN r.task->'payload' ? 'writingContext' THEN jsonb_build_object('boardId',r.task->'payload'->'writingContext'->>'boardId','request',r.task->'payload'->'writingContext'->>'request','targetChapterId',r.task->'payload'->'writingContext'->>'targetChapterId','candidateNoteIds',r.task->'payload'->'writingContext'->'candidateNoteIds') ELSE NULL END,'sources',(SELECT jsonb_agg(source.value->'source' ORDER BY source.position) FROM jsonb_array_elements(r.task->'payload'->'sources') WITH ORDINALITY AS source(value,position))) AS scope FROM library_assist_requests r LEFT JOIN library_assist_results s ON s.owner_id=r.owner_id AND s.request_id=r.id WHERE r.owner_id=$1 AND r.hidden_at IS NULL AND ($2::uuid IS NULL OR r.id=$2::uuid) ORDER BY r.created_at DESC,r.id LIMIT 30`,
         [owner, queryOptions.id ?? null],
       )
     ).rows;

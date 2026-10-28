@@ -1,5 +1,5 @@
 import type { Book, Note } from "./domain";
-import { materialPageQuery } from "./material-query";
+import { materialPageQuery, materialSelections } from "./material-query";
 import { categoryName } from "./catalog";
 import { containsSearchField } from "./search-fields";
 import { binaryCompare as compare, timestampKey } from "./replica/projections";
@@ -161,29 +161,39 @@ export function buildTopicMaterials({
   ];
 }
 export function pageTopicMaterials(materials: SearchMaterial[], raw: unknown) {
-  const p = materialPageQuery.parse(raw);
+  const p = materialPageQuery.parse(raw),
+    selected = materialSelections(p);
   const rows = materials.filter(
     (m) =>
       (p.kind === "all" || m.kind === p.kind) &&
-      (p.noteType === "all" ||
+      (!selected.noteTypes.length ||
         (m.kind === "note" &&
-          (p.noteType === "unclassified"
-            ? !m.title.trim() || m.title.trim() === "미분류 메모"
-            : m.noteType === p.noteType))) &&
-      (p.tag === "all" ||
+          selected.noteTypes.some((kind) =>
+            kind === "unclassified"
+              ? !m.title.trim() || m.title.trim() === "미분류 메모"
+              : m.noteType === kind,
+          ))) &&
+      (!selected.tags.length ||
         (m.kind === "note" &&
-          (p.tag === "untagged"
-            ? !m.tags?.length
-            : m.tags?.includes(p.tag)))) &&
-      (p.bookId === "all" ||
+          selected.tags.some((tag) =>
+            tag === "untagged" ? !m.tags?.length : m.tags?.includes(tag),
+          ))) &&
+      (!selected.bookIds.length ||
         (m.kind === "note" &&
-          (p.bookId === "unlinked" ? !m.bookId : m.bookId === p.bookId))) &&
-      (p.category === "all" ||
-        m.category === (p.category === "unclassified" ? "" : p.category)) &&
-      (p.topic === "all" ||
-        (p.topic === "unclassified"
-          ? !m.topicIds.length
-          : m.topicIds.includes(p.topic))) &&
+          selected.bookIds.some((book) =>
+            book === "unlinked" ? !m.bookId : m.bookId === book,
+          ))) &&
+      (!selected.categories.length ||
+        selected.categories.some(
+          (category) =>
+            m.category === (category === "unclassified" ? "" : category),
+        )) &&
+      (!selected.topics.length ||
+        selected.topics.some((topic) =>
+          topic === "unclassified"
+            ? !m.topicIds.length
+            : m.topicIds.includes(topic),
+        )) &&
       containsSearchField(
         [
           m.searchText ?? [m.title, m.text, m.bookTitle].join(" "),

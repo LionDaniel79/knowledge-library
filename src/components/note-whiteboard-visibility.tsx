@@ -6,13 +6,15 @@ export function NoteWhiteboardVisibility({
   noteId,
   disabled = false,
   preview = false,
+  boardId,
 }: {
   noteId: string;
   disabled?: boolean;
   preview?: boolean;
+  boardId?: string;
 }) {
   const resource = usePagedResource<{ visible: boolean }>(
-    `/api/whiteboard?view=visibility&noteId=${noteId}`,
+    `/api/whiteboard?view=visibility&noteId=${noteId}${boardId ? "&boardId=" + boardId : ""}`,
     !preview,
   );
   const command = useLibraryCommand("/api/knowledge", resource.reload);
@@ -48,6 +50,7 @@ export function NoteWhiteboardVisibility({
             onClick={() => {
               setChoice(visible);
               void command.send("setWhiteboardNoteVisibility", {
+                ...(boardId ? { boardId } : {}),
                 noteId,
                 visible,
               });

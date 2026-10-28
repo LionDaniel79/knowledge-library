@@ -1,10 +1,15 @@
 import { z } from "zod";
 import type { Board } from "./whiteboard";
 export const noteVisibilitySchema = z
-  .object({ noteId: z.string().uuid(), visible: z.boolean() })
+  .object({
+    boardId: z.string().uuid().optional(),
+    noteId: z.string().uuid(),
+    visible: z.boolean(),
+  })
   .strict();
 export const notesVisibilitySchema = z
   .object({
+    boardId: z.string().uuid().optional(),
     noteIds: z
       .array(z.string().uuid())
       .min(1)

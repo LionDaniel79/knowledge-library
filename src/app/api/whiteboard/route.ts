@@ -9,11 +9,17 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const owner = await requireOwner(),
-      p = new URL(request.url).searchParams;
+      p = new URL(request.url).searchParams,
+      boardId = p.get("boardId") ?? undefined;
     const data =
       p.get("view") === "visibility"
-        ? await readWhiteboardVisibility(database, owner, p.get("noteId") ?? "")
-        : await readWhiteboard(database, owner);
+        ? await readWhiteboardVisibility(
+            database,
+            owner,
+            p.get("noteId") ?? "",
+            boardId,
+          )
+        : await readWhiteboard(database, owner, boardId);
     return Response.json(data, {
       headers: { "Cache-Control": "private, no-store" },
     });

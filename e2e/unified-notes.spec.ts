@@ -165,9 +165,18 @@ for (const width of [390, 1280])
       page.getByRole("combobox", { name: "자료 종류", exact: true }),
     ).toHaveCount(0);
     await expect(page.locator(".thought-card")).toHaveCount(2);
+    await page.getByRole("button", { name: "종류 선택", exact: true }).click();
     await page
-      .getByRole("combobox", { name: "종류", exact: true })
-      .selectOption("highlight");
+      .getByRole("checkbox", { name: "하이라이트", exact: true })
+      .check();
+    await page
+      .getByRole("button", { name: "종류 선택 완료", exact: true })
+      .click();
+    await expect(page.locator(".thought-card")).toHaveCount(2);
+    await page
+      .locator(".unified-notes-filters")
+      .getByRole("button", { name: "검색", exact: true })
+      .click();
     await expect(page.locator(".thought-card")).toHaveCount(1);
     await expect(page.locator(".thought-card").first()).toContainText(
       "발췌한 문장",
@@ -188,3 +197,45 @@ for (const width of [390, 1280])
       fullPage: false,
     });
   });
+
+test("my notes apply checkbox unions only after search and keep the inner new-record action out of the filters", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page.getByRole("button", { name: "사유의 지도", exact: true }).click();
+  const filters = page.locator(".unified-notes-filters");
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  await expect(
+    filters.getByRole("button", { name: "새 기록", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "종류 선택", exact: true }).click();
+  const highlight = page.getByRole("checkbox", {
+    name: "하이라이트",
+    exact: true,
+  });
+  await highlight.check();
+  await expect(highlight).toBeChecked();
+  const checkboxBox = await highlight.boundingBox();
+  const rowBox = await highlight.locator("..").boundingBox();
+  expect(checkboxBox!.x - rowBox!.x).toBeLessThan(20);
+  await page
+    .getByRole("button", { name: "종류 선택 완료", exact: true })
+    .click();
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  await filters.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".thought-card")).toHaveCount(1);
+  await expect(page.locator(".thought-card")).toContainText("발췌한 문장");
+  await page.getByRole("button", { name: "종류 선택", exact: true }).click();
+  await page.getByRole("checkbox", { name: "나의 생각", exact: true }).check();
+  await page
+    .getByRole("button", { name: "종류 선택 완료", exact: true })
+    .click();
+  await expect(page.locator(".thought-card")).toHaveCount(1);
+  await filters.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  await filters.getByPlaceholder("제목·내용 검색").fill("발췌한");
+  await expect(page.locator(".thought-card")).toHaveCount(2);
+  await filters.getByPlaceholder("제목·내용 검색").press("Enter");
+  await expect(page.locator(".thought-card")).toHaveCount(1);
+});

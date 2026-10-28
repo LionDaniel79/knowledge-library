@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import { invalidBackupJsonField } from "./backup-json";
 import { boardSchema, WHITEBOARD_ID } from "../lib/whiteboard";
+import { z } from "zod";
 
 // Dependency order. Never accept table names, SQL, or credentials from a backup.
 const optionalTables = [
@@ -164,7 +165,7 @@ function validateEnvelope(input: unknown): LibraryBackup {
 function validateReferences(b: LibraryBackup) {
   for (const row of b.tables.library_whiteboards ?? [])
     if (
-      row.id !== WHITEBOARD_ID ||
+      !z.string().uuid().safeParse(row.id).success ||
       !boardSchema.safeParse(row.data).success ||
       !Number.isInteger(row.version) ||
       row.version < 1
@@ -189,6 +190,12 @@ function validateReferences(b: LibraryBackup) {
       new Set((b.tables[t] ?? []).map((r) => String(r.id))),
     ]),
   );
+  for (const board of b.tables.library_whiteboards ?? [])
+    if (
+      board.id !== WHITEBOARD_ID &&
+      !sets.library_research.has(String(board.id))
+    )
+      invalid("글감 화이트보드에 해당하는 글감 묶음이 누락되었습니다.");
   const ref = (table: Table, id: unknown, optional = false) => {
     if (optional && id === null) return;
     if (typeof id !== "string" || !sets[table].has(id))

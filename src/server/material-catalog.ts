@@ -1,4 +1,4 @@
-import { materialPageQuery } from "@/lib/material-query";
+import { materialPageQuery, materialSelections } from "@/lib/material-query";
 import { searchFieldSql, categorySearchTextSql } from "./search-sql";
 import type { TopicMaterial } from "@/lib/topic-materials";
 import { LibraryError, type Executor } from "./library-store";
@@ -33,12 +33,12 @@ const sourceSql = `WITH active_members AS MATERIALIZED (
 ), normalized AS (
   SELECT *,CASE WHEN btrim(raw_category) ~ '^[0-9]{3}([.]|$)' THEN left(btrim(raw_category),1)||'00' ELSE '' END AS category FROM sources
 ), filtered AS (
-  SELECT * FROM normalized WHERE ($2='all' OR kind=$2) AND ($3='all' OR category=CASE WHEN $3='unclassified' THEN '' ELSE $3 END)
-    AND ($4='all' OR ($4='unclassified' AND cardinality(topic_ids)=0) OR $4=ANY(topic_ids))
+  SELECT * FROM normalized WHERE ($2='all' OR kind=$2) AND (cardinality($3::text[])=0 OR category=ANY($3::text[]))
+    AND (cardinality($4::text[])=0 OR ('unclassified'=ANY($4::text[]) AND cardinality(topic_ids)=0) OR topic_ids && $4::text[])
     AND ${searchFieldSql(`concat_ws(' ',search_text,CASE WHEN kind='book' THEN ${categorySearchTextSql("category")} ELSE '' END)`, "$5")}
-    AND ($6='all' OR (kind='note' AND (($6='unclassified' AND btrim(title) IN ('','미분류 메모')) OR note_type=$6)))
-    AND ($7='all' OR (kind='note' AND (($7='untagged' AND cardinality(tags)=0) OR $7=ANY(tags))))
-    AND ($8='all' OR (kind='note' AND (($8='unlinked' AND book_id IS NULL) OR book_id=$8)))
+    AND (cardinality($6::text[])=0 OR (kind='note' AND (('unclassified'=ANY($6::text[]) AND btrim(title) IN ('','미분류 메모')) OR note_type=ANY($6::text[]))))
+    AND (cardinality($7::text[])=0 OR (kind='note' AND (('untagged'=ANY($7::text[]) AND cardinality(tags)=0) OR tags && $7::text[])))
+    AND (cardinality($8::text[])=0 OR (kind='note' AND (('unlinked'=ANY($8::text[]) AND book_id IS NULL) OR book_id=ANY($8::text[]))))
 )`;
 const orders = {
   default: `CASE WHEN kind='note' THEN 0 ELSE 1 END,CASE WHEN kind='note' THEN updated_at END DESC,CASE WHEN kind='book' THEN title END COLLATE "C",id COLLATE "C"`,
@@ -55,15 +55,18 @@ export async function readMaterialPage(
 ): Promise<{ total: number; items: TopicMaterial[] }> {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const p = materialPageQuery.parse(raw),
+    selected = materialSelections(p),
     args = [
       owner,
       p.kind,
-      p.category,
-      p.topic,
+      selected.categories.map((category) =>
+        category === "unclassified" ? "" : category,
+      ),
+      selected.topics,
       p.q,
-      p.noteType,
-      p.tag,
-      p.bookId,
+      selected.noteTypes,
+      selected.tags,
+      selected.bookIds,
     ];
   const total = Number(
     (

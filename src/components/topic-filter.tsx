@@ -15,6 +15,8 @@ export function TopicFilter({
   topics,
   value,
   onChange,
+  values,
+  onValuesChange,
   onUpdated,
   onRemoved,
   preview = false,
@@ -23,6 +25,8 @@ export function TopicFilter({
   topics: FilterTopic[];
   value: string;
   onChange: (id: string) => void;
+  values?: string[];
+  onValuesChange?: (ids: string[]) => void;
   onUpdated: () => Promise<void>;
   onRemoved?: (id: string) => void;
   preview?: boolean;
@@ -60,7 +64,7 @@ export function TopicFilter({
       <FacetPicker
         compact
         label="주제"
-        multiple={false}
+        multiple={!!onValuesChange}
         options={[
           { value: "unclassified", label: "미분류" },
           ...choices.map((t) => ({
@@ -68,8 +72,10 @@ export function TopicFilter({
             label: t.name + (t.confirmed === false ? " · 제안" : ""),
           })),
         ]}
-        values={value === "all" ? [] : [value]}
-        onChange={(ids) => onChange(ids[0] ?? "all")}
+        values={values ?? (value === "all" ? [] : [value])}
+        onChange={(ids) =>
+          onValuesChange ? onValuesChange(ids) : onChange(ids[0] ?? "all")
+        }
         management={{
           busy: preview || command.busy || !ready,
           error,
@@ -141,7 +147,11 @@ export function TopicFilter({
                 ) {
                   setAdded((old) => old.filter((t) => t.id !== deleting.id));
                   setRemoved((old) => [...old, deleting.id]);
-                  if (value === deleting.id) onChange("all");
+                  if (onValuesChange)
+                    onValuesChange(
+                      (values ?? []).filter((id) => id !== deleting.id),
+                    );
+                  else if (value === deleting.id) onChange("all");
                   onRemoved?.(deleting.id);
                   setDeleting(null);
                 }

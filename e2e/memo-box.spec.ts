@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
+
 import { emptyBoard } from "../src/lib/whiteboard";
 let bundle: string;
 test.beforeAll(async () => {
@@ -230,10 +230,9 @@ test("My records is the first memo-box tab and retains its filters and new-note 
     "내 기록",
     "연결된 메모",
     "연결된 주제",
-    "글감 엮기",
   ]);
   await expect(
-    page.getByRole("combobox", { name: "종류", exact: true }),
+    page.getByRole("button", { name: "종류 선택", exact: true }),
   ).toBeVisible();
   expect(boardReads).toBe(0);
   expect(
@@ -249,10 +248,11 @@ test("My records is the first memo-box tab and retains its filters and new-note 
   await expect(page.locator(".memo-box-list > button")).toHaveCount(1);
   await page.getByRole("button", { name: "내 기록", exact: true }).click();
   await expect(
-    page.getByRole("combobox", { name: "종류", exact: true }),
+    page.getByRole("button", { name: "종류 선택", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "새 기록", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "새로운 기록" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "검색", exact: true }),
+  ).toBeVisible();
 });
 
 for (const width of [390, 1280])
@@ -328,6 +328,7 @@ test("topic pairs edit details and create a new thought classified into both top
   const f = await mount(page);
   await page.getByRole("button", { name: "메모 상자", exact: true }).click();
   await page.getByRole("button", { name: "연결된 주제", exact: true }).click();
+  await page.locator(".memo-topic-list > button").first().click();
   await page.getByRole("button", { name: "공감 수정", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "주제 수정" });
   await dialog.getByLabel("주제 설명").fill("공감의 의미를 계속 검토");
@@ -349,164 +350,6 @@ test("topic pairs edit details and create a new thought classified into both top
     page.getByRole("checkbox", { name: "경계", exact: true }),
   ).toBeChecked();
 });
-test("outline, ordered sources and text export work without changing the original notes", async ({
-  page,
-}) => {
-  const f = await mount(page);
-  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
-  await page.getByRole("button", { name: "글감 엮기", exact: true }).click();
-  await expect(page.getByLabel("제목", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("새 글감 묶음 만들기", { exact: true }),
-  ).toHaveCount(0);
-  await page.getByLabel("제목", { exact: true }).fill("공감에 관한 글");
-  await page.getByLabel("목차 · 한 줄에 한 항목").fill("첫 생각\n새 결론");
-  await page
-    .getByRole("button", { name: "글감 묶음 만들기", exact: true })
-    .click();
-  await expect(
-    page.getByRole("combobox", { name: "글감 묶음", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".writing-workbench ol li")).toHaveText([
-    "첫 생각",
-    "새 결론",
-  ]);
-  for (const n of f.notes.slice(0, 2)) {
-    await page
-      .getByRole("combobox", { name: "담을 메모", exact: true })
-      .selectOption(n.id);
-    await page.getByRole("button", { name: "출처와 함께 담기" }).click();
-    await expect(page.locator(".research-board article")).toHaveCount(
-      f.notes.indexOf(n) + 1,
-    );
-  }
-  const firstCard = page.locator(".research-board article").filter({
-    has: page.getByRole("heading", { name: "처음 생각", exact: true }),
-  });
-  await firstCard.getByText("역할·순서·내 해석 수정", { exact: true }).click();
-  await firstCard
-    .getByRole("combobox", { name: "자료 역할", exact: true })
-    .selectOption("claim");
-  await firstCard
-    .getByRole("combobox", { name: "장·절 또는 묶음 제목", exact: true })
-    .fill("첫 생각");
-  await firstCard
-    .getByRole("textbox", { name: "이 자료에 대한 나의 해석", exact: true })
-    .fill("아직 저장하지 않은 해석");
-  await page
-    .getByRole("button", { name: "지금 생각 위로", exact: true })
-    .click();
-  await expect(page.locator(".research-board article h3").first()).toHaveText(
-    "지금 생각",
-  );
-  await expect(
-    firstCard.getByRole("textbox", {
-      name: "이 자료에 대한 나의 해석",
-      exact: true,
-    }),
-  ).toHaveValue("아직 저장하지 않은 해석");
-  await firstCard
-    .getByRole("button", { name: "배치·해석 저장", exact: true })
-    .click();
-  await expect
-    .poll(() => f.commands.filter((c) => c.type === "placeResearchItem").length)
-    .toBe(1);
-  expect(
-    f.commands.find((c) => c.type === "placeResearchItem").payload,
-  ).toMatchObject({
-    expectedVersion: 1,
-    role: "claim",
-    section: "첫 생각",
-    comment: "아직 저장하지 않은 해석",
-    position: 2,
-  });
-  await page
-    .getByRole("button", { name: "제목·목차 수정", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "제목·목차 수정" });
-  await dialog.getByLabel("제목", { exact: true }).fill("공감과 경계");
-  await page.evaluate(() => (window as any).refreshFixture());
-  await expect(dialog.getByLabel("제목", { exact: true })).toHaveValue(
-    "공감과 경계",
-  );
-  await dialog.getByRole("button", { name: "제목·목차 저장" }).click();
-  await expect(dialog).toHaveCount(0);
-  const download = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "글감 내려받기 (.txt)", exact: true })
-    .click();
-  const file = await download;
-  const text = await readFile((await file.path())!, "utf8");
-  expect(text).toContain("공감과 경계");
-  expect(text).toContain("출처: 나의 생각");
-  expect(text).toContain("나의 해석: 아직 저장하지 않은 해석");
-  expect(text).toContain("첫 생각 · 주장");
-  expect(text.indexOf("지금 생각에 관한")).toBeLessThan(
-    text.indexOf("처음 생각에 관한"),
-  );
-  expect(f.notes[0].content).toBe("처음 생각에 관한 나의 문장 0");
-  // Removing a source only changes its placement; its frozen text stays restorable.
-  await firstCard
-    .getByRole("combobox", { name: "자료 상태", exact: true })
-    .selectOption("removed");
-  await firstCard
-    .getByRole("button", { name: "배치·해석 저장", exact: true })
-    .click();
-  await expect(firstCard).toHaveCount(0);
-  const removedDownload = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "글감 내려받기 (.txt)", exact: true })
-    .click();
-  expect(
-    await readFile((await (await removedDownload).path())!, "utf8"),
-  ).not.toContain("처음 생각에 관한");
-  await page.getByLabel("묶음에서 뺀 자료도 보기").check();
-  await expect(firstCard).toBeVisible();
-  await firstCard.getByText("역할·순서·내 해석 수정", { exact: true }).click();
-  await firstCard
-    .getByRole("combobox", { name: "자료 상태", exact: true })
-    .selectOption("active");
-  await firstCard
-    .getByRole("button", { name: "배치·해석 저장", exact: true })
-    .click();
-  await expect
-    .poll(
-      () =>
-        f.state.placements.find((p: any) => p.id === f.state.items[0].id)
-          ?.state,
-    )
-    .toBe("active");
-  await page.getByLabel("묶음에서 뺀 자료도 보기").uncheck();
-  await expect(page.locator(".research-board article")).toHaveCount(2);
-  expect(f.notes[0].content).toBe("처음 생각에 관한 나의 문장 0");
-});
-test("has one writing entry and distinguishes body-only notes by their contents", async ({
-  page,
-}) => {
-  const f = await mount(page);
-  f.notes[0].title = "미분류 메모";
-  f.notes[0].content = "공감에는 상대방과 나의 경계가 필요하다";
-  await expect(
-    page.getByRole("button", { name: "설교·논문 자료", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
-  await page.getByRole("button", { name: "글감 엮기", exact: true }).click();
-  await page.getByLabel("제목", { exact: true }).fill("경계를 생각하는 글");
-  await page
-    .getByRole("button", { name: "글감 묶음 만들기", exact: true })
-    .click();
-  const picker = page.getByRole("combobox", { name: "담을 메모", exact: true });
-  await expect(
-    picker.locator(`option[value="${f.notes[0].id}"]`),
-  ).toContainText(f.notes[0].content);
-  await picker.selectOption(f.notes[0].id);
-  await page.getByRole("button", { name: "출처와 함께 담기" }).click();
-  await expect(page.locator(".research-board article h3")).toHaveText(
-    f.notes[0].content,
-  );
-  expect(f.notes[0].title).toBe("미분류 메모");
-});
-
 test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
   page,
 }) => {

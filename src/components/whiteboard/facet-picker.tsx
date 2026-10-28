@@ -77,6 +77,19 @@ export function FacetPicker({
       : values.length
         ? `${values.length}개 선택`
         : "전체";
+  function choose(value: string) {
+    if (!multiple) {
+      onChange([value]);
+      setOpen(false);
+      return;
+    }
+    onChange(
+      values.includes(value)
+        ? values.filter((v) => v !== value)
+        : [...values, value],
+    );
+  }
+  const checkboxStyle = { width: 18, height: 18, margin: 0, flex: "0 0 auto" };
   return (
     <div
       className="wb-facet"
@@ -146,46 +159,62 @@ export function FacetPicker({
               aria-label={`${label} 목록`}
               aria-multiselectable={multiple}
             >
-              <button
-                type="button"
-                role="option"
-                aria-selected={!values.length}
-                onClick={() => {
-                  onChange([]);
-                  if (!multiple) setOpen(false);
-                }}
-              >
-                전체 {!values.length && "✓"}
-              </button>
+              {multiple ? (
+                <label
+                  role="option"
+                  aria-label="전체"
+                  aria-selected={!values.length}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label="전체"
+                    checked={!values.length}
+                    onChange={() => onChange([])}
+                    style={checkboxStyle}
+                  />
+                  <span style={{ flex: 1 }}>전체</span>
+                </label>
+              ) : (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={!values.length}
+                  onClick={() => {
+                    onChange([]);
+                    if (!multiple) setOpen(false);
+                  }}
+                >
+                  전체 {!values.length && "✓"}
+                </button>
+              )}
               {matches.slice(0, 100).map((o) => {
-                const option = (
+                const option = multiple ? (
+                  <label
+                    role="option"
+                    aria-label={o.label}
+                    key={o.value}
+                    aria-selected={values.includes(o.value)}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={o.label}
+                      checked={values.includes(o.value)}
+                      onChange={() => choose(o.value)}
+                      style={checkboxStyle}
+                    />
+                    <span style={{ flex: 1 }}>{o.label}</span>
+                  </label>
+                ) : (
                   <button
                     type="button"
                     role="option"
                     key={o.value}
                     aria-selected={values.includes(o.value)}
-                    onClick={() => {
-                      if (!multiple) {
-                        onChange([o.value]);
-                        setOpen(false);
-                        return;
-                      }
-                      onChange(
-                        values.includes(o.value)
-                          ? values.filter((v) => v !== o.value)
-                          : [...values, o.value],
-                      );
-                    }}
+                    onClick={() => choose(o.value)}
                   >
                     <span>{o.label}</span>
-                    {multiple ? (
-                      <span className="facet-check" aria-hidden="true">
-                        {values.includes(o.value) ? "☑" : "☐"}
-                      </span>
-                    ) : (
-                      values.includes(o.value) && (
-                        <span aria-hidden="true">✓</span>
-                      )
+                    {values.includes(o.value) && (
+                      <span aria-hidden="true">✓</span>
                     )}
                   </button>
                 );

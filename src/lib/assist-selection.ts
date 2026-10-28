@@ -1,4 +1,34 @@
 import type { TopicMaterial } from "./topic-materials";
+export const MAX_ANALYSIS_NOTES = 1000;
+export async function collectAnalysisNotes(
+  read: (offset: number) => Promise<{ total: number; items: TopicMaterial[] }>,
+  all: boolean,
+) {
+  const candidates: TopicMaterial[] = [],
+    used = new Set<string>();
+  let total = 0;
+  for (let offset = 0; all || offset < 200; offset += 50) {
+    const page = await read(offset);
+    if (offset && total !== page.total)
+      throw Error("검색 결과가 변경됐습니다. 다시 검색해 주세요.");
+    total = page.total;
+    if (all && total > MAX_ANALYSIS_NOTES)
+      throw Error(
+        `전체 ${total}개는 한 번에 분석할 수 없습니다. 주제·태그로 ${MAX_ANALYSIS_NOTES}개 이하로 좁혀 주세요.`,
+      );
+    for (const row of page.items)
+      if (!used.has(row.id)) {
+        used.add(row.id);
+        candidates.push(row);
+      }
+    if (candidates.length >= total) break;
+    if (!page.items.length || page.items.length < 50) {
+      if (all) throw Error("검색 결과가 변경됐습니다. 다시 검색해 주세요.");
+      break;
+    }
+  }
+  return { candidates, total };
+}
 export function representativeNotes(
   rows: TopicMaterial[],
   limit = 24,

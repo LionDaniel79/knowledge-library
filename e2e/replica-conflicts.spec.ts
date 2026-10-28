@@ -250,9 +250,9 @@ test("compares all three texts on mobile, retains a closed merge draft and saves
       history: await s.listConflicts(true),
     };
   });
-  expect(data.entries).toHaveLength(1);
-  expect(data.entries[0].command.body.payload).toMatchObject({
-    expectedVersion: 2,
+  expect(data.entries).toHaveLength(2);
+  expect(data.entries[1].command.body.payload).toMatchObject({
+    expectedVersion: 3,
     content: "검토해서 합친 생각",
   });
   expect(data.history[0].resolution.entries).toHaveLength(2);

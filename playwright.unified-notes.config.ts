@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
-  testMatch: ["unified-notes.spec.ts", "assist.spec.ts"],
+  testMatch: [
+    "unified-notes.spec.ts",
+    "assist.spec.ts",
+    "topic-tag-filters.spec.ts",
+  ],
   workers: 1,
   reporter: "list",
   outputDir: "test-results/unified-notes",

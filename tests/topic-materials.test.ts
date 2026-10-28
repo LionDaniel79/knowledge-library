@@ -9,6 +9,7 @@ import {
 import type { Book, Note } from "../src/lib/domain";
 import { queryMaterials, type LocalIndex } from "../src/client/replica/queries";
 import { timestampKey } from "../src/lib/replica/projections";
+import { materialPageQuery } from "../src/lib/material-query";
 
 let f: Awaited<ReturnType<typeof testDatabase>>;
 const owner = "topic-material-test",
@@ -382,4 +383,161 @@ it("retains the multi-shelf names in material search", async () => {
       q,
     ).total,
   ).toBe(1);
+});
+
+it("unions selections within each facet and intersects facets before paging in SQL, local and replica queries", async () => {
+  const scopeOwner = "plural-material-owner",
+    bs = ["100", "200", "300"].map((category, i) =>
+      book(`복수 검색 책 ${i}`, category, `2026-01-0${i + 1}T00:00:00Z`),
+    ),
+    ns = Array.from({ length: 4 }, (_, i) => ({
+      ...note(
+        `복수 검색 기록 ${i}`,
+        bs[i]?.id ?? null,
+        `2026-02-0${i + 1}T00:00:00Z`,
+      ),
+      kind: ["thought", "highlight", "thought", "review"][i] as Note["kind"],
+      page: i === 1 ? 1 : null,
+      tags: [["관계", "쉼,표"], ["독서"], ["관계"], []][i],
+    })),
+    ts = ["첫 주제", "둘째 주제"].map((name) => ({ id: randomUUID(), name })),
+    ms = [0, 1, 0].map((topicIndex, i) => ({
+      topicId: ts[topicIndex].id,
+      sourceKind: "note",
+      sourceId: ns[i].id,
+      status: "accepted",
+    }));
+  for (const b of bs)
+    await f.db.query(
+      "INSERT INTO library_books(id,owner_id,title,category,formats) VALUES($1,$2,$3,$4,ARRAY['paper'])",
+      [b.id, scopeOwner, b.title, b.category],
+    );
+  for (const n of ns)
+    await f.db.query(
+      "INSERT INTO library_notes(id,owner_id,title,content,kind,book_id,tags,created_at,updated_at,page) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,$9)",
+      [
+        n.id,
+        scopeOwner,
+        n.title,
+        n.content,
+        n.kind,
+        n.bookId,
+        n.tags,
+        n.createdAt,
+        n.page,
+      ],
+    );
+  for (const t of ts)
+    await f.db.query(
+      "INSERT INTO library_topics(id,owner_id,name) VALUES($1,$2,$3)",
+      [t.id, scopeOwner, t.name],
+    );
+  for (const m of ms)
+    await f.db.query(
+      "INSERT INTO library_topic_memberships(id,owner_id,topic_id,source_kind,source_id,status,source_version,method) VALUES($1,$2,$3,$4,$5,$6,'1','manual')",
+      [randomUUID(), scopeOwner, m.topicId, m.sourceKind, m.sourceId, m.status],
+    );
+  const replica: LocalIndex = {
+    books: bs.map((b) => ({
+      book: b,
+      createdKey: b.createdAt,
+      createdSql: b.createdAt,
+    })),
+    notes: ns,
+    previews: {},
+    cycles: [],
+    excluded: [],
+    trash: {},
+    shelves: [],
+    annualMetrics: [],
+    topics: ts,
+    memberships: ms.map((m) => ({
+      topic_id: m.topicId,
+      source_kind: m.sourceKind,
+      source_id: m.sourceId,
+      status: m.status,
+    })),
+    topicLinks: [],
+    entries: [],
+  };
+  const cases: [Record<string, string[]>, number[]][] = [
+    [{ noteTypes: ["highlight", "review"] }, [1, 3]],
+    [{ categories: ["100", "300"] }, [0, 2]],
+    [{ bookIds: [bs[0].id, "unlinked"] }, [0, 3]],
+    [{ topics: [ts[0].id, "unclassified"] }, [0, 2, 3]],
+    [{ tags: ["쉼,표", "untagged"] }, [0, 3]],
+    [
+      {
+        noteTypes: ["thought", "highlight"],
+        categories: ["100", "200"],
+        bookIds: [bs[0].id, bs[1].id],
+        topics: ts.map((t) => t.id),
+        tags: ["쉼,표", "독서"],
+      },
+      [0, 1],
+    ],
+  ];
+  for (const [facets, expected] of cases)
+    for (const serialized of [false, true]) {
+      const query = {
+        kind: "note",
+        sort: "oldest",
+        ...Object.fromEntries(
+          Object.entries(facets).map(([key, value]) => [
+            key,
+            serialized ? JSON.stringify(value) : value,
+          ]),
+        ),
+      };
+      const wanted = expected.map((i) => ns[i].id);
+      expect(
+        pageTopicMaterials(
+          buildTopicMaterials({
+            books: bs,
+            notes: ns,
+            topics: ts,
+            memberships: ms,
+          }),
+          query,
+        ).items.map((n) => n.id),
+      ).toEqual(wanted);
+      expect(
+        (await readMaterialPage(f.db, scopeOwner, query)).items.map(
+          (n) => n.id,
+        ),
+      ).toEqual(wanted);
+      expect(queryMaterials(replica, query).items.map((n) => n.id)).toEqual(
+        wanted,
+      );
+    }
+  const page = await readMaterialPage(f.db, scopeOwner, {
+    kind: "note",
+    categories: '["100","200"]',
+    sort: "oldest",
+    offset: 1,
+    limit: 1,
+  });
+  expect(page.total).toBe(2);
+  expect(page.items.map((n) => n.id)).toEqual([ns[1].id]);
+  expect(
+    pageTopicMaterials(
+      buildTopicMaterials({
+        books: bs,
+        notes: ns,
+        topics: ts,
+        memberships: ms,
+      }),
+      { kind: "note", noteType: "review", noteTypes: '["highlight"]' },
+    ).items.map((n) => n.id),
+  ).toEqual([ns[1].id]);
+});
+
+it("rejects malformed plural queries instead of silently broadening the search", () => {
+  for (const input of [
+    { tags: "관계,쉼" },
+    { bookIds: '["not-a-book-id"]' },
+    { noteTypes: '["not-a-note-kind"]' },
+    { topics: "[" },
+  ])
+    expect(materialPageQuery.safeParse(input).success).toBe(false);
 });

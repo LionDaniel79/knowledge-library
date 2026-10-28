@@ -383,40 +383,44 @@ export async function prepareOptimistic(
           ? notesVisibilitySchema.parse(body.payload)
           : (() => {
               const v = noteVisibilitySchema.parse(body.payload);
-              return { noteIds: [v.noteId], visible: v.visible };
+              return { ...v, noteIds: [v.noteId] };
             })();
+      const boardId = p.boardId ?? WHITEBOARD_ID;
+      if (boardId !== WHITEBOARD_ID) await own("library_research", boardId);
       for (const id of p.noteIds) await note(id);
-      const old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
+      const old = await repository.raw("library_whiteboards", boardId);
       base = old;
-      entityId = WHITEBOARD_ID;
-      body.entityId = WHITEBOARD_ID;
+      entityId = boardId;
+      body.entityId = boardId;
       const original = old?.data ?? emptyBoard(),
         data = withWhiteboardNotesVisibility(original, p.noteIds, p.visible);
       if (data !== original)
         put("library_whiteboards", {
-          id: WHITEBOARD_ID,
+          id: boardId,
           data,
           version: (old?.version ?? 0) + 1,
           updated_at: at,
         });
       result = {
-        id: WHITEBOARD_ID,
+        id: boardId,
         version: (old?.version ?? 0) + (data === original ? 0 : 1),
       };
     } else if (body.type === "saveWhiteboard") {
       const v = boardSaveSchema.parse(p),
-        old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
+        boardId = v.boardId ?? WHITEBOARD_ID;
+      if (boardId !== WHITEBOARD_ID) await own("library_research", boardId);
+      const old = await repository.raw("library_whiteboards", boardId);
       check(old, v.expectedVersion);
       base = old;
-      entityId = WHITEBOARD_ID;
-      body.entityId = WHITEBOARD_ID;
+      entityId = boardId;
+      body.entityId = boardId;
       put("library_whiteboards", {
-        id: WHITEBOARD_ID,
+        id: boardId,
         data: whiteboardSaveData(v.data, old?.data, v.includeVisibility),
         version: (old?.version ?? 0) + 1,
         updated_at: at,
       });
-      result = { id: WHITEBOARD_ID, version: (old?.version ?? 0) + 1 };
+      result = { id: boardId, version: (old?.version ?? 0) + 1 };
     } else if (body.type === "connectWhiteboardNotes") {
       const v = boardNoteLinkSchema.parse(p);
       await note(v.sourceId);

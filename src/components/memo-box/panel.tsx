@@ -5,6 +5,8 @@ import { containsSearchField } from "@/lib/search-fields";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import type { Library, Command } from "@/lib/domain";
 import type { NewNoteContext, NoteTopicSnapshot } from "@/lib/note-context";
+import type { ThoughtMapSnapshot } from "@/lib/thought-map/types";
+import { libraryRequest } from "@/client/replica/request";
 import { usePagedResource } from "../use-paged-resource";
 import { useLibraryCommand } from "../use-library-command";
 import {
@@ -14,7 +16,6 @@ import {
 } from "../list-pagination";
 import { TopicEditor } from "./topic-editor";
 import { MemoGroupDetail } from "./group-detail";
-import { WritingWorkbench } from "./writing-workbench";
 import { ThoughtMapPanel } from "../thought-map/panel";
 export function MemoBox({
   library,
@@ -37,7 +38,8 @@ export function MemoBox({
 }) {
   const [tab, setTab] = useState("records"),
     [query, setQuery] = useState(""),
-    [selected, setSelected] = useState("");
+    [selected, setSelected] = useState(""),
+    [selectedPair, setSelectedPair] = useState("");
   const tabKey = "library:memo-box-tab:" + ownerId;
   useEffect(() => {
     try {
@@ -45,10 +47,11 @@ export function MemoBox({
       setTab(
         initialTag !== "all"
           ? "records"
-          : saved && ["records", "notes", "topics", "writing"].includes(saved)
+          : saved && ["records", "notes", "topics"].includes(saved)
             ? saved
             : "records",
       );
+      if (saved === "writing") localStorage.setItem(tabKey, "records");
     } catch {
       setTab("records");
     }
@@ -88,6 +91,7 @@ export function MemoBox({
         query,
       ),
     );
+  const activePair = pairs.find((pair) => pair.id === selectedPair);
   return (
     <section className="memo-box">
       <div className="knowledge-tabs">
@@ -95,7 +99,6 @@ export function MemoBox({
           ["records", "내 기록"],
           ["notes", "연결된 메모"],
           ["topics", "연결된 주제"],
-          ["writing", "글감 엮기"],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -129,13 +132,6 @@ export function MemoBox({
           onUpdated={onUpdated}
           onSaveNote={onSaveNote}
           onNewNote={onNewNote}
-          onOpen={onOpen}
-          revision={revision}
-        />
-      ) : tab === "writing" ? (
-        <WritingWorkbench
-          library={library}
-          notes={resource.data?.notes ?? []}
           onOpen={onOpen}
           revision={revision}
         />
@@ -223,31 +219,61 @@ export function MemoBox({
               </label>
               <PageSizeSelect label="메모 상자" paging={paging} />
             </div>
-            <div className="memo-topic-pairs">
-              {pairs
-                .slice(paging.offset, paging.offset + paging.size)
-                .map((p) => (
+            <div className="memo-box-columns">
+              <div>
+                <div className="memo-box-list memo-topic-list">
+                  {pairs
+                    .slice(paging.offset, paging.offset + paging.size)
+                    .map((p) => (
+                      <button
+                        type="button"
+                        key={p.id}
+                        className={selectedPair === p.id ? "selected" : ""}
+                        aria-pressed={selectedPair === p.id}
+                        onClick={() => setSelectedPair(p.id)}
+                      >
+                        <span className="memo-group-title">
+                          {model.topics.get(p.source)?.name} ↔{" "}
+                          {model.topics.get(p.target)?.name}
+                        </span>
+                        <small>
+                          {p.topicLinkIds.length
+                            ? `주제 연결 ${p.topicLinkIds.length}개 · `
+                            : ""}
+                          {p.board ? "화이트보드 연결 · " : ""}메모 연결{" "}
+                          {p.connectionIds.length}개
+                        </small>
+                      </button>
+                    ))}
+                </div>
+                {!pairs.length && (
+                  <p>
+                    연결된 주제가 없습니다. 화이트보드에서 주제 묶음을
+                    연결하거나, 서로 다른 주제의 메모를 연결해 보세요.
+                  </p>
+                )}
+                <PageNavigation
+                  label="메모 상자"
+                  paging={paging}
+                  total={pairs.length}
+                />
+              </div>
+              <div className="panel memo-box-detail memo-topic-detail">
+                {activePair && resource.data ? (
                   <TopicPair
-                    key={p.id}
-                    pair={p}
+                    key={activePair.id}
+                    pair={activePair}
                     model={model}
+                    source={resource.data}
                     onOpen={onOpen}
                     onNewNote={onNewNote}
                     reload={resource.reload}
                   />
-                ))}
-              {!pairs.length && (
-                <p>
-                  연결된 주제가 없습니다. 화이트보드에서 주제 묶음을 연결하거나,
-                  서로 다른 주제의 메모를 연결해 보세요.
-                </p>
-              )}
+                ) : (
+                  <p>주제를 선택하면 연결과 관련 메모를 볼 수 있습니다.</p>
+                )}
+              </div>
             </div>
-            <PageNavigation
-              label="메모 상자"
-              paging={paging}
-              total={pairs.length}
-            />
           </>
         )
       )}
@@ -257,17 +283,21 @@ export function MemoBox({
 function TopicPair({
   pair: p,
   model,
+  source,
   onOpen,
   onNewNote,
   reload,
 }: {
   pair: ReturnType<typeof buildMemoBox>["topicPairs"][number];
   model: ReturnType<typeof buildMemoBox>;
+  source: WhiteboardSnapshot;
   onOpen: (k: string, id: string) => void;
   onNewNote: (c: NewNoteContext) => void;
   reload: () => void;
 }) {
-  const [editing, setEditing] = useState("");
+  const [editing, setEditing] = useState(""),
+    [removing, setRemoving] = useState(false),
+    [removeError, setRemoveError] = useState("");
   const data = usePagedResource<NoteTopicSnapshot>(
     "/api/note-topics",
     !!editing,
@@ -276,6 +306,39 @@ function TopicPair({
     reload();
     data.reload();
   });
+  const knowledge = useLibraryCommand("/api/knowledge", reload);
+  const busy = removing || command.busy || knowledge.busy;
+  async function removeTopicLink(id: string) {
+    if (busy) return;
+    setRemoving(true);
+    setRemoveError("");
+    try {
+      const listed = source.topicLinks?.find((link) => link.id === id);
+      let version = listed && "version" in listed ? listed.version : undefined;
+      if (typeof version !== "number") {
+        const response = await libraryRequest("/api/thought-map", {
+            cache: "no-store",
+          }),
+          snapshot = (await response.json()) as ThoughtMapSnapshot;
+        if (!response.ok) throw Error("최근 주제 연결을 불러오지 못했습니다.");
+        const latest = snapshot.topicLinks.find((link) => link.id === id);
+        if (!latest || latest.status !== "accepted") {
+          reload();
+          return;
+        }
+        version = latest.version;
+      }
+      await command.send("decideTopicLink", {
+        id,
+        expectedVersion: version,
+        status: "rejected",
+      });
+    } catch (error) {
+      setRemoveError((error as Error).message);
+    } finally {
+      setRemoving(false);
+    }
+  }
   const topic = data.data?.topics.find((t) => t.id === editing);
   const evidenceIds = new Set(
     model.edges
@@ -288,7 +351,7 @@ function TopicPair({
     ),
   );
   return (
-    <article className="panel">
+    <article>
       <h3>
         {model.topics.get(p.source)?.name} ↔ {model.topics.get(p.target)?.name}
       </h3>
@@ -307,20 +370,98 @@ function TopicPair({
           두 주제에 기록 남기기
         </button>
       </div>
-      <details>
-        <summary>관련 메모 보기</summary>
-        {related.map((n) => (
-          <p key={n.id}>
-            <button onClick={() => onOpen("note", n.id)}>
-              {n.title || n.content.slice(0, 60)}
+      {(removeError || command.error || knowledge.error) && (
+        <p role="alert">{removeError || command.error || knowledge.error}</p>
+      )}
+      <section aria-label="주제 연결">
+        {p.topicLinkIds.map((id) => (
+          <p key={id}>
+            확인한 주제 연결{" "}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void removeTopicLink(id)}
+            >
+              주제 연결 끊기
             </button>
-            {evidenceIds.has(n.id) && <small> · 연결 근거</small>}
           </p>
+        ))}
+        {p.board && (
+          <p>
+            화이트보드의 주제 묶음 연결{" "}
+            <button
+              type="button"
+              disabled={busy || !source.board}
+              onClick={() => {
+                const board = source.board;
+                if (!board) return;
+                void knowledge.send("saveWhiteboard", {
+                  boardId: board.id,
+                  expectedVersion: board.version,
+                  data: {
+                    ...board.data,
+                    links: board.data.links.filter(
+                      (link) =>
+                        !(
+                          [link.source, link.target].includes(
+                            "topic:" + p.source,
+                          ) &&
+                          [link.source, link.target].includes(
+                            "topic:" + p.target,
+                          )
+                        ),
+                    ),
+                  },
+                });
+              }}
+            >
+              화이트보드 연결 끊기
+            </button>
+          </p>
+        )}
+        {model.edges
+          .filter((edge) => p.connectionIds.includes(edge.id))
+          .map((edge) => (
+            <div className="memo-box-edge" key={edge.id}>
+              <h4>
+                {model.notes.get(edge.source_id)?.title || "메모"} ↔{" "}
+                {model.notes.get(edge.target_id)?.title || "메모"}
+              </h4>
+              <p className="preserve-text">{edge.reason}</p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void knowledge.send("editConnection", {
+                    id: edge.id,
+                    expectedVersion: edge.version,
+                    relation: edge.relation,
+                    reason: edge.reason,
+                    status: "rejected",
+                  })
+                }
+              >
+                메모 연결 끊기
+              </button>
+            </div>
+          ))}
+      </section>
+      <section className="memo-topic-related" aria-label="관련 메모">
+        <h4>관련 메모</h4>
+        {related.map((n) => (
+          <details className="memo-group-note" key={n.id}>
+            <summary>
+              {n.title || n.content.slice(0, 60)}
+              {evidenceIds.has(n.id) && <small> · 연결 근거</small>}
+            </summary>
+            <p className="preserve-text">{n.content}</p>
+            <button onClick={() => onOpen("note", n.id)}>메모 수정·분류</button>
+          </details>
         ))}
         {!evidenceIds.size && (
           <p>메모 간 근거 연결이 없는 주제 묶음 연결입니다.</p>
         )}
-      </details>
+      </section>
       {editing && !topic && (
         <p role={data.error ? "alert" : "status"}>
           {data.error || "주제 불러오는 중…"}{" "}

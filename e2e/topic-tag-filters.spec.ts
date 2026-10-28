@@ -188,7 +188,10 @@ for (const mode of ["search", "records"])
     await expect(
       page.getByRole("button", { name: "주제 선택", exact: true }),
     ).toContainText("새로운 주제");
-    await page.getByRole("button", { name: "주제 선택", exact: true }).click();
+    if (!(await input.isVisible()))
+      await page
+        .getByRole("button", { name: "주제 선택", exact: true })
+        .click();
     await input.fill("공감");
     await page
       .getByRole("button", { name: "주제 삭제 공감", exact: true })

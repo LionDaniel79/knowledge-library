@@ -26,6 +26,29 @@ export const boardFilterSchema = z
     q: z.string().max(500),
   })
   .strict();
+export const writingMaterialSchema = z
+  .object({
+    id: z.string().uuid(),
+    order: z.number().int().min(1).max(100000),
+    kind: z.enum(["note", "notes", "topics"]),
+    label: z.string().max(300),
+    noteIds: z.array(z.string().uuid()).max(5000),
+    groupIds: z.array(groupId).max(1000),
+  })
+  .strict();
+export const writingChapterSchema = z
+  .object({
+    id: z.string().uuid(),
+    order: z.number().int().min(1).max(100000),
+    title: z.string().max(300),
+    text: z.string().max(20000),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().min(300).max(10000),
+    height: z.number().min(200).max(100000),
+    items: z.array(writingMaterialSchema).max(5000),
+  })
+  .strict();
 export const boardSchema = z
   .object({
     schema: z.literal(1),
@@ -52,6 +75,20 @@ export const boardSchema = z
       .array(z.object({ source: groupId, target: groupId }).strict())
       .max(5000),
     hiddenNoteIds: z.array(z.string().uuid()).max(10000).optional(),
+    writing: z
+      .object({
+        chapters: z.array(writingChapterSchema).max(500),
+        viewport: z
+          .object({
+            x: z.number().finite(),
+            y: z.number().finite(),
+            zoom: z.number().min(0.1).max(1.8),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((b, ctx) => {
@@ -135,6 +172,7 @@ export interface WhiteboardSnapshot {
     sourceTopicId: string;
     targetTopicId: string;
     status: string;
+    version?: number;
   }[];
 }
 // JSONB may reorder object keys; known own saves must match their later reads.
@@ -216,8 +254,16 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
 }
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
   const hidden = new Set(b.hiddenNoteIds ?? []);
+  const chapterItems = b.writing?.chapters.flatMap((c) => c.items) ?? [];
+  const chapterNotes = new Set(chapterItems.flatMap((i) => i.noteIds));
+  const chapterGrouped = new Set(
+    chapterItems.filter((i) => i.groupIds.length).flatMap((i) => i.noteIds),
+  );
   const visible = new Set(
-      filterNotes(source, b.filter)
+      [
+        ...filterNotes(source, b.filter),
+        ...source.notes.filter((n) => chapterNotes.has(n.id)),
+      ]
         .filter((n) => !hidden.has(n.id))
         .map((n) => n.id),
     ),
@@ -231,24 +277,35 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
         ids: g.noteIds.filter((id) => notes.has(id)),
       }),
     );
-  if (!b.filter.topics.length) {
+  const chapterGroupIds = new Set(chapterItems.flatMap((i) => i.groupIds));
+  if (!b.filter.topics.length || chapterGroupIds.size) {
     for (const t of source.topics)
+      if (!b.filter.topics.length || chapterGroupIds.has(`topic:${t.id}`))
+        definitions.push({
+          id: `topic:${t.id}`,
+          title: t.name,
+          ids: source.notes
+            .filter(
+              (n) =>
+                !manual.has(n.id) &&
+                (!chapterNotes.has(n.id) || chapterGrouped.has(n.id)) &&
+                assigned.get(n.id)!.includes(t.id),
+            )
+            .map((n) => n.id),
+        });
+    if (!b.filter.topics.length || chapterGroupIds.has("unclassified"))
       definitions.push({
-        id: `topic:${t.id}`,
-        title: t.name,
+        id: "unclassified",
+        title: "미분류",
         ids: source.notes
           .filter(
-            (n) => !manual.has(n.id) && assigned.get(n.id)!.includes(t.id),
+            (n) =>
+              !manual.has(n.id) &&
+              (!chapterNotes.has(n.id) || chapterGrouped.has(n.id)) &&
+              !assigned.get(n.id)!.length,
           )
           .map((n) => n.id),
       });
-    definitions.push({
-      id: "unclassified",
-      title: "미분류",
-      ids: source.notes
-        .filter((n) => !manual.has(n.id) && !assigned.get(n.id)!.length)
-        .map((n) => n.id),
-    });
   }
   const grouped = new Set(definitions.flatMap((g) => g.ids));
   const groups: BoardGroup[] = [],
@@ -440,6 +497,7 @@ export function connectionForPair(
 }
 export const boardSaveSchema = z
   .object({
+    boardId: z.string().uuid().optional(),
     expectedVersion: z.number().int().nonnegative(),
     data: boardSchema,
     includeVisibility: z.boolean().optional(),
@@ -480,7 +538,16 @@ export function arrangeSearchResults(
   source: WhiteboardSnapshot,
   b: Board,
 ): Board {
-  const scene = buildScene(source, b),
+  const pinned = new Set(
+    b.writing?.chapters.flatMap((c) => c.items.flatMap((i) => i.noteIds)) ?? [],
+  );
+  const complete = buildScene(source, b);
+  const scene = {
+      groups: complete.groups.filter(
+        (g) => !g.nodes.some((n) => pinned.has(n.noteId)),
+      ),
+      nodes: complete.nodes.filter((n) => !pinned.has(n.noteId)),
+    },
     positions = { ...b.positions },
     groupPositions = { ...b.groupPositions },
     dx = NOTE_WIDTH + 48,
@@ -498,7 +565,11 @@ export function arrangeSearchResults(
     };
   });
   const stride = Math.max(320, ...sizes.map((s) => s.width)) + 40,
-    heights = [30, 30];
+    base = Math.max(
+      30,
+      ...(b.writing?.chapters.map((c) => c.y + c.height + 40) ?? []),
+    ),
+    heights = [base, base];
   scene.groups.forEach((g, i) => {
     const column = i % 2,
       origin = { x: 30 + column * stride, y: heights[column] };
@@ -511,7 +582,7 @@ export function arrangeSearchResults(
       };
     });
   });
-  const top = scene.groups.length ? Math.max(...heights) : 30;
+  const top = scene.groups.length ? Math.max(...heights) : base;
   scene.nodes
     .filter((n) => !n.groupId)
     .forEach((n, i) => {

@@ -2,7 +2,12 @@ import type { ReplicaStorage } from "./storage";
 import type { SyncEntity } from "../../lib/replica/entities";
 import type { RawRecord } from "../../lib/replica/projections";
 import { projectNote } from "../../lib/replica/projections";
-import { WHITEBOARD_ID, type WhiteboardSnapshot } from "../../lib/whiteboard";
+import {
+  WHITEBOARD_ID,
+  boardSaveSchema,
+  type WhiteboardSnapshot,
+} from "../../lib/whiteboard";
+import { ReplicaQueryError } from "./queries";
 const sources: SyncEntity[] = [
   "library_notes",
   "library_note_trash",
@@ -22,7 +27,13 @@ export function createWhiteboardReader(
 ) {
   let cached:
     { token: string; value: Omit<WhiteboardSnapshot, "board"> } | undefined;
-  return async () => {
+  return async (boardId = WHITEBOARD_ID) => {
+    boardSaveSchema.shape.boardId.parse(boardId);
+    if (
+      boardId !== WHITEBOARD_ID &&
+      !(await reader.raw("library_research", boardId))
+    )
+      throw new ReplicaQueryError(404, "글감 묶음을 찾을 수 없습니다.");
     for (let attempt = 0; attempt < 3; attempt++) {
       const cp = await storage.checkpoint();
       const checkpointStamp = JSON.stringify(cp);
@@ -89,17 +100,18 @@ export function createWhiteboardReader(
                 sourceTopicId: l.source_topic_id,
                 targetTopicId: l.target_topic_id,
                 status: l.status,
+                version: l.version,
               })),
           },
         };
       }
       const resolved =
         (await storage.listConflicts(true))
-          .filter((c) => c.entityId === WHITEBOARD_ID && c.resolvedAt)
+          .filter((c) => c.entityId === boardId && c.resolvedAt)
           .map((c) => `${c.resolvedAt}:${c.requestId}`)
           .sort()
           .at(-1) ?? "";
-      const row = await reader.raw("library_whiteboards", WHITEBOARD_ID);
+      const row = await reader.raw("library_whiteboards", boardId);
       // A resolution and its replacement row must come from the same local
       // revision, including when another tab resolves between awaited reads.
       if (JSON.stringify(await storage.checkpoint()) !== checkpointStamp)

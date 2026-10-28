@@ -8,12 +8,27 @@ import {
 import { projectNote } from "../lib/replica/projections";
 import { LibraryError, type Executor, type Database } from "./library-store";
 import { randomUUID } from "node:crypto";
+async function requireBoard(tx: Executor, owner: string, boardId: string) {
+  boardSaveSchema.shape.boardId.parse(boardId);
+  if (
+    boardId !== WHITEBOARD_ID &&
+    !(
+      await tx.query(
+        "SELECT id FROM library_research WHERE owner_id=$1 AND id=$2",
+        [owner, boardId],
+      )
+    ).rows.length
+  )
+    throw new LibraryError(404, "글감 묶음을 찾을 수 없습니다.");
+}
 export async function saveWhiteboard(
   tx: Executor,
   owner: string,
   input: unknown,
 ) {
-  const p = boardSaveSchema.parse(input);
+  const p = boardSaveSchema.parse(input),
+    boardId = p.boardId ?? WHITEBOARD_ID;
+  await requireBoard(tx, owner, boardId);
   if (
     !(
       await tx.query("SELECT to_regclass('public.library_whiteboards') AS name")
@@ -26,7 +41,7 @@ export async function saveWhiteboard(
   const before = (
     await tx.query(
       "SELECT * FROM library_whiteboards WHERE owner_id=$1 AND id=$2 FOR UPDATE",
-      [owner, WHITEBOARD_ID],
+      [owner, boardId],
     )
   ).rows[0];
   if ((before?.version ?? 0) !== p.expectedVersion)
@@ -41,13 +56,13 @@ export async function saveWhiteboard(
     ? (
         await tx.query(
           "UPDATE library_whiteboards SET data=$3,version=version+1,updated_at=now() WHERE owner_id=$1 AND id=$2 RETURNING *",
-          [owner, WHITEBOARD_ID, JSON.stringify(data)],
+          [owner, boardId, JSON.stringify(data)],
         )
       ).rows[0]
     : (
         await tx.query(
           "INSERT INTO library_whiteboards(owner_id,id,data) VALUES($1,$2,$3) RETURNING *",
-          [owner, WHITEBOARD_ID, JSON.stringify(data)],
+          [owner, boardId, JSON.stringify(data)],
         )
       ).rows[0];
   await tx.query(
@@ -55,12 +70,12 @@ export async function saveWhiteboard(
     [
       randomUUID(),
       owner,
-      WHITEBOARD_ID,
+      boardId,
       before ? JSON.stringify(before) : null,
       JSON.stringify(after),
     ],
   );
-  return { id: WHITEBOARD_ID, version: after.version };
+  return { id: boardId, version: after.version };
 }
 export async function setWhiteboardNoteVisibility(
   tx: Executor,
@@ -68,7 +83,7 @@ export async function setWhiteboardNoteVisibility(
   input: unknown,
 ) {
   const p = noteVisibilitySchema.parse(input);
-  return setVisibility(tx, owner, [p.noteId], p.visible);
+  return setVisibility(tx, owner, [p.noteId], p.visible, p.boardId);
 }
 export async function setWhiteboardNotesVisibility(
   tx: Executor,
@@ -84,25 +99,27 @@ export async function setWhiteboardNotesVisibility(
   ).rows;
   if (owned.length !== p.noteIds.length)
     throw new LibraryError(404, "메모를 찾을 수 없습니다.");
-  return setVisibility(tx, owner, p.noteIds, p.visible);
+  return setVisibility(tx, owner, p.noteIds, p.visible, p.boardId);
 }
 async function setVisibility(
   tx: Executor,
   owner: string,
   noteIds: string[],
   visible: boolean,
+  boardId = WHITEBOARD_ID,
 ) {
+  await requireBoard(tx, owner, boardId);
   const before = (
     await tx.query(
       "SELECT id,data,version FROM library_whiteboards WHERE owner_id=$1 AND id=$2 FOR UPDATE",
-      [owner, WHITEBOARD_ID],
+      [owner, boardId],
     )
   ).rows[0];
   const original = before?.data ?? emptyBoard(),
     data = withWhiteboardNotesVisibility(original, noteIds, visible);
-  if (data === original)
-    return { id: WHITEBOARD_ID, version: before?.version ?? 0 };
+  if (data === original) return { id: boardId, version: before?.version ?? 0 };
   return saveWhiteboard(tx, owner, {
+    boardId,
     expectedVersion: before?.version ?? 0,
     data,
     includeVisibility: true,
@@ -112,22 +129,29 @@ export async function readWhiteboardVisibility(
   db: Database,
   owner: string,
   noteId: string,
+  boardId = WHITEBOARD_ID,
 ) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   noteVisibilitySchema.shape.noteId.parse(noteId);
+  await requireBoard(db, owner, boardId);
   const row = (
     await db.query(
       "SELECT NOT (COALESCE(w.data->'hiddenNoteIds','[]'::jsonb) ? $2::text) AS visible FROM library_active_notes n LEFT JOIN library_whiteboards w ON w.owner_id=n.owner_id AND w.id=$3 WHERE n.owner_id=$1 AND n.id=$2::uuid",
-      [owner, noteId, WHITEBOARD_ID],
+      [owner, noteId, boardId],
     )
   ).rows[0];
   if (!row) throw new LibraryError(404, "메모를 찾을 수 없습니다.");
   return { visible: row.visible };
 }
-export async function readWhiteboard(db: Database, owner: string) {
+export async function readWhiteboard(
+  db: Database,
+  owner: string,
+  boardId = WHITEBOARD_ID,
+) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   return db.transaction(async (tx) => {
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    await requireBoard(tx, owner, boardId);
     const notes = (
       await tx.query(
         "SELECT * FROM library_active_notes WHERE owner_id=$1 ORDER BY created_at,id",
@@ -171,7 +195,7 @@ export async function readWhiteboard(db: Database, owner: string) {
       ? (
           await tx.query(
             "SELECT id,data,version FROM library_whiteboards WHERE owner_id=$1 AND id=$2",
-            [owner, WHITEBOARD_ID],
+            [owner, boardId],
           )
         ).rows[0]
       : null;
@@ -184,7 +208,7 @@ export async function readWhiteboard(db: Database, owner: string) {
       connections,
       topicLinks: (
         await tx.query(
-          "SELECT id,source_topic_id,target_topic_id,status FROM library_topic_links WHERE owner_id=$1 AND status='accepted'",
+          "SELECT id,source_topic_id,target_topic_id,status,version FROM library_topic_links WHERE owner_id=$1 AND status='accepted'",
           [owner],
         )
       ).rows.map((r) => ({
@@ -192,6 +216,7 @@ export async function readWhiteboard(db: Database, owner: string) {
         sourceTopicId: r.source_topic_id,
         targetTopicId: r.target_topic_id,
         status: r.status,
+        version: r.version,
       })),
     };
   });

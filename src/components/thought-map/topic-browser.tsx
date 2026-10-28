@@ -21,6 +21,16 @@ import { TopicManager } from "./topic-manager";
 import { useTopicOrder } from "./use-topic-order";
 import { useReplicaOptional } from "../replica/provider";
 import { TopicFilter } from "../topic-filter";
+import { FacetPicker } from "../whiteboard/facet-picker";
+type RecordFilters = {
+  noteTypes: string[];
+  categories: string[];
+  bookIds: string[];
+  topics: string[];
+  tags: string[];
+  q: string;
+  sort: string;
+};
 export function TopicBrowser({
   library,
   state,
@@ -31,7 +41,6 @@ export function TopicBrowser({
   ownerId = "",
   onUpdated = async () => {},
   onSaveNote,
-  onNewNote,
   initialTag = "all",
   onTopicsUpdated = () => {},
 }: {
@@ -48,46 +57,54 @@ export function TopicBrowser({
   initialTag?: string;
   onTopicsUpdated?: () => void;
 }) {
-  const [selected, setSelected] = useState("all"),
-    [field, setField] = useState("all"),
-    [noteType, setNoteType] = useState("all"),
-    [tag, setTag] = useState(initialTag),
-    [bookId, setBookId] = useState("all"),
-    [search, setSearch] = useState(""),
-    [sort, setSort] = useState("newest");
+  const initialFilters = (): RecordFilters => ({
+    noteTypes: [],
+    categories: [],
+    bookIds: [],
+    topics: [],
+    tags: initialTag === "all" ? [] : [initialTag],
+    q: "",
+    sort: "newest",
+  });
+  const [draft, setDraft] = useState(initialFilters),
+    [applied, setApplied] = useState(initialFilters);
+  const selected = draft.topics.length === 1 ? draft.topics[0] : "all";
+  function change<K extends keyof RecordFilters>(
+    key: K,
+    value: RecordFilters[K],
+  ) {
+    setDraft((old) => ({ ...old, [key]: value }));
+  }
+  function removed(key: "topics" | "tags", id: string) {
+    setDraft((old) => ({
+      ...old,
+      [key]: old[key].filter((value) => value !== id),
+    }));
+    setApplied((old) => ({
+      ...old,
+      [key]: old[key].filter((value) => value !== id),
+    }));
+  }
   const replica = useReplicaOptional();
   const { topics: orderedTopics, move: moveTopic } = useTopicOrder(
     state.topics,
     ownerId || replica?.runtime?.owner || "preview",
   );
-  const paging = useListPagination(
-    "topic-materials",
-    JSON.stringify([selected, field, noteType, tag, bookId, sort, search]),
-  );
+  const paging = useListPagination("topic-materials", JSON.stringify(applied));
   const query = useMemo(
     () => ({
-      category: field,
-      q: search,
+      categories: JSON.stringify(applied.categories),
+      q: applied.q,
       kind: "note",
-      noteType,
-      tag,
-      bookId,
-      topic: selected,
-      sort,
+      noteTypes: JSON.stringify(applied.noteTypes),
+      tags: JSON.stringify(applied.tags),
+      bookIds: JSON.stringify(applied.bookIds),
+      topics: JSON.stringify(applied.topics),
+      sort: applied.sort,
       limit: paging.size,
       offset: paging.offset,
     }),
-    [
-      field,
-      noteType,
-      tag,
-      bookId,
-      selected,
-      sort,
-      search,
-      paging.size,
-      paging.offset,
-    ],
+    [applied, paging.size, paging.offset],
   );
   const catalog = useMaterialPage(
     !!library.catalog && paging.ready,
@@ -138,44 +155,56 @@ export function TopicBrowser({
   return (
     <div className="thought-layout topic-material-layout">
       <div className="thought-materials">
-        <div className="panel thought-filters topic-material-filters unified-notes-filters">
+        <form
+          className="panel thought-filters topic-material-filters unified-notes-filters"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setApplied(draft);
+          }}
+        >
           <label className="note-kind-filter">
             종류
-            <select
-              aria-label="종류"
-              value={noteType}
-              onChange={(e) => setNoteType(e.target.value)}
-            >
-              <option value="all">모든 기록</option>
-              <option value="unclassified">미분류 메모</option>
-              {Object.entries(noteKindNames).map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
+            <FacetPicker
+              compact
+              label="종류"
+              values={draft.noteTypes}
+              onChange={(values) => change("noteTypes", values)}
+              options={[
+                { value: "unclassified", label: "미분류 메모" },
+                ...Object.entries(noteKindNames).map(([value, label]) => ({
+                  value,
+                  label,
+                })),
+              ]}
+            />
           </label>
           <label className="note-category-filter">
             도서 분야
-            <select value={field} onChange={(e) => setField(e.target.value)}>
-              <option value="all">모든 분야</option>
-              <option value="unclassified">미분류</option>
-              {categories.map(([c, n]) => (
-                <option key={c} value={c}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            <FacetPicker
+              compact
+              label="도서 분야"
+              values={draft.categories}
+              onChange={(values) => change("categories", values)}
+              options={[
+                { value: "unclassified", label: "미분류" },
+                ...categories.map(([value, label]) => ({ value, label })),
+              ]}
+            />
           </label>
           <NoteBookFilter
             library={library}
-            value={bookId}
-            onChange={setBookId}
+            value={draft.bookIds[0] ?? "all"}
+            onChange={(id) => change("bookIds", id === "all" ? [] : [id])}
+            values={draft.bookIds}
+            onValuesChange={(ids) => change("bookIds", ids)}
           />
           <TopicFilter
             topics={orderedTopics}
             value={selected}
-            onChange={setSelected}
+            onChange={(id) => change("topics", id === "all" ? [] : [id])}
+            values={draft.topics}
+            onValuesChange={(ids) => change("topics", ids)}
+            onRemoved={(id) => removed("topics", id)}
             onUpdated={async () => {
               onTopicsUpdated();
               await onUpdated();
@@ -184,14 +213,20 @@ export function TopicBrowser({
           <NoteTagFilter
             searchable
             tags={(state.notes ?? library.notes).flatMap((n) => n.tags ?? [])}
-            value={tag}
-            onChange={setTag}
+            value={draft.tags[0] ?? "all"}
+            onChange={(tag) => change("tags", tag === "all" ? [] : [tag])}
+            values={draft.tags}
+            onValuesChange={(tags) => change("tags", tags)}
+            onRemoved={(tag) => removed("tags", tag)}
             onUpdated={onUpdated}
             preview={false}
           />
           <label className="note-sort-filter">
             정렬
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+            <select
+              value={draft.sort}
+              onChange={(e) => change("sort", e.target.value)}
+            >
               <option value="newest">최신순</option>
               <option value="oldest">오래된 순</option>
               <option value="category">분야별</option>
@@ -203,8 +238,8 @@ export function TopicBrowser({
             검색
             <input
               type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={draft.q}
+              onChange={(e) => change("q", e.target.value)}
               placeholder="제목·내용 검색"
             />
           </label>
@@ -212,11 +247,9 @@ export function TopicBrowser({
           <p className="topic-material-count" aria-live="polite">
             내 기록 {total.toLocaleString()}개
           </p>
-          {onNewNote && (
-            <button className="primary" onClick={() => onNewNote({})}>
-              새 기록
-            </button>
-          )}
+          <button className="primary" type="submit">
+            검색
+          </button>
           {catalog.loading && !catalog.items.length && (
             <p role="status">자료를 불러오고 있습니다…</p>
           )}
@@ -226,7 +259,7 @@ export function TopicBrowser({
               <button onClick={catalog.reload}>다시 조회</button>
             </p>
           )}
-        </div>
+        </form>
         <AssistLauncher
           library={library}
           scope={query}
@@ -367,7 +400,7 @@ export function TopicBrowser({
         state={state}
         topics={orderedTopics}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={(id) => change("topics", id === "all" ? [] : [id])}
         onMove={moveTopic}
         send={send}
         busy={busy}
