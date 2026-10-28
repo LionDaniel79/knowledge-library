@@ -7,7 +7,10 @@ import {
   catalogEditionProof,
 } from "../src/lib/catalog-supplement";
 import { collectSupplementRecords } from "../src/local/curation/catalog-supplement";
-import { supplementBook } from "../src/local/curation/catalog-supplement";
+import {
+  supplementBook,
+  libraryCorroborates,
+} from "../src/local/curation/catalog-supplement";
 import { bookSelect } from "../src/server/book-records";
 import { collectBookReference } from "../src/local/curation/catalog";
 import {
@@ -339,4 +342,14 @@ it("uses independent library identity to corroborate a bookstore credit variant 
     (await f.db.query("SELECT author FROM library_books WHERE id=$1", [b.id]))
       .rows[0].author,
   ).toBe(facts.author);
+});
+it("does not treat absent library credits as independent confirmation of conflicting bookstore credits", () => {
+  const lib = {
+    provider: "도서관 정보나루" as const,
+    title: facts.title,
+    isbn: facts.isbn,
+    url: "https://www.data4library.kr",
+    facts: { ...facts, author: "", publisher: "" },
+  };
+  expect(libraryCorroborates(facts, [lib])).toBe(false);
 });

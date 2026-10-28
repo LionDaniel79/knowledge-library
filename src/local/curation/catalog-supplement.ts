@@ -15,6 +15,8 @@ export const libraryCorroborates = (book: any, records: CollectedBook[]) =>
   records.some(
     (r) =>
       r.provider === "도서관 정보나루" &&
+      (!book.author?.trim() || !!r.facts.author.trim()) &&
+      (!book.publisher?.trim() || !!r.facts.publisher.trim()) &&
       catalogSupplementProof(book, r.facts).certain,
   );
 export async function collectSupplementRecords(
