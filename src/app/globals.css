@@ -5200,6 +5200,9 @@ textarea {
 .memo-group-compact .memo-box-edge form {
   margin-bottom: 8px;
 }
+.memo-group-compact .memo-box-edge > .memo-group-note {
+  margin-inline-start: 12px;
+}
 .wb-connection-select {
   text-align: left;
   white-space: normal;

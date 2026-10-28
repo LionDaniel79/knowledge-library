@@ -9,6 +9,167 @@ import {
 } from "../src/client/replica/conflicts";
 import { sha256Bytes } from "../src/lib/replica/codec";
 import { newDraft, writeDraft, readDrafts } from "../src/lib/offline-drafts";
+import { emptyBoard, WHITEBOARD_ID } from "../src/lib/whiteboard";
+it("does not treat a deleted existing versionless writing project as a new creation", async () => {
+  const f = await resourceFixture(),
+    old = await f.repo.raw("library_research", f.research),
+    requestId = crypto.randomUUID();
+  await queueReplicaCommand({
+    storage: f.s,
+    repository: f.repo,
+    path: "/api/knowledge",
+    body: {
+      requestId,
+      type: "updateResearch",
+      payload: {
+        id: f.research,
+        expectedTitle: old!.title,
+        expectedQuestion: old!.question,
+        title: "남길 제목",
+        question: "보존할 질문",
+      },
+    },
+  });
+  await pushReplica({
+    storage: f.s,
+    send: async () => {
+      throw Object.assign(Error("없어진 글감 묶음"), { status: 404 });
+    },
+    pull: async () => {},
+  });
+  const cp = (await f.s.checkpoint())!;
+  await f.s.stageRows(cp.generation, [
+    {
+      entity: "library_research",
+      key: JSON.stringify([f.research]),
+      revision: "4",
+      deleted: true,
+      sha256: null,
+      bytes: 0,
+    },
+  ]);
+  const review = await loadReplicaConflict(f.s, requestId);
+  expect(review.unavailable).toContain("찾을 수 없습니다");
+  await expect(
+    applyReplicaResolution(f.s, review, { choice: "mine" }),
+  ).rejects.toMatchObject({ status: 409 });
+  expect((await f.s.listOutbox())[0].requestId).toBe(requestId);
+  f.repo.close();
+});
+it("keeps a new note and later edits when the server has no record, including review from a later failed edit", async () => {
+  const f = await resourceFixture(),
+    requestId = crypto.randomUUID();
+  const note = await queueReplicaCommand({
+    storage: f.s,
+    repository: f.repo,
+    path: "/api/library",
+    body: {
+      requestId,
+      type: "addNote",
+      payload: {
+        title: "새 기록",
+        content: "처음 쓴 내용",
+        kind: "thought",
+        bookId: f.book,
+        topicChanges: [
+          { topicId: f.topic, status: "accepted", expectedVersion: 0 },
+        ],
+      },
+    },
+  });
+  const editId = crypto.randomUUID();
+  await queueReplicaCommand({
+    storage: f.s,
+    repository: f.repo,
+    path: "/api/library",
+    body: {
+      requestId: editId,
+      type: "editNote",
+      payload: {
+        id: note.id,
+        expectedVersion: 1,
+        title: "최종 제목",
+        content: "나중에 덧붙인 내용",
+        kind: "thought",
+        bookId: f.book,
+      },
+    },
+  });
+  await pushReplica({
+    storage: f.s,
+    send: async () => {
+      throw Object.assign(Error("확인 필요"), { status: 409 });
+    },
+    pull: async () => {},
+  });
+  const review = await loadReplicaConflict(f.s, editId);
+  expect(review.firstEntry.requestId).toBe(requestId);
+  expect(review.latest).toBeNull();
+  expect(review.unavailable).toBeNull();
+  await applyReplicaResolution(f.s, review, { choice: "mine" });
+  expect(await f.s.listConflicts()).toHaveLength(0);
+  const pending = await f.s.listOutbox();
+  expect(
+    pending.every(
+      (e) =>
+        e.state === "pending" && ![requestId, editId].includes(e.requestId),
+    ),
+  ).toBe(true);
+  expect((await f.repo.note(note.id)).content).toBe("나중에 덧붙인 내용");
+  expect((await f.repo.note(note.id)).title).toBe("최종 제목");
+  expect(
+    (await f.repo.all("library_topic_memberships")).some(
+      (m) => m.source_id === note.id && m.topic_id === f.topic,
+    ),
+  ).toBe(true);
+  expect((await f.s.listConflicts(true))[0].resolution.entries).toHaveLength(2);
+  f.repo.close();
+});
+it.each(["board", "topic"])(
+  "can retry a newly created %s while retaining its identity and original review history",
+  async (kind) => {
+    const f = await resourceFixture(),
+      requestId = crypto.randomUUID();
+    const created = await queueReplicaCommand({
+      storage: f.s,
+      repository: f.repo,
+      path: kind === "board" ? "/api/knowledge" : "/api/thought-map",
+      body: {
+        requestId,
+        type: kind === "board" ? "saveWhiteboard" : "upsertTopic",
+        payload:
+          kind === "board"
+            ? { expectedVersion: 0, data: emptyBoard() }
+            : {
+                name: "새로운 주제",
+                parentId: null,
+                aliases: [],
+                description: "내 주제",
+                kdcCodes: [],
+              },
+      },
+    });
+    await pushReplica({
+      storage: f.s,
+      send: async () => {
+        throw Object.assign(Error("확인 필요"), { status: 409 });
+      },
+      pull: async () => {},
+    });
+    const review = await loadReplicaConflict(f.s, requestId);
+    expect(review.latest).toBeNull();
+    await applyReplicaResolution(f.s, review, { choice: "mine" });
+    const pending = await f.s.listOutbox();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      entityId: kind === "board" ? WHITEBOARD_ID : created.id,
+      state: "pending",
+    });
+    expect(pending[0].requestId).not.toBe(requestId);
+    expect(await f.s.listConflicts()).toHaveLength(0);
+    f.repo.close();
+  },
+);
 async function changeServer(
   f: Awaited<ReturnType<typeof resourceFixture>>,
   patch: any,

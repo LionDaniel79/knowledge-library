@@ -4,6 +4,9 @@ import type { QueuedChange, OptimisticEffect } from "./optimistic";
 import { readReplicaValue } from "./values";
 import { contentHash } from "../../lib/thought-map/records";
 import { createReplicaRepository } from "./repository";
+import { createLocalReplicaRepository } from "./repository-local";
+import { prepareOptimistic } from "./optimistic";
+import { remapQueuedEntry } from "./reference-remap";
 import { queueReplicaCommand } from "./outbox";
 import {
   readDrafts,
@@ -151,10 +154,21 @@ export async function loadReplicaConflict(
     entry = entries.find((e) => e.requestId === requestId);
   if (!entry)
     throw new ReplicaQueryError(404, "검토할 입력을 찾을 수 없습니다.");
-  const first = entry.command as QueuedChange,
-    chain = entries.filter(
-      (e) => e.entityId === entry.entityId && e.order >= entry.order,
-    ),
+  const chain = entries
+      .filter(
+        (e) =>
+          e.entityId === entry.entityId && !(e.command as QueuedChange).ack,
+      )
+      .sort(
+        (a, b) => a.order - b.order || a.requestId.localeCompare(b.requestId),
+      ),
+    firstEntry = chain[0];
+  if (!firstEntry)
+    throw new ReplicaQueryError(
+      409,
+      "이미 저장을 확인 중인 자료입니다. 동기화 후 다시 확인하세요.",
+    );
+  const first = firstEntry.command as QueuedChange,
     last = chain.at(-1) ?? entry,
     change = last.command as QueuedChange;
   const primary =
@@ -184,7 +198,7 @@ export async function loadReplicaConflict(
         ? "다른 기기에서 제외한 자료입니다."
         : primary?.entity === "library_research_items" && !latest
           ? "연구에 담을 원문이나 서지 정보가 변경되었습니다. 기존 선택은 보관되며 원문을 다시 확인해야 합니다."
-          : !latest && entry.baseVersion !== null
+          : !latest && (firstEntry.baseVersion !== null || !!first.base)
             ? "서버에서 자료를 찾을 수 없습니다."
             : null;
   const local = primary?.after ?? change.body.payload ?? change.body;
@@ -200,7 +214,7 @@ export async function loadReplicaConflict(
   );
   return {
     entry: last,
-    firstEntry: entry,
+    firstEntry,
     chain,
     base: first.base ?? null,
     latest,
@@ -324,6 +338,132 @@ export function resolveReplicaConflict(input: {
     order: Date.now() * 1000,
   };
 }
+/** Rebuild an unsent creation and its edits against the downloaded state. A
+ * missing server row is normal here; the original commands remain archived. */
+async function replayUnsentCreation(
+  storage: ReplicaStorage,
+  review: ConflictReview,
+  all: OutboxEntry[],
+  resolution: Resolution,
+) {
+  const removed = new Set(review.chain.map((e) => e.requestId)),
+    requestMap = new Map<string, string>(),
+    aliases = new Map<string, string>(),
+    entries: OutboxEntry[] = [];
+  let others = all.filter((e) => !removed.has(e.requestId)),
+    preparingOrder = Infinity;
+  const repository = createLocalReplicaRepository({
+    ...storage,
+    listOutbox: async () => [
+      ...others.filter((e) => e.order < preparingOrder),
+      ...entries,
+    ],
+  });
+  const first = review.firstEntry.command as QueuedChange,
+    entity = first.effects.find(
+      (e) =>
+        e.entity !== "library_revisions" &&
+        e.after?.id === review.firstEntry.entityId,
+    )?.entity;
+  const remap = (entry: OutboxEntry) => {
+    for (const [from, to] of aliases) entry = remapQueuedEntry(entry, from, to);
+    return entry;
+  };
+  try {
+    for (const original of review.chain) {
+      preparingOrder = original.order;
+      repository.invalidate();
+      const old = remap(original),
+        c = old.command as QueuedChange,
+        body = structuredClone(c.body),
+        requestId = crypto.randomUUID(),
+        at = new Date().toISOString(),
+        row = entity ? await repository.raw(entity, old.entityId) : undefined;
+      body.requestId = requestId;
+      body.entityId = old.entityId;
+      delete body.editBase;
+      if (body.payload && Object.hasOwn(body.payload, "expectedVersion"))
+        body.payload.expectedVersion = row?.version ?? 0;
+      if (Object.hasOwn(body, "version")) body.version = row?.version ?? 0;
+      if (Object.hasOwn(body, "expectedVersion"))
+        body.expectedVersion = row?.version ?? 0;
+      if (body.payload && Object.hasOwn(body.payload, "expectedTitle"))
+        body.payload.expectedTitle = row?.title;
+      if (body.payload && Object.hasOwn(body.payload, "expectedQuestion"))
+        body.payload.expectedQuestion = row?.question;
+      if (
+        resolution.text &&
+        original === review.chain.at(-1) &&
+        ["addNote", "editNote"].includes(body.type)
+      )
+        Object.assign(body.payload, resolution.text);
+      const prepared = await prepareOptimistic(repository, c.path, body, at);
+      requestMap.set(original.requestId, requestId);
+      const next: OutboxEntry = {
+        ...old,
+        requestId,
+        entityId: prepared.entityId,
+        baseVersion: prepared.base?.version ?? null,
+        baseRevision: null,
+        state: "pending",
+        // Keep chronology relative to other pending topic/connection changes.
+        order: original.order,
+        dependsOn: old.dependsOn.map((id) => requestMap.get(id) ?? id),
+        command: {
+          path: c.path,
+          body: prepared.body,
+          at,
+          base: prepared.base,
+          effects: prepared.effects,
+          result: prepared.result,
+          inputHash: contentHash(
+            JSON.stringify({ path: c.path, body: prepared.body }),
+          ),
+        } satisfies QueuedChange,
+      };
+      entries.push(next);
+      // A fresh request can give note-topic/connection context rows new IDs.
+      // Carry those identities into pending dependants, never into user prose.
+      const identity = [
+        "book_id",
+        "note_id",
+        "topic_id",
+        "research_id",
+        "source_kind",
+        "source_id",
+        "target_kind",
+        "target_id",
+        "source_topic_id",
+        "target_topic_id",
+      ];
+      for (const effect of c.effects.filter(
+        (e) => e.entity !== "library_revisions" && e.after,
+      )) {
+        const candidates = prepared.effects.filter(
+          (e) =>
+            e.entity === effect.entity &&
+            e.after &&
+            identity.every((k) => e.after![k] === effect.after![k]),
+        );
+        if (
+          candidates.length === 1 &&
+          effect.after!.id !== candidates[0].after!.id
+        )
+          aliases.set(effect.after!.id, candidates[0].after!.id);
+      }
+      if (old.entityId !== prepared.entityId)
+        aliases.set(old.entityId, prepared.entityId);
+      for (let i = 0; i < entries.length; i++) entries[i] = remap(entries[i]);
+      others = others.map((e) =>
+        (e.command as QueuedChange).ack ? e : remap(e),
+      );
+      repository.invalidate();
+    }
+    return { entries, requestMap, aliases };
+  } finally {
+    repository.close();
+  }
+}
 export async function applyReplicaResolution(
   storage: ReplicaStorage,
   review: ConflictReview,
@@ -362,8 +502,19 @@ export async function applyReplicaResolution(
           },
         }
       : current.entry;
-  const next =
-    resolution.choice === "server"
+  const first = current.firstEntry.command as QueuedChange;
+  const replay =
+    !current.latest &&
+    !current.unavailable &&
+    current.firstEntry.baseVersion === null &&
+    !first.base &&
+    first.effects.some((e) => e.entity !== "library_revisions" && !!e.after) &&
+    ["mine", "merge"].includes(resolution.choice)
+      ? await replayUnsentCreation(storage, current, all, resolution)
+      : null;
+  const next = replay
+    ? null
+    : resolution.choice === "server"
       ? null
       : resolveReplicaConflict({
           entry: selectedEntry,
@@ -378,6 +529,10 @@ export async function applyReplicaResolution(
     );
     next.dependsOn = current.entry.dependsOn.filter((id) => !removed.has(id));
   }
+  const replacements = replay?.entries ?? (next ? [next] : []),
+    requestMap =
+      replay?.requestMap ??
+      new Map(current.chain.map((e) => [e.requestId, next?.requestId ?? null]));
   const archived: ReplicaConflict = {
     requestId: current.firstEntry.requestId,
     entityId: current.entry.entityId,
@@ -392,7 +547,8 @@ export async function applyReplicaResolution(
     resolution: {
       choice: resolution.choice,
       entries: current.chain,
-      nextRequestId: next?.requestId ?? null,
+      nextRequestId: replacements[0]?.requestId ?? null,
+      nextRequestIds: replacements.map((e) => e.requestId),
     },
   };
   const localEntityRevisions = { ...cp.localEntityRevisions };
@@ -407,27 +563,35 @@ export async function applyReplicaResolution(
       tx.removeConflict(e.requestId);
     }
     tx.putConflict(archived);
-    if (next) tx.putOutbox(next);
+    for (const replacement of replacements) tx.putOutbox(replacement);
     for (const e of all)
       if (
         !removed.has(e.requestId) &&
-        e.dependsOn.some((id) => removed.has(id))
-      )
+        (e.dependsOn.some((id) => removed.has(id)) || !!replay?.aliases.size)
+      ) {
+        let preserved = e;
+        if (!(e.command as QueuedChange).ack)
+          for (const [from, to] of replay?.aliases ?? [])
+            preserved = remapQueuedEntry(preserved, from, to);
         tx.putOutbox({
-          ...e,
+          ...preserved,
           dependsOn: [
             ...new Set([
-              ...e.dependsOn.filter((id) => !removed.has(id)),
-              ...(next ? [next.requestId] : []),
+              ...e.dependsOn
+                .map(
+                  (id) => requestMap.get(id) ?? (!removed.has(id) ? id : null),
+                )
+                .filter((id): id is string => !!id),
             ]),
           ],
         });
+      }
     tx.setCheckpoint(cp.generation, {
       localRevision: (cp.localRevision ?? 0) + 1,
       localEntityRevisions,
     });
   });
-  return next;
+  return replacements.at(-1) ?? null;
 }
 export interface MigrationReport {
   migrated: number;

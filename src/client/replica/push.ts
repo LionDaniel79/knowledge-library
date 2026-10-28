@@ -1,40 +1,7 @@
 import type { OutboxEntry } from "../../lib/replica/contracts";
 import type { ReplicaStorage } from "./storage";
 import type { QueuedChange } from "./optimistic";
-const referenceFields = new Set([
-  "id",
-  "entityId",
-  "bookId",
-  "noteId",
-  "researchId",
-  "itemId",
-  "sourceId",
-  "targetId",
-  "topicId",
-  "parentId",
-  "sourceTopicId",
-  "targetTopicId",
-  "book_id",
-  "note_id",
-  "research_id",
-  "source_id",
-  "target_id",
-  "topic_id",
-  "parent_id",
-]);
-function remapReferences(value: any, from: string, to: string): any {
-  if (Array.isArray(value))
-    return value.map((v) => remapReferences(v, from, to));
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, v]) => [
-      key,
-      referenceFields.has(key) && v === from
-        ? to
-        : remapReferences(v, from, to),
-    ]),
-  );
-}
+import { remapQueuedEntry } from "./reference-remap";
 async function saveAcknowledgement(
   storage: ReplicaStorage,
   entry: OutboxEntry,
@@ -65,29 +32,7 @@ async function saveAcknowledgement(
               (child.command as QueuedChange).ack
             )
               continue;
-            const c = child.command as QueuedChange;
-            // Rewrite only structured ID fields; never user prose, request IDs or the original retry fingerprint.
-            const command = {
-              ...c,
-              body: remapReferences(c.body, entry.entityId, canonical),
-              base: remapReferences(c.base, entry.entityId, canonical),
-              result: remapReferences(c.result, entry.entityId, canonical),
-              effects: c.effects.map((effect) => ({
-                ...effect,
-                key: JSON.stringify(
-                  (JSON.parse(effect.key) as unknown[]).map((k) =>
-                    k === entry.entityId ? canonical : k,
-                  ),
-                ),
-                after: remapReferences(effect.after, entry.entityId, canonical),
-              })),
-            };
-            tx.putOutbox({
-              ...child,
-              entityId:
-                child.entityId === entry.entityId ? canonical : child.entityId,
-              command,
-            });
+            tx.putOutbox(remapQueuedEntry(child, entry.entityId, canonical));
           }
         if (cp)
           tx.setCheckpoint(cp.generation, {

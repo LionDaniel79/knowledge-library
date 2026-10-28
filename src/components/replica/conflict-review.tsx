@@ -81,13 +81,14 @@ export function ConflictReviewPanel() {
     setNotice("");
     try {
       const r = await loadReplicaConflict(runtime.storage, id);
+      const draftId = r.firstEntry.requestId;
       setReview(r);
       setDrafts((d) =>
-        d[id]
+        d[draftId]
           ? d
           : {
               ...d,
-              [id]: {
+              [draftId]: {
                 title: r.local?.title ?? "",
                 content: r.local?.content ?? "",
               },

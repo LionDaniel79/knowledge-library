@@ -24,48 +24,47 @@ export function MemoGroupDetail({
   compact?: boolean;
 }) {
   const notes = new Map(group.notes.map((n) => [n.id, n]));
+  const renderNote = (n: Group["notes"][number]) => {
+    const title =
+      n.title === "미분류 메모" ? n.content.slice(0, 60) : n.title || "메모";
+    const body = (
+      <>
+        <p className="preserve-text">{n.content}</p>
+        <div className="form-footer">
+          <button type="button" onClick={() => onOpen("note", n.id)}>
+            메모 수정·분류
+          </button>
+          {onNewNote && (
+            <button
+              type="button"
+              onClick={() =>
+                onNewNote({
+                  relatedNotes: [{ id: n.id, title: n.title }],
+                  topicIds: topicIdsForNote?.(n.id),
+                })
+              }
+            >
+              관련 기록 남기기
+            </button>
+          )}
+        </div>
+      </>
+    );
+    return compact ? (
+      <details className="memo-group-note" key={n.id}>
+        <summary>{title}</summary>
+        {body}
+      </details>
+    ) : (
+      <article className="memo-group-note" key={n.id}>
+        <h3>{title}</h3>
+        {body}
+      </article>
+    );
+  };
   return (
     <div className={`memo-group-detail${compact ? " memo-group-compact" : ""}`}>
-      {group.notes.map((n) => {
-        const title =
-          n.title === "미분류 메모"
-            ? n.content.slice(0, 60)
-            : n.title || "메모";
-        const body = (
-          <>
-            <p className="preserve-text">{n.content}</p>
-            <div className="form-footer">
-              <button type="button" onClick={() => onOpen("note", n.id)}>
-                메모 수정·분류
-              </button>
-              {onNewNote && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onNewNote({
-                      relatedNotes: [{ id: n.id, title: n.title }],
-                      topicIds: topicIdsForNote?.(n.id),
-                    })
-                  }
-                >
-                  관련 기록 남기기
-                </button>
-              )}
-            </div>
-          </>
-        );
-        return compact ? (
-          <details className="memo-group-note" key={n.id}>
-            <summary>{title}</summary>
-            {body}
-          </details>
-        ) : (
-          <article className="memo-group-note" key={n.id}>
-            <h3>{title}</h3>
-            {body}
-          </article>
-        );
-      })}
+      {!compact && group.notes.map(renderNote)}
       {group.connections.map((c) => {
         const title = (
           <>
@@ -75,6 +74,11 @@ export function MemoGroupDetail({
         );
         const body = (
           <>
+            {compact &&
+              [...new Set([c.source_id, c.target_id])]
+                .map((id) => notes.get(id))
+                .filter((n): n is Group["notes"][number] => !!n)
+                .map(renderNote)}
             <ConnectionEditor
               key={c.id}
               connection={c}

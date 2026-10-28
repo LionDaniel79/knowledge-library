@@ -22,7 +22,14 @@ import {WHITEBOARD_ID} from './src/lib/whiteboard';
   };
   const queue=(type,payload,path='/api/library')=>queueReplicaCommand({storage:s,repository:f.repo,path,body:{requestId:crypto.randomUUID(),type,payload}});
   const mode=new URL(location.href).searchParams.get('mode');
-  if(mode==='reading'){
+  if(mode==='new-board'){
+    await queue('saveWhiteboard',{expectedVersion:0,data:{schema:1,filter:{topics:[],tags:[],categories:[],books:[],q:''},positions:{},groupPositions:{},groups:[],collapsed:[],links:[]}},'/api/knowledge');
+  }else if(mode==='new-topic'){
+    await queue('upsertTopic',{name:'새로운 주제',parentId:null,aliases:[],description:'새 주제 내용',kdcCodes:[]},'/api/thought-map');
+  }else if(mode?.startsWith('new-note')){
+    const created=await queue('addNote',{title:'새 메모',content:'최초 작성한 내용',kind:'thought',bookId:f.book});
+    await queue('editNote',{id:created.id,expectedVersion:1,title:'새 메모',content:'마지막으로 고친 내용',kind:'thought',bookId:f.book});
+  }else if(mode==='reading'){
     const id=crypto.randomUUID();
     const cycle={id,book_id:f.book,status:'reading',started_on:'2026-09-01',completed_on:null,current_page:125,version:1};
     await stage('library_cycles',cycle);
@@ -42,6 +49,7 @@ import {WHITEBOARD_ID} from './src/lib/whiteboard';
     await stage('library_notes',{...await f.repo.raw('library_notes',f.note),content:'서버의 별도 수정',version:2});
   }
   await pushReplica({storage:s,send:async()=>{throw Object.assign(Error('다른 기기의 수정'),{status:409})},pull:async()=>{}});
+  if(mode==='new-note-child'){const entries=await s.listOutbox();await s.putOutbox({...entries.at(-1),state:'failed'});}
   f.repo.close();
   const runtime=createLibraryRuntime('resources',s,await s.checkpoint());
   window.runtime=runtime;
@@ -62,6 +70,64 @@ import {WHITEBOARD_ID} from './src/lib/whiteboard';
     })
   ).outputFiles[0].text;
 });
+
+for (const mode of ["new-note", "new-board", "new-topic"])
+  test(`keeping ${mode} removes its review card while preserving original input history`, async ({
+    page,
+  }) => {
+    await mount(page, mode);
+    const dialog = page.getByRole("dialog", {
+      name: "동기화 내용 선택",
+      exact: true,
+    });
+    await dialog
+      .getByRole("radio", { name: "PC 내용 선택", exact: true })
+      .check();
+    await dialog
+      .getByRole("button", { name: "선택한 내용 적용", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator(".sync-issues")).toHaveCount(0);
+    await expect(page.locator(".error")).toHaveCount(0);
+    const stored = await page.evaluate(async () => ({
+      outbox: await (window as any).runtime.storage.listOutbox(),
+      history: await (window as any).runtime.storage.listConflicts(true),
+    }));
+    expect(stored.outbox.length).toBeGreaterThan(0);
+    expect(stored.outbox.every((e: any) => e.state === "pending")).toBe(true);
+    expect(
+      stored.history.some(
+        (h: any) => h.resolvedAt && h.resolution.choice === "mine",
+      ),
+    ).toBe(true);
+  });
+test("opening a later failed edit keeps the newest draft editable under the first review identity", async ({
+  page,
+}) => {
+  await mount(page, "new-note-child");
+  const dialog = page.getByRole("dialog", {
+    name: "동기화 내용 선택",
+    exact: true,
+  });
+  await dialog.getByRole("radio", { name: "직접 수정", exact: true }).check();
+  const content = dialog.getByRole("textbox", {
+    name: "선택할 내용",
+    exact: true,
+  });
+  await expect(content).toHaveValue("마지막으로 고친 내용");
+  await content.fill("검토하며 합친 내용");
+  await dialog
+    .getByRole("button", { name: "선택한 내용 적용", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".sync-issues")).toHaveCount(0);
+  const entries = await page.evaluate(async () =>
+    (window as any).runtime.storage.listOutbox(),
+  );
+  expect(entries.at(-1).command.body.payload.content).toBe(
+    "검토하며 합친 내용",
+  );
+});
 async function mount(
   page: import("@playwright/test").Page,
   mode = "note",
@@ -80,8 +146,9 @@ async function mount(
   });
   await page.goto(`https://conflict.test/?mode=${mode}`);
   await page.addStyleTag({ path: "src/app/globals.css" });
-  await page.getByText("동기화 확인 · 1개", { exact: true }).click();
-  await page.getByRole("button", { name: /^검토/ }).click();
+  await page.getByText(/^동기화 확인 · \d+개$/).click();
+  const items = page.getByRole("button", { name: /^검토/ });
+  await (mode === "new-note-child" ? items.last() : items.first()).click();
 }
 test("clicking a readable server card only selects it until explicit Apply", async ({
   page,

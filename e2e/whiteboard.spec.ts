@@ -957,10 +957,17 @@ test("connection management reveals an editable memo group without creating extr
   const detail = page.getByRole("region", { name: "연결된 메모 내용" });
   await expect(detail.locator(".preserve-text:visible")).toHaveCount(0);
   await expect(detail.locator("select:visible")).toHaveCount(0);
+  await expect(
+    detail.locator(":scope > .memo-group-detail > .memo-group-note"),
+  ).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("connection-group-compact.png"),
     fullPage: true,
   });
+  await detail.locator(".memo-box-edge summary").first().click();
+  await expect(detail.locator(".memo-box-edge .memo-group-note")).toHaveCount(
+    2,
+  );
   await detail.locator(".memo-group-note summary").first().click();
   await expect(detail).toContainText("본문에만 나오는 수용의 의미");
   await expect(detail).toContainText("두 번째 내 생각");
@@ -970,7 +977,6 @@ test("connection management reveals an editable memo group without creating extr
   await expect(
     detail.locator(".memo-group-note").nth(1).locator(".preserve-text"),
   ).not.toBeVisible();
-  await detail.locator(".memo-box-edge summary").first().click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
