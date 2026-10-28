@@ -15,4 +15,5 @@ foreach($name in @('setup-worker.ps1','install-ocr-languages.ps1','install.ps1',
  [IO.File]::WriteAllText((Join-Path $output $name),$text,(New-Object Text.UTF8Encoding($true)))
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-private-pc.mjs') -Destination $output -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'catalog-worker.mjs') -Destination $output -Force
 Write-Output $exe

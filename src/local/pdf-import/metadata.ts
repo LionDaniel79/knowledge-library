@@ -22,6 +22,7 @@ import {
   CatalogQuotaError,
 } from "../curation/api-quota";
 import { PdfImportJobs, type ImportItem } from "./jobs";
+import { enqueueCatalogSupplement } from "../../server/catalog-supplement-queue";
 
 export { extractPdfIdentity, resolvePdfIdentity };
 export type { PdfIdentity, IdentityPage };
@@ -202,6 +203,7 @@ export async function applyImportMetadata(
         ],
       )
     ).rows[0];
+    await enqueueCatalogSupplement(tx, owner, next);
     await tx.query(
       "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'identifyPdfEdition',$4,$5)",
       [

@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { startCatalogWorker } from "./catalog-worker.mjs";
 
 const allowed = [
   "DATABASE_URL",
@@ -134,6 +135,7 @@ export async function runServer(configPath) {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const catalogWorker = startCatalogWorker(c, env);
   const log = createWriteStream(join(c.operations, "server.out.log"), {
       flags: "a",
     }),
@@ -156,6 +158,7 @@ export async function runServer(configPath) {
   return await new Promise((done, fail) => {
     child.once("error", fail);
     child.once("exit", (code) => {
+      catalogWorker?.kill();
       log.end();
       errors.end();
       done(code ?? 1);

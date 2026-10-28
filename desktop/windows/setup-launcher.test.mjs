@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runtimeEnvironment, serverArguments } from "./start-private-pc.mjs";
+import { catalogWorkerEnvironment } from "./catalog-worker.mjs";
 const c = {
   app: "D:/new library/releases/a",
   python: "D:/new library/runtime/python/python.exe",
@@ -49,3 +50,14 @@ test("incomplete connection fails closed", () =>
   assert.throws(() =>
     runtimeEnvironment(c, { ...p, LIBRARY_OWNER_EMAIL: "" }),
   ));
+test("catalog worker receives bibliography keys but no login or AI secrets", () => {
+  const env = catalogWorkerEnvironment({
+    ...p,
+    DATA4LIBRARY_KEY: "library-fixture",
+    DATABASE_URL_UNPOOLED: "must-not-inherit",
+  });
+  assert.equal(env.DATA4LIBRARY_KEY, "library-fixture");
+  assert.equal(env.NEON_AUTH_COOKIE_SECRET, undefined);
+  assert.equal(env.DATABASE_URL_UNPOOLED, undefined);
+  assert.equal(env.OPENAI_API_KEY, undefined);
+});

@@ -181,6 +181,7 @@ function Start-PcSetup([string]$File) {
   $config=@{app=$app;node=$node;python=$python;dataRoot=$data;pdfRoot=$pdf;index=(Join-Path $data '색인\pdf-library.sqlite');origin=$origin.GetLeftPart([UriPartial]::Authority);port=3001;runtimeFile=$stateFile;profileFile=$protectedFile;temp=$temp;operations=$op}
   Write-SetupJson (Join-Path $install 'pc-runtime.json') $config
   Copy-Item -LiteralPath (Join-Path $package 'start-private-pc.mjs') -Destination $launcher -Force
+  Copy-Item -LiteralPath (Join-Path $package 'catalog-worker.mjs') -Destination $install -Force
   Copy-Item -LiteralPath (Join-Path $package 'start-private-pc.ps1') -Destination (Join-Path $install 'start-private-pc.ps1') -Force
   Copy-Item -LiteralPath (Join-Path $package 'KnowledgeLibraryHost.exe') -Destination (Join-Path $install 'KnowledgeLibraryHost.exe') -Force
   Write-Output 'STEP|트레이·자동 실행 등록'

@@ -5,6 +5,8 @@ import { previewNoteSelect, readReadingSummary } from "./record-catalog";
 import { exportCuration } from "./curation-export";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
+import { enqueueCatalogSupplement } from "./catalog-supplement-queue";
+import { carryCuration } from "./book-curation-history";
 import { defaultShelves } from "../lib/catalog";
 import { isbn13, compactTitle } from "../lib/bibliography";
 import {
@@ -462,6 +464,14 @@ export function createLibraryStore(db: Database) {
                 ],
               )
             ).rows[0];
+            if (isbn13(p.isbn) && isbn13(p.isbn) === isbn13(old.isbn))
+              await carryCuration(
+                tx,
+                owner,
+                id,
+                String(old.version),
+                String(old.version + 1),
+              );
           } else {
             after = (
               await tx.query(
@@ -510,6 +520,12 @@ export function createLibraryStore(db: Database) {
               )
             ).rows[0];
           }
+          if (before && p.coverUrl !== (before as any).coverUrl && !p.coverUrl)
+            await tx.query(
+              "UPDATE library_books SET enrichment=enrichment||'{\"coverRemoved\":true}'::jsonb WHERE owner_id=$1 AND id=$2",
+              [owner, id],
+            );
+          after = await enqueueCatalogSupplement(tx, owner, after, before);
         } else if (cmd.type === "startReading") {
           const p = z
             .object({
