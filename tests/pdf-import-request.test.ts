@@ -4,6 +4,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+it("distinguishes retryable progress lookup failures from a login that needs attention", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 504 }))
+      .mockResolvedValueOnce(
+        Response.json({ error: "로그인이 필요합니다." }, { status: 401 }),
+      )
+      .mockRejectedValueOnce(new TypeError("Failed to fetch")),
+  );
+  const gateway = await pdfImportRequest("/api/pdf/import").catch((e) => e);
+  expect(gateway).toMatchObject({ retryable: true });
+  const login = await pdfImportRequest("/api/pdf/import").catch((e) => e);
+  expect(login).toMatchObject({ retryable: false });
+  const network = await pdfImportRequest("/api/pdf/import").catch((e) => e);
+  expect(network).toMatchObject({ retryable: true });
+});
 it("turns an empty gateway response into a readable status and preserves JSON error messages", async () => {
   const fetcher = vi
     .fn()

@@ -2,7 +2,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReplicaOptional } from "./replica/provider";
 import type { ImportItem, ImportJob } from "@/local/pdf-import/jobs";
-import { pdfImportRequest } from "@/client/pdf-import-request";
+import {
+  pdfImportRequest,
+  PdfImportRequestError,
+} from "@/client/pdf-import-request";
 type Status = {
   job: ImportJob | null;
   counts?: Record<string, number>;
@@ -35,6 +38,7 @@ export function PdfBulkImport({
   const [status, setStatus] = useState<Status>({ job: null }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [connectionNotice, setConnectionNotice] = useState(""),
     [page, setPage] = useState(1),
     [selected, setSelected] = useState("");
   const [action, setAction] = useState("");
@@ -65,10 +69,21 @@ export function PdfBulkImport({
         if (!closed) {
           setStatus(j);
           setError("");
+          setConnectionNotice("");
         }
       } catch (e) {
-        if (!closed && !(e instanceof DOMException && e.name === "AbortError"))
-          setError((e as Error).message);
+        if (
+          !closed &&
+          !(e instanceof DOMException && e.name === "AbortError")
+        ) {
+          if (running && e instanceof PdfImportRequestError && e.retryable) {
+            setConnectionNotice("진행 상태를 다시 확인하고 있습니다.");
+            setError("");
+          } else {
+            setConnectionNotice("");
+            setError((e as Error).message);
+          }
+        }
       } finally {
         loading = false;
       }
@@ -114,6 +129,7 @@ export function PdfBulkImport({
     setBusy(true);
     setAction(action);
     setError("");
+    setConnectionNotice("");
     const requestId =
       action === "scan"
         ? pendingScan.current?.root === root
@@ -189,6 +205,7 @@ export function PdfBulkImport({
               try {
                 setStatus(await pdfImportRequest<Status>("/api/pdf/import"));
                 setError("");
+                setConnectionNotice("");
               } catch (e) {
                 setError((e as Error).message);
               } finally {
@@ -202,6 +219,11 @@ export function PdfBulkImport({
       )}
       {busy && action === "scan" && !job && (
         <p role="status">폴더 조사를 요청하고 있습니다…</p>
+      )}
+      {connectionNotice && (
+        <p role="status" className="pdf-import-connection">
+          {connectionNotice}
+        </p>
       )}
       {job && (
         <section className="pdf-import-status" aria-label="PDF 일괄 등록 현황">
