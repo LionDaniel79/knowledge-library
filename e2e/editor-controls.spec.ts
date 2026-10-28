@@ -111,6 +111,12 @@ async function mount(page: Page, editing = false) {
 test("record heading scrolls away and typing/async refresh keep editor bounds stable", async ({
   page,
 }) => {
+  // Keep enough content below the viewport to exercise actual header scrolling
+  // on both desktop and mobile projects.
+  await page.setViewportSize({
+    width: Math.min(page.viewportSize()!.width, 700),
+    height: 700,
+  });
   await mount(page);
   const dialog = page.getByRole("dialog", { name: "새로운 기록" });
   const before = (await dialog.boundingBox())!;

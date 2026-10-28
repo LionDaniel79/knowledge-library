@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 export function Modal({
   title,
@@ -15,6 +16,11 @@ export function Modal({
   className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [fullscreenHost] = useState(() =>
+    typeof document === "undefined"
+      ? null
+      : document.querySelector<HTMLElement>(".wb-canvas-shell.wb-fullscreen"),
+  );
   useEffect(() => {
     const d = ref.current;
     d?.showModal();
@@ -26,7 +32,7 @@ export function Modal({
     ref.current?.close();
     onClose();
   }
-  return (
+  const dialog = (
     <dialog
       ref={ref}
       className={`modal ${className}`}
@@ -51,4 +57,5 @@ export function Modal({
       {children}
     </dialog>
   );
+  return fullscreenHost ? createPortal(dialog, fullscreenHost) : dialog;
 }

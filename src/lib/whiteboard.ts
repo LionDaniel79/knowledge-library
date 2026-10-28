@@ -8,8 +8,8 @@ export const NOTE_WIDTH = 220,
   NOTE_HEIGHT = 166;
 const point = z
   .object({
-    x: z.number().finite().min(0).max(50000),
-    y: z.number().finite().min(0).max(50000),
+    x: z.number().finite(),
+    y: z.number().finite(),
   })
   .strict();
 const groupId = z
@@ -214,10 +214,6 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
     );
   });
 }
-const safePoint = (p: Point): Point => ({
-  x: Math.max(0, Math.min(50000, p.x)),
-  y: Math.max(0, Math.min(50000, p.y)),
-});
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
   const hidden = new Set(b.hiddenNoteIds ?? []);
   const visible = new Set(
@@ -283,8 +279,8 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
     });
     const shown = allNodes.filter((n) => visible.has(n.noteId)),
       collapsed = b.collapsed.includes(g.id);
-    const x = Math.min(...shown.map((n) => Math.max(0, n.x - 16))),
-      y = Math.min(...shown.map((n) => Math.max(0, n.y - 54)));
+    const x = Math.min(...shown.map((n) => n.x - 16)),
+      y = Math.min(...shown.map((n) => n.y - 54));
     const width = collapsed
         ? 320
         : Math.max(320, ...shown.map((n) => n.x + NOTE_WIDTH + 16 - x)),
@@ -354,7 +350,7 @@ export function dropTarget(nodes: BoardNode[], moving: BoardNode, p: Point) {
   );
 }
 export function moveNote(b: Board, node: BoardNode, p: Point): Board {
-  return { ...b, positions: { ...b.positions, [node.id]: safePoint(p) } };
+  return { ...b, positions: { ...b.positions, [node.id]: { ...p } } };
 }
 export function moveGroup(
   b: Board,
@@ -362,18 +358,16 @@ export function moveGroup(
   dx: number,
   dy: number,
 ): Board {
-  dx = Math.max(-g.x, Math.min(50000 - g.x, dx));
-  dy = Math.max(-g.y, Math.min(50000 - g.y, dy));
   return {
     ...b,
     groupPositions: {
       ...b.groupPositions,
-      [g.id]: safePoint({ x: g.x + dx, y: g.y + dy }),
+      [g.id]: { x: g.x + dx, y: g.y + dy },
     },
     positions: {
       ...b.positions,
       ...Object.fromEntries(
-        g.allNodes.map((n) => [n.id, safePoint({ x: n.x + dx, y: n.y + dy })]),
+        g.allNodes.map((n) => [n.id, { x: n.x + dx, y: n.y + dy }]),
       ),
     },
   };
@@ -383,6 +377,7 @@ export function mergeNotes(
   from: BoardNode,
   to: BoardNode,
   newId: string,
+  origin?: Point,
 ): Board {
   if (from.noteId === to.noteId) return b;
   const existing = b.groups.find((g) => g.noteIds.includes(to.noteId)),
@@ -398,7 +393,7 @@ export function mergeNotes(
     }))
     .filter((g) => g.noteIds.length);
   groups.push({ id, title: existing?.title ?? "메모 묶음", noteIds: ids });
-  const p = safePoint({ x: to.x - 16, y: to.y - 54 });
+  const p = origin ?? { x: to.x - 16, y: to.y - 54 };
   return {
     ...b,
     groups,
@@ -409,10 +404,10 @@ export function mergeNotes(
       ...Object.fromEntries(
         ids.map((noteId, j) => [
           `${id}::${noteId}`,
-          safePoint({
+          {
             x: p.x + 16 + (j % 3) * 236,
             y: p.y + 54 + Math.floor(j / 3) * 182,
-          }),
+          },
         ]),
       ),
     },
@@ -510,20 +505,20 @@ export function arrangeSearchResults(
     groupPositions[g.id] = origin;
     heights[column] += sizes[i].height + 40;
     g.nodes.forEach((n, j) => {
-      positions[n.id] = safePoint({
+      positions[n.id] = {
         x: origin.x + 16 + (j % 3) * dx,
         y: origin.y + 54 + Math.floor(j / 3) * dy,
-      });
+      };
     });
   });
   const top = scene.groups.length ? Math.max(...heights) : 30;
   scene.nodes
     .filter((n) => !n.groupId)
     .forEach((n, i) => {
-      positions[n.id] = safePoint({
+      positions[n.id] = {
         x: 30 + (i % 5) * dx,
         y: top + Math.floor(i / 5) * dy,
-      });
+      };
     });
   return { ...b, positions, groupPositions };
 }

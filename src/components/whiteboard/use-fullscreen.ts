@@ -50,6 +50,8 @@ export function useBoardFullscreen() {
       } else if (current.current === "native") update(null);
     };
     const escape = (event: KeyboardEvent) => {
+      // Let the topmost dialog (or its tag picker) consume Escape first.
+      if (document.querySelector("dialog[open]")) return;
       if (current.current && event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

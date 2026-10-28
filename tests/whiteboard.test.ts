@@ -7,6 +7,7 @@ import {
   dropTarget,
   mergeNotes,
   moveGroup,
+  moveNote,
   connectGroups,
   boardSchema,
   boardStamp,
@@ -84,6 +85,45 @@ const source: WhiteboardSnapshot = {
   connections: [],
 };
 describe("whiteboard", () => {
+  it("keeps signed note coordinates beyond the old canvas edges when saving and rebuilding", () => {
+    const board = emptyBoard(),
+      node = buildScene(source, board).nodes[0];
+    const next = moveNote(board, node, { x: -120000, y: 85000 });
+    expect(next.positions[node.id]).toEqual({ x: -120000, y: 85000 });
+    const restored = buildScene(source, boardSchema.parse(next));
+    expect(restored.nodes.find((n) => n.id === node.id)).toMatchObject({
+      x: -120000,
+      y: 85000,
+    });
+    expect(restored.groups.find((g) => g.id === node.groupId)?.x).toBe(-120016);
+  });
+  it.each([
+    [-130000, 90000],
+    [90000, -130000],
+  ])(
+    "moves groups by (%s, %s) across old boundaries without changing member spacing",
+    (dx, dy) => {
+      const board = emptyBoard(),
+        group = buildScene(source, board).groups[0];
+      const next = moveGroup(board, group, dx, dy);
+      expect(next.groupPositions[group.id]).toEqual({
+        x: group.x + dx,
+        y: group.y + dy,
+      });
+      for (const node of group.allNodes)
+        expect(next.positions[node.id]).toEqual({
+          x: node.x + dx,
+          y: node.y + dy,
+        });
+      const restored = buildScene(source, boardSchema.parse(next)).groups.find(
+        (g) => g.id === group.id,
+      )!;
+      expect(restored.x).toBe(group.x + dx);
+      expect(restored.y).toBe(group.y + dy);
+      expect(restored.width).toBe(group.width);
+      expect(restored.height).toBe(group.height);
+    },
+  );
   it("filters unclassified topics with accepted note and inherited book memberships", () => {
     const f = { ...emptyBoard().filter, topics: ["unclassified"] };
     expect(boardSchema.safeParse({ ...emptyBoard(), filter: f }).success).toBe(

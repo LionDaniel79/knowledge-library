@@ -31,7 +31,7 @@ it("restores selected hidden notes as one atomic owner-only change and keeps lay
     );
   const data = emptyBoard();
   data.hiddenNoteIds = ids;
-  data.positions["note::" + ids[0]] = { x: 100, y: 200 };
+  data.positions["note::" + ids[0]] = { x: -120000, y: 85000 };
   await store.mutate(
     owner,
     command("saveWhiteboard", {

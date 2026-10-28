@@ -499,6 +499,7 @@ export function WhiteboardPanel({
     node: BoardNode,
     p: Point,
     target: ReturnType<typeof dropTarget>,
+    groupOrigin?: Point,
   ) {
     const before = current.current,
       moved = moveNote(before, node, p);
@@ -514,6 +515,7 @@ export function WhiteboardPanel({
             { ...node, ...p },
             target.node,
             `manual:${crypto.randomUUID()}`,
+            groupOrigin,
           )
         : current.current;
       update(next);

@@ -59,6 +59,7 @@ export function WhiteboardCanvas({
     node: BoardNode,
     p: Point,
     target: ReturnType<typeof dropTarget>,
+    groupOrigin?: Point,
   ) => void;
   onGroupDrop: (
     group: BoardGroup,
@@ -256,8 +257,18 @@ export function WhiteboardCanvas({
         onSelectNote(n.noteId);
         return;
       }
-      const p = { x: Math.max(0, n.x + d.dx), y: Math.max(0, n.y + d.dy) };
-      onDrop(n, p, dropTarget(visible, n, p));
+      const p = { x: n.x + d.dx, y: n.y + d.dy };
+      const target = dropTarget(visible, n, p),
+        v = viewRef.current;
+      // A new stack needs room for its heading above the target note. Keep that
+      // heading in the current viewport without limiting saved world positions.
+      const groupOrigin = target?.overlap
+        ? {
+            x: Math.max((18 - v.x) / v.zoom, target.node.x - 16),
+            y: Math.max((18 - v.y) / v.zoom, target.node.y - 54),
+          }
+        : undefined;
+      onDrop(n, p, target, groupOrigin);
     } else {
       const g = scene.groups.find((g) => g.id === d.id);
       if (!g) return;
@@ -604,10 +615,7 @@ export function WhiteboardCanvas({
                   </small>
                   <button
                     type="button"
-                    onClick={async () => {
-                      await fullscreen.exit();
-                      onOpen(n.noteId);
-                    }}
+                    onClick={() => onOpen(n.noteId)}
                     aria-label={`${n.note.title || "메모"} 열기`}
                   >
                     열기

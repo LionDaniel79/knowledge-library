@@ -129,7 +129,17 @@ test("fullscreen fills the display and returns without resetting camera or page 
   await enter.click();
   await page.getByRole("button", { name: "첫 생각 열기", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "기록 수정" })).toBeVisible();
-  expect(await page.evaluate(() => document.fullscreenElement)).toBe(null);
+  await expect(shell).toHaveClass(/wb-fullscreen/);
+  if (supportsNative)
+    expect(
+      await shell.evaluate((el) => document.fullscreenElement === el),
+    ).toBe(true);
+  await page
+    .getByRole("dialog", { name: "기록 수정" })
+    .getByRole("button", { name: "닫기", exact: true })
+    .click();
+  await expect(shell).toHaveClass(/wb-fullscreen/);
+  expect(await page.locator(".wb-world").getAttribute("style")).toBe(camera);
 });
 
 for (const failure of ["unsupported", "rejected"] as const) {
@@ -164,15 +174,24 @@ for (const failure of ["unsupported", "rejected"] as const) {
       .getByRole("button", { name: "첫 생각 열기", exact: true })
       .click();
     await expect(page.getByRole("dialog", { name: "기록 수정" })).toBeVisible();
-    await expect(enter).toBeVisible();
-    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
+    await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe(
       "hidden",
     );
     await page
       .getByRole("dialog", { name: "기록 수정" })
       .getByRole("button", { name: "닫기", exact: true })
       .click();
-    await enter.click();
+    await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
+    await page
+      .getByRole("button", { name: "첫 생각 열기", exact: true })
+      .click();
+    await expect(page.getByRole("dialog", { name: "기록 수정" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "기록 수정" })).toHaveCount(
+      0,
+    );
+    await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
     await page.evaluate(() => {
       (window as any).fixtureMount++;
       (window as any).flushBoard();
@@ -183,6 +202,138 @@ for (const failure of ["unsupported", "rejected"] as const) {
     );
   });
 }
+
+test("fullscreen note editor is half sized, scrolls vertically and retains the field columns", async ({
+  page,
+}, testInfo) => {
+  await mount(page);
+  await page.evaluate(() => {
+    (window as any).fixtureEditor = true;
+  });
+  const open = page.getByRole("button", { name: "첫 생각 열기", exact: true }),
+    dialog = page.getByRole("dialog", { name: "기록 수정" });
+  await open.click();
+  const normal = (await dialog.boundingBox())!;
+  await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("button", { name: "전체화면", exact: true }).click();
+  await open.click();
+  await expect(dialog).toBeVisible();
+  const compact = (await dialog.boundingBox())!;
+  expect(compact.width).toBeCloseTo(normal.width / 2, 0);
+  expect(compact.height).toBeCloseTo(normal.height / 2, 0);
+  expect(
+    await dialog.evaluate(
+      (el) =>
+        el.scrollHeight > el.clientHeight &&
+        el.scrollWidth <= el.clientWidth + 1,
+    ),
+  ).toBe(true);
+  const columns = await dialog
+    .locator(".form-row")
+    .first()
+    .evaluate((el) => {
+      const fields = Array.from(el.children).map((c) =>
+        c.getBoundingClientRect(),
+      );
+      return {
+        left: fields[0].x,
+        right: fields[1].x,
+        overlap: fields[0].right > fields[1].x,
+      };
+    });
+  expect(columns.right).toBeGreaterThan(columns.left);
+  expect(columns.overlap).toBe(false);
+  await dialog
+    .locator('textarea[name="content"]')
+    .fill("전체화면에서도 기록을 편집합니다.");
+  await dialog.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(
+    dialog.getByRole("button", { name: "저장하기", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
+  await dialog.evaluate((el) => (el.scrollTop = 0));
+  await page.screenshot({ path: testInfo.outputPath("compact-note.png") });
+  await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "이전화면", exact: true }),
+  ).toBeVisible();
+});
+
+test("a note can be dragged left and above the world origin without snapping back after save", async ({
+  page,
+}) => {
+  const f = await mount(page),
+    viewport = page.locator(".wb-viewport");
+  await page.getByRole("button", { name: "전체화면", exact: true }).click();
+  await expect(page.locator(".wb-canvas-shell")).toHaveClass(/wb-fullscreen/);
+  const vp = (await viewport.boundingBox())!;
+  const world = page.locator(".wb-world"),
+    before = await world.getAttribute("style");
+  await viewport.dispatchEvent("wheel", {
+    deltaX: -Math.min(500, vp.width * 0.4),
+    deltaY: -220,
+    shiftKey: true,
+    cancelable: true,
+  });
+  await expect(world).not.toHaveAttribute("style", before!);
+  const note = page.locator(".wb-note").filter({
+    has: page.getByRole("button", { name: "첫 생각 열기", exact: true }),
+  });
+  const box = (await note.boundingBox())!;
+  await page.mouse.move(box.x + 40, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(vp.x + 12, vp.y + 18, { steps: 10 });
+  await page.mouse.up();
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveWhiteboard").length)
+    .toBeGreaterThan(0);
+  const position = await note.evaluate((el) => ({
+    x: parseFloat((el as HTMLElement).style.left),
+    y: parseFloat((el as HTMLElement).style.top),
+  }));
+  expect(position.x).toBeLessThan(0);
+  expect(position.y).toBeLessThan(0);
+  await expect(page.getByText("저장됨", { exact: true })).toBeVisible();
+  const saved = f.calls.filter((c) => c.type === "saveWhiteboard").at(-1)
+    .payload.data;
+  const stored = (
+    Object.values(saved.positions) as { x: number; y: number }[]
+  ).find((p) => p.x < 0 && p.y < 0)!;
+  expect(stored.x).toBeCloseTo(position.x, 3);
+  expect(stored.y).toBeCloseTo(position.y, 3);
+  await page.evaluate(() => (window as any).flushBoard());
+  expect(
+    await note.evaluate((el) => ({
+      x: parseFloat((el as HTMLElement).style.left),
+      y: parseFloat((el as HTMLElement).style.top),
+    })),
+  ).toEqual(position);
+});
+
+test("connections remain visible and selectable on the negative side of the board", async ({
+  page,
+}) => {
+  await mount(page, (state) => {
+    connectedFixture(state);
+    state.notes = state.notes.slice(0, 2);
+    for (const p of Object.values(state.board.data.positions) as any[]) {
+      p.x -= 100000;
+      p.y -= 100000;
+    }
+  });
+  expect(
+    await page
+      .locator(".wb-note")
+      .first()
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left)),
+  ).toBeLessThan(0);
+  const line = page.getByRole("button", { name: "메모 연결선", exact: true });
+  await expect(line).toBeVisible();
+  await line.locator(".wb-edge-hit").click();
+  await expect(
+    page.getByRole("group", { name: "선택한 연결", exact: true }),
+  ).toBeVisible();
+});
 
 test("unclassified topic selection is searchable and persists through board save", async ({
   page,
