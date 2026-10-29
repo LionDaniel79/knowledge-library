@@ -507,6 +507,8 @@ async function mount(page: Page, configure?: (state: any) => void) {
   await page.route("**/*", async (r) => {
     const u = new URL(r.request().url());
     if (u.hostname !== "library.test") return r.abort();
+    if (u.pathname === "/api/thought-boxes")
+      return r.fulfill({ json: { items: [] } });
     if (u.pathname === "/api/whiteboard")
       return r.fulfill({
         json:
@@ -1017,8 +1019,8 @@ test("connection management reveals an editable memo group without creating extr
     .toBe("새 주장을 뒷받침한다");
   expect(f.state.connections[0].relation).toBe("supports");
   expect(f.state.connections).toHaveLength(1);
-  await expect.poll(() => f.state.board.data.groups.length).toBe(1);
-  expect(f.state.board.data.groups[0].noteIds).toHaveLength(2);
+  expect(f.state.board.data.groups).toHaveLength(0);
+  expect(f.calls.some((c) => c.type === "saveWhiteboard")).toBe(false);
   expect(f.calls.some((c) => c.type === "connectWhiteboardNotes")).toBe(false);
   await page
     .getByRole("button", { name: "전체 보드 보기", exact: true })
@@ -1840,10 +1842,7 @@ test("drag overlap links real note IDs and supports folding, group links, open a
   await page
     .getByRole("button", { name: "신학 묶음 선택", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText(
-    "먼저 각 묶음을 생각 묶음으로 저장",
-  );
-  expect(f.state.board?.data.links ?? []).toHaveLength(0);
+  await expect.poll(() => f.state.board?.data.links.length ?? 0).toBe(1);
 });
 test("a click does not link and failed saves preserve an account-scoped board draft", async ({
   page,

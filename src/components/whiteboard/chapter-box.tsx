@@ -8,6 +8,9 @@ export function ChapterBox({
   onDrag,
   onChange,
   onRemove,
+  numbered = false,
+  onAddSelected,
+  canAddSelected = false,
 }: {
   chapter: WritingChapter;
   dx?: number;
@@ -15,6 +18,9 @@ export function ChapterBox({
   onDrag: (event: PointerEvent) => void;
   onChange: (chapter: WritingChapter) => void;
   onRemove: () => void;
+  numbered?: boolean;
+  onAddSelected?: () => void;
+  canAddSelected?: boolean;
 }) {
   return (
     <section
@@ -28,21 +34,26 @@ export function ChapterBox({
       data-chapter-id={c.id}
     >
       <div className="writing-chapter-head" onPointerDown={onDrag}>
+        {numbered && (
+          <input
+            type="number"
+            aria-label="목차 번호"
+            min={1}
+            max={100000}
+            value={c.order}
+            onChange={(e) =>
+              onChange({
+                ...c,
+                order: Math.max(
+                  1,
+                  Math.min(100000, Number(e.target.value) || 1),
+                ),
+              })
+            }
+          />
+        )}
         <input
-          type="number"
-          aria-label="목차 번호"
-          min={1}
-          max={100000}
-          value={c.order}
-          onChange={(e) =>
-            onChange({
-              ...c,
-              order: Math.max(1, Math.min(100000, Number(e.target.value) || 1)),
-            })
-          }
-        />
-        <input
-          aria-label="목차 제목"
+          aria-label={numbered ? "목차 제목" : "상자 제목"}
           maxLength={300}
           value={c.title}
           onChange={(e) => onChange({ ...c, title: e.target.value })}
@@ -50,65 +61,31 @@ export function ChapterBox({
         <button
           type="button"
           title="상자만 삭제하고 메모는 유지"
-          onClick={onRemove}
+          onClick={() => {
+            if (window.confirm("이 상자를 삭제할까요? 메모 원문은 유지됩니다."))
+              onRemove();
+          }}
         >
           상자 삭제
         </button>
+        {onAddSelected && (
+          <button
+            type="button"
+            disabled={!canAddSelected}
+            onClick={onAddSelected}
+          >
+            선택 메모 담기
+          </button>
+        )}
       </div>
       <div className="writing-chapter-content">
         <textarea
-          aria-label="목차 내용"
+          aria-label={numbered ? "목차 내용" : "상자 내용"}
           placeholder="이 목차에서 풀어 쓸 생각"
           maxLength={20000}
           value={c.text}
           onChange={(e) => onChange({ ...c, text: e.target.value })}
         />
-        <details className="writing-material-orders">
-          <summary>자료 순서 · {c.items.length}개</summary>
-          {c.items
-            .slice()
-            .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-            .map((item) => (
-              <div key={item.id}>
-                <input
-                  type="number"
-                  min={1}
-                  max={100000}
-                  aria-label={`${item.label} 순서`}
-                  value={item.order}
-                  onChange={(e) =>
-                    onChange({
-                      ...c,
-                      items: c.items.map((i) =>
-                        i.id === item.id
-                          ? {
-                              ...i,
-                              order: Math.max(
-                                1,
-                                Math.min(100000, Number(e.target.value) || 1),
-                              ),
-                            }
-                          : i,
-                      ),
-                    })
-                  }
-                />
-                <span>{item.label}</span>
-                <button
-                  type="button"
-                  aria-label={`${item.label} 목차에서 빼기`}
-                  onClick={() =>
-                    onChange({
-                      ...c,
-                      items: c.items.filter((i) => i.id !== item.id),
-                    })
-                  }
-                >
-                  빼기
-                </button>
-              </div>
-            ))}
-        </details>
       </div>
     </section>
   );

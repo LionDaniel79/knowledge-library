@@ -3,7 +3,13 @@ import type { Book, Note } from "./domain";
 import { contentHash } from "./thought-map/records";
 import { containsSearchField } from "./search-fields";
 import type { MemoBundle, BundleLink } from "./thought-bundles";
-import { materialNoteIds } from "./thought-bundle-board";
+import {
+  boxNotes,
+  boxNodeId,
+  BOX_NOTE_TOP,
+  BOX_NOTE_DX,
+  BOX_NOTE_DY,
+} from "./thought-boxes";
 
 export const WHITEBOARD_ID = "00000000-0000-4000-8000-000000000001";
 export const NOTE_WIDTH = 220,
@@ -21,8 +27,8 @@ export const boardFilterSchema = z
   .object({
     topics: z
       .array(z.union([z.string().uuid(), z.literal("unclassified")]))
-      .max(200),
-    tags: z.array(z.string().max(100)).max(200),
+      .max(20000),
+    tags: z.array(z.string().max(100)).max(20000),
     categories: z.array(z.string().max(50)).max(30),
     books: z.array(z.string().uuid()).max(500),
     q: z.string().max(500),
@@ -40,6 +46,10 @@ export const writingMaterialSchema = z
   .strict();
 export const writingChapterSchema = z
   .object({
+    sourceBox: z
+      .object({ boardId: z.string().uuid(), chapterId: z.string().uuid() })
+      .strict()
+      .optional(),
     id: z.string().uuid(),
     order: z.number().int().min(1).max(100000),
     title: z.string().max(300),
@@ -196,6 +206,9 @@ export function boardStamp(row: WhiteboardSnapshot["board"]): string {
     : "absent";
 }
 export interface BoardNode extends Point {
+  chapterId?: string;
+  itemId?: string;
+  order?: number;
   id: string;
   noteId: string;
   groupId: string | null;
@@ -259,9 +272,7 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
   const hidden = new Set(b.hiddenNoteIds ?? []);
   const chapterItems =
-    b.writing?.chapters.flatMap((c) =>
-      c.items.map((i) => ({ ...i, noteIds: materialNoteIds(i, source) })),
-    ) ?? [];
+    b.writing?.chapters.flatMap((c) => boxNotes(c, source)) ?? [];
   const chapterNotes = new Set(chapterItems.flatMap((i) => i.noteIds));
   const chapterGrouped = new Set(
     chapterItems.filter((i) => i.groupIds.length).flatMap((i) => i.noteIds),
@@ -279,27 +290,31 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
     manual = new Set([
       ...b.groups.flatMap((g) => g.noteIds),
       ...(source.bundles ?? [])
-        .filter((g) => !g.archived_at)
+        .filter((g) => !g.archived_at && b.groupPositions["bundle:" + g.id])
         .flatMap((g) => g.note_ids),
     ]),
     definitions: { id: string; title: string; ids: string[] }[] = b.groups.map(
       (g) => ({
         id: g.id,
         title: g.title,
-        ids: g.noteIds.filter((id) => notes.has(id)),
+        ids: g.noteIds.filter((id) => notes.has(id) && !chapterNotes.has(id)),
       }),
     );
   for (const bundle of source.bundles ?? [])
-    if (!bundle.archived_at)
+    if (!bundle.archived_at && b.groupPositions["bundle:" + bundle.id])
       definitions.push({
         id: "bundle:" + bundle.id,
         title: bundle.title,
         ids: bundle.note_ids.filter((id) => notes.has(id)),
       });
   const chapterGroupIds = new Set(chapterItems.flatMap((i) => i.groupIds));
-  if (!b.filter.topics.length || chapterGroupIds.size) {
+  const allTopics =
+    !b.filter.topics.length ||
+    (b.filter.topics.includes("unclassified") &&
+      source.topics.every((t) => b.filter.topics.includes(t.id)));
+  if (allTopics || chapterGroupIds.size) {
     for (const t of source.topics)
-      if (!b.filter.topics.length || chapterGroupIds.has(`topic:${t.id}`))
+      if (allTopics || chapterGroupIds.has(`topic:${t.id}`))
         definitions.push({
           id: `topic:${t.id}`,
           title: t.name,
@@ -312,7 +327,7 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
             )
             .map((n) => n.id),
         });
-    if (!b.filter.topics.length || chapterGroupIds.has("unclassified"))
+    if (allTopics || chapterGroupIds.has("unclassified"))
       definitions.push({
         id: "unclassified",
         title: "미분류",
@@ -377,7 +392,7 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
     nodes.push(...shown);
   }
   const loose = source.notes.filter(
-    (n) => visible.has(n.id) && !grouped.has(n.id),
+    (n) => visible.has(n.id) && !grouped.has(n.id) && !chapterNotes.has(n.id),
   );
   loose.forEach((note, j) => {
     const id = `note::${note.id}`,
@@ -391,24 +406,35 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
       };
     nodes.push({ id, noteId: note.id, groupId: null, note, ...p });
   });
-  const bundled = new Set((source.bundles ?? []).flatMap((g) => g.note_ids));
   for (const chapter of b.writing?.chapters ?? [])
-    for (const item of chapter.items.filter((i) => !i.groupIds.length))
-      for (const [index, noteId] of item.noteIds.entries()) {
-        const note = notes.get(noteId);
-        if (!note || !bundled.has(noteId) || !visible.has(noteId)) continue;
-        const id = `chapter:${chapter.id}:${item.id}::${noteId}`;
-        nodes.push({
-          id,
-          noteId,
-          groupId: null,
-          note,
-          ...(b.positions[id] ?? {
-            x: chapter.x + 20 + (index % 3) * 238,
-            y: chapter.y + 195 + Math.floor(index / 3) * 190,
+    for (const [index, item] of boxNotes(chapter, source).entries()) {
+      const noteId = item.noteIds[0],
+        note = notes.get(noteId);
+      if (!note || !visible.has(noteId)) continue;
+      const id = boxNodeId(chapter.id, item.id, noteId);
+      const legacy = Object.entries(b.positions).find(
+        ([key, p]) =>
+          key.endsWith("::" + noteId) &&
+          p.x >= chapter.x &&
+          p.x < chapter.x + chapter.width &&
+          p.y >= chapter.y + 120 &&
+          p.y < chapter.y + chapter.height,
+      )?.[1];
+      nodes.push({
+        id,
+        noteId,
+        groupId: null,
+        chapterId: chapter.id,
+        itemId: item.id,
+        order: item.order,
+        note,
+        ...(b.positions[id] ??
+          legacy ?? {
+            x: chapter.x + 20 + (index % 3) * BOX_NOTE_DX,
+            y: chapter.y + BOX_NOTE_TOP + Math.floor(index / 3) * BOX_NOTE_DY,
           }),
-        });
-      }
+      });
+    }
   return { groups, nodes };
 }
 export function dropTarget(nodes: BoardNode[], moving: BoardNode, p: Point) {

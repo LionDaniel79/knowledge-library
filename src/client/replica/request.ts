@@ -128,7 +128,33 @@ export async function libraryRequest(
     if (networkAccess !== authorizeNetwork)
       throw new DOMException("서재 계정이 변경되었습니다.", "AbortError");
   }
-  const response = await fetch(input, init);
+  let networkInput = input;
+  let networkInit = init;
+  if (
+    method === "GET" &&
+    url.pathname === "/api/library-materials" &&
+    url.origin ===
+      (typeof location === "undefined"
+        ? "https://local.invalid"
+        : location.origin) &&
+    url.pathname.length + url.search.length > 6000
+  ) {
+    // Keep local reads above on their existing path. Only the server fallback
+    // needs a body so bulk selections do not overflow the HTTP request line.
+    const original = new Request(input instanceof Request ? input : url, init);
+    const headers = new Headers(original.headers);
+    headers.set("Content-Type", "application/json");
+    networkInput = new Request(
+      new Request(new URL(url.pathname, url), original),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(Object.fromEntries(url.searchParams)),
+      },
+    );
+    networkInit = undefined;
+  }
+  const response = await fetch(networkInput, networkInit);
   if (
     runtime &&
     method !== "GET" &&

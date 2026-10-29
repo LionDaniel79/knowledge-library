@@ -360,3 +360,15 @@ describe("whiteboard", () => {
     ).toBe(false);
   });
 });
+
+it("explicitly checking every topic retains the same grouped all-topics view", () => {
+  const board = emptyBoard();
+  const expected = buildScene(source, board);
+  board.filter.topics = [...source.topics.map((t) => t.id), "unclassified"];
+  expect(buildScene(source, board).groups.map((g) => g.id)).toEqual(
+    expected.groups.map((g) => g.id),
+  );
+  expect(new Set(buildScene(source, board).nodes.map((n) => n.noteId))).toEqual(
+    new Set(expected.nodes.map((n) => n.noteId)),
+  );
+});

@@ -21,6 +21,7 @@ export function TopicFilter({
   onRemoved,
   preview = false,
   ready = true,
+  selectAll = false,
 }: {
   topics: FilterTopic[];
   value: string;
@@ -31,6 +32,7 @@ export function TopicFilter({
   onRemoved?: (id: string) => void;
   preview?: boolean;
   ready?: boolean;
+  selectAll?: boolean;
 }) {
   const [added, setAdded] = useState<FilterTopic[]>([]),
     [removed, setRemoved] = useState<string[]>([]),
@@ -65,6 +67,7 @@ export function TopicFilter({
         compact
         label="주제"
         multiple={!!onValuesChange}
+        selectAll={selectAll}
         options={[
           { value: "unclassified", label: "미분류" },
           ...choices.map((t) => ({

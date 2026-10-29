@@ -79,10 +79,11 @@ it("moving a chapter preserves positions of contained notes and keeps negative c
     },
     source,
   );
-  const old = board.positions["note::" + a];
+  const key = buildScene(source, board).nodes.find((n) => n.noteId === a)!.id;
+  const old = board.positions[key];
   board = moveChapter(board, a, -900, -500);
   expect(board.writing!.chapters[0].x).toBeLessThan(0);
-  expect(board.positions["note::" + a]).toEqual({
+  expect(board.positions[key]).toEqual({
     x: old.x - 900,
     y: old.y - 500,
   });

@@ -11,22 +11,24 @@ import { FacetPicker } from "./facet-picker";
 import { WhiteboardCanvas } from "./canvas";
 import { HiddenWhiteboardNotes } from "./hidden-notes";
 import { connectedMemoGroups } from "@/lib/memo-box";
-import {
-  revealMemoGroup,
-  connectionGroupsForView,
-} from "@/lib/whiteboard-workflows";
+import { connectionGroupsForView } from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
-import { BundleWorkspace } from "../memo-box/bundle-workspace";
-import { Modal } from "../modal";
 import { bundleBoard } from "@/lib/thought-bundle-board";
-import { activeBundleLinks, bundleRelations } from "@/lib/thought-bundles";
-import { WritingTools } from "./writing-tools";
+import {
+  addThoughtBox,
+  putBoxNotes,
+  copyThoughtBox,
+  thoughtView,
+  listThoughtBoxes,
+  flattenBox,
+  type ThoughtBoxSummary,
+} from "@/lib/thought-boxes";
 import { WritingAssist } from "./writing-assist";
 import {
-  addChapterMaterial,
   chapterAt,
   moveChapter,
   placeChapterMaterials,
+  exportWritingBoard,
   type WritingChapter,
 } from "@/lib/writing-board";
 import {
@@ -35,7 +37,6 @@ import {
   WHITEBOARD_ID,
   emptyBoard,
   buildScene,
-  filterNotes,
   moveNote,
   moveGroup,
   mergeNotes,
@@ -95,6 +96,12 @@ export function WhiteboardPanel({
     refresh,
     { keepPreviousData: true },
   );
+  const boxesResource = usePagedResource<{ items: ThoughtBoxSummary[] }>(
+    "/api/thought-boxes",
+    true,
+    refresh,
+    { keepPreviousData: true },
+  );
   const [board, setBoard] = useState<Board>(emptyBoard),
     [filter, setFilter] = useState<BoardFilter>(emptyBoard().filter),
     [error, setError] = useState(""),
@@ -110,6 +117,7 @@ export function WhiteboardPanel({
     ),
     [overviewOnFit, setOverviewOnFit] = useState(false),
     [checkedConnections, setCheckedConnections] = useState<string[]>([]),
+    [checkedBoxes, setCheckedBoxes] = useState<string[]>([]),
     [linkSource, setLinkSource] = useState<{
       kind: "note" | "group";
       id: string;
@@ -119,14 +127,7 @@ export function WhiteboardPanel({
       link?: LinkUndo;
       bundle?: { type: string; payload: unknown };
     } | null>(null),
-    [localConnections, setLocalConnections] = useState<BoardConnection[]>([]),
-    [bundleEditor, setBundleEditor] = useState<{
-      mode: "bundles" | "links";
-      bundleId?: string;
-      linkId?: string;
-      seed?: string[];
-      legacyGroup?: string;
-    } | null>(null);
+    [localConnections, setLocalConnections] = useState<BoardConnection[]>([]);
   const current = useRef(board),
     suspendedRef = useRef(suspended),
     version = useRef(0),
@@ -494,59 +495,144 @@ export function WhiteboardPanel({
     [focusGroups],
   );
   const hasFocus = connectionView !== null;
-  const displaySource = useMemo(
+  const focused = useMemo(
     () =>
-      source && hasFocus
-        ? { ...source, notes: focusNotes, bundles: [], bundleLinks: [] }
-        : source,
-    [source, hasFocus, focusNotes],
+      source && connectionView !== null
+        ? thoughtView(source, board, connectionView)
+        : null,
+    [source, board, connectionView],
   );
+  const displaySource = focused?.source ?? source;
   const displayBoard = useMemo(
     () =>
       displaySource
-        ? bundleBoard(
-            displaySource,
-            hasFocus ? { ...board, filter: emptyBoard().filter } : board,
-          )
+        ? bundleBoard(displaySource, focused?.board ?? board)
         : board,
-    [board, hasFocus, displaySource],
+    [displaySource, focused, board],
   );
+  const boxes = useMemo(() => {
+    const own = listThoughtBoxes(
+      [{ id: boardId, data: board, version: version.current }],
+      boardId === WHITEBOARD_ID
+        ? []
+        : [{ id: boardId, title: writingTitle ?? "글감" }],
+    );
+    return [
+      ...(boxesResource.data?.items ?? []).filter((c) => c.boardId !== boardId),
+      ...own,
+    ];
+  }, [board, boardId, writingTitle, boxesResource.data]);
   function showConnection(c: BoardConnection) {
     const group = memoGroups.find((g) =>
       g.connections.some((edge) => edge.id === c.id),
     );
-    if (group) showConnections(group.connections.map((edge) => edge.id));
+    if (group) void showConnections(group.connections.map((edge) => edge.id));
   }
-  function showConnections(ids: string[] | "all", overview = false) {
+  async function showConnections(
+    ids: string[] | "all",
+    overview = false,
+    boxIds: string[] = [],
+  ) {
     const s = sourceRef.current;
     if (!s || linkBusy) return;
-    const groups = connectionGroupsForView(s, ids);
-    if (!groups.length) return;
+    setError("");
+    setLinkBusy(true);
+    try {
+      const chosen = boxIds
+        .map((id) => boxes.find((c) => c.id === id))
+        .filter((c): c is ThoughtBoxSummary => !!c);
+      const snapshots = new Map<string, WhiteboardSnapshot>();
+      for (const id of new Set(
+        chosen.map((c) => c.boardId).filter((id) => id !== boardId),
+      )) {
+        const response = await libraryRequest("/api/whiteboard?boardId=" + id, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(15000),
+        });
+        const value = await response.json();
+        if (!response.ok)
+          throw Error(value.error || "생각 묶음을 불러오지 못했습니다.");
+        snapshots.set(id, value);
+      }
+      const before = current.current;
+      let next = before;
+      for (const box of chosen) {
+        if (box.boardId === boardId) continue;
+        const snapshot = snapshots.get(box.boardId),
+          chapter = snapshot?.board?.data.writing?.chapters.find(
+            (c) => c.id === box.chapterId,
+          );
+        if (!snapshot || !chapter)
+          throw Error("변경된 생각 묶음 목록을 다시 확인해 주세요.");
+        next = copyThoughtBox(next, box.boardId, chapter, {
+          ...snapshot,
+          notes: [
+            ...new Map(
+              [...snapshot.notes, ...s.notes].map((n) => [n.id, n]),
+            ).values(),
+          ],
+        });
+      }
+      if (next !== before) update(next, before);
+      setSelectedGroup(null);
+      setSelectedNote(null);
+      setLinkSource(null);
+      setConnectionView(ids);
+      setOverviewOnFit(overview);
+      setSearchRevision((n) => n + 1);
+      canvasHost.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+  function download(format: "md" | "txt") {
+    const content = exportWritingBoard(
+      writingTitle ?? "글감",
+      current.current,
+      sourceRef.current!,
+      format,
+    );
+    const url = URL.createObjectURL(
+      new Blob([content], {
+        type:
+          format === "md"
+            ? "text/markdown;charset=utf-8"
+            : "text/plain;charset=utf-8",
+      }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download =
+      (writingTitle ?? "글감").replace(/[<>:"/\\|?*]/g, "_") + "." + format;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function changeChapter(chapter: WritingChapter) {
     const before = current.current;
-    let next = groups.reduce(
-      (b, g) =>
-        revealMemoGroup(
-          b,
-          g.notes.map((n) => n.id),
-          "manual:" + g.id,
-        ),
+    update(
+      {
+        ...before,
+        writing: {
+          ...before.writing!,
+          chapters: before.writing!.chapters.map((c) =>
+            c.id === chapter.id ? chapter : c,
+          ),
+        },
+      },
       before,
     );
-    if (groups.length > 1) {
-      next = arrangeSearchResults(
-        { ...s, notes: groups.flatMap((g) => g.notes) },
-        { ...next, filter: emptyBoard().filter },
-      );
-      next = { ...next, filter: before.filter };
-    }
-    update(next, before);
-    setSelectedGroup(groups.length === 1 ? "manual:" + groups[0].id : null);
-    setSelectedNote(null);
-    setLinkSource(null);
-    setConnectionView(ids);
-    setOverviewOnFit(overview);
-    setSearchRevision((n) => n + 1);
-    canvasHost.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function selectedNoteIds() {
+    return selectedNote
+      ? [selectedNote]
+      : (buildScene(displaySource!, displayBoard)
+          .groups.find((g) => g.id === selectedGroup)
+          ?.allNodes.map((n) => n.noteId) ?? []);
   }
   async function editSelectedConnection(payload: unknown) {
     if (linkBusy) return null;
@@ -658,26 +744,18 @@ export function WhiteboardPanel({
   ) {
     const before = current.current,
       moved = moveNote(before, node, p);
-    const chapter = writingTitle
-      ? chapterAt(before, p.x + 110, p.y + 83)
-      : undefined;
+    const chapter = chapterAt(before, p.x + 110, p.y + 83);
     if (chapter && sourceRef.current) {
       if (chapter.items.some((item) => item.noteIds.includes(node.noteId))) {
-        update(moved, before);
+        if (!node.chapterId || node.chapterId === chapter.id)
+          update(moved, before);
         return;
       }
       update(
-        addChapterMaterial(
-          moved,
+        putBoxNotes(
+          node.chapterId ? before : moved,
           chapter.id,
-          {
-            id: crypto.randomUUID(),
-            order: Math.max(0, ...chapter.items.map((i) => i.order)) + 1,
-            kind: "note",
-            label: node.note.title || node.note.content.slice(0, 40),
-            noteIds: [node.noteId],
-            groupIds: [],
-          },
+          [node.noteId],
           sourceRef.current,
         ),
         before,
@@ -782,26 +860,17 @@ export function WhiteboardPanel({
     if (linkBusy) return;
     const before = current.current;
     let next = moveGroup(before, group, dx, dy);
-    const chapter = writingTitle
-      ? chapterAt(before, group.x + dx + group.width / 2, group.y + dy + 60)
-      : undefined;
+    const chapter = chapterAt(
+      before,
+      group.x + dx + group.width / 2,
+      group.y + dy + 60,
+    );
     if (chapter && sourceRef.current) {
-      if (chapter.items.some((item) => item.groupIds.includes(group.id))) {
-        update(next, before);
-        return;
-      }
       update(
-        addChapterMaterial(
+        putBoxNotes(
           next,
           chapter.id,
-          {
-            id: crypto.randomUUID(),
-            order: Math.max(0, ...chapter.items.map((i) => i.order)) + 1,
-            kind: group.id.startsWith("topic:") ? "topics" : "notes",
-            label: group.title,
-            noteIds: group.allNodes.map((n) => n.noteId),
-            groupIds: [group.id],
-          },
+          group.allNodes.map((n) => n.noteId),
           sourceRef.current,
         ),
         before,
@@ -818,7 +887,18 @@ export function WhiteboardPanel({
   ) {
     if (a === b || linkBusy) return;
     if (!a.startsWith("bundle:") || !b.startsWith("bundle:")) {
-      setMessage("먼저 각 묶음을 생각 묶음으로 저장한 뒤 연결해 주세요.");
+      const before = current.current;
+      if (
+        !before.links.some(
+          (l) =>
+            (l.source === a && l.target === b) ||
+            (l.source === b && l.target === a),
+        )
+      )
+        update(
+          { ...before, links: [...before.links, { source: a, target: b }] },
+          undoBoard,
+        );
       return;
     }
     const ids = [a.slice(7), b.slice(7)].sort();
@@ -826,7 +906,7 @@ export function WhiteboardPanel({
       (l) => l.source_id === ids[0] && l.target_id === ids[1],
     );
     if (old?.status === "accepted") {
-      setBundleEditor({ mode: "links", linkId: old.id });
+      setMessage("이미 연결된 묶음입니다.");
       return;
     }
     setLinkBusy(true);
@@ -857,7 +937,6 @@ export function WhiteboardPanel({
         },
       });
       resource.reload();
-      setBundleEditor({ mode: "links", linkId: result.id });
       setMessage("생각 묶음을 연결했습니다.");
     } catch (e) {
       setError((e as Error).message);
@@ -1016,9 +1095,6 @@ export function WhiteboardPanel({
   const derived = useMemo(() => {
     if (!source || !displaySource) return null;
     return {
-      filtered: filterNotes(displaySource, displayBoard.filter).filter(
-        (n) => !(board.hiddenNoteIds ?? []).includes(n.id),
-      ),
       scene: buildScene(displaySource, displayBoard),
       labels: new Map(
         source.notes.map((n) => [n.id, n.title || n.content.slice(0, 30)]),
@@ -1061,15 +1137,8 @@ export function WhiteboardPanel({
         )}
       </div>
     );
-  const { filtered, scene, labels } = derived;
+  const { scene, labels } = derived;
   const selected = board.groups.find((g) => g.id === selectedGroup);
-  const selectedBundle = source.bundles?.find(
-    (b) => "bundle:" + b.id === selectedGroup,
-  );
-  const namedLinks = activeBundleLinks(
-    source.bundles ?? [],
-    source.bundleLinks ?? [],
-  );
   return (
     <section
       className="whiteboard-panel"
@@ -1077,16 +1146,6 @@ export function WhiteboardPanel({
         writingTitle ? "글감엮기 화이트보드" : "사유의 지도 화이트보드"
       }
     >
-      {writingTitle && (
-        <WritingTools
-          title={writingTitle}
-          board={board}
-          source={source}
-          selectedNote={selectedNote}
-          selectedGroup={selectedGroup}
-          onChange={(next) => void updateRevealing(next)}
-        />
-      )}
       <form
         className="wb-search"
         onSubmit={(e) => {
@@ -1119,6 +1178,7 @@ export function WhiteboardPanel({
             key={field}
             label={label}
             multiple
+            selectAll={field !== "books"}
             options={facets[field]}
             values={filter[field]}
             onChange={(values) => {
@@ -1147,33 +1207,26 @@ export function WhiteboardPanel({
         <button
           type="button"
           disabled={linkBusy}
-          onClick={() =>
-            setBundleEditor({
-              mode: "bundles",
-              ...(selectedBundle ? { bundleId: selectedBundle.id } : {}),
-              seed: selectedNote
-                ? [selectedNote]
-                : (scene.groups
-                    .find((g) => g.id === selectedGroup)
-                    ?.allNodes.map((n) => n.noteId) ?? []),
-              legacyGroup: selected?.id,
-            })
-          }
+          onClick={() => {
+            const before = current.current;
+            update(addThoughtBox(before, crypto.randomUUID()), before);
+            setConnectionView(null);
+            setSearchRevision((n) => n + 1);
+          }}
         >
-          {selectedBundle
-            ? "생각 묶음 편집"
-            : selectedNote
-              ? "생각 묶음에 담기"
-              : selectedGroup
-                ? "생각 묶음으로 저장"
-                : "생각 묶음 관리"}
+          상자 추가
         </button>
-        <strong>
-          {writingTitle
-            ? new Set(scene.nodes.map((n) => n.noteId)).size
-            : filtered.length}
-          개 메모
-        </strong>
+        {writingTitle && (
+          <>
+            <button type="button" onClick={() => download("txt")}>
+              TXT 내보내기
+            </button>
+            <button type="button" onClick={() => download("md")}>
+              MD 내보내기
+            </button>
+          </>
+        )}
+        <strong>{new Set(scene.nodes.map((n) => n.noteId)).size}개 메모</strong>
         {([false, true] as const).map((collapse) => (
           <button
             key={String(collapse)}
@@ -1377,53 +1430,56 @@ export function WhiteboardPanel({
                 }
               : undefined
           }
-          onChapterChange={
-            writingTitle
-              ? (chapter: WritingChapter) => {
-                  const before = current.current;
-                  update(
-                    {
-                      ...before,
-                      writing: {
-                        ...before.writing!,
-                        chapters: before.writing!.chapters.map((c) =>
-                          c.id === chapter.id ? chapter : c,
-                        ),
-                      },
-                    },
-                    before,
-                  );
-                }
-              : undefined
+          numbered={!!writingTitle}
+          onChapterChange={changeChapter}
+          onChapterMove={(id, dx, dy) =>
+            update(moveChapter(current.current, id, dx, dy), current.current)
           }
-          onChapterMove={
-            writingTitle
-              ? (id, dx, dy) =>
-                  update(
-                    moveChapter(current.current, id, dx, dy),
-                    current.current,
-                  )
-              : undefined
-          }
-          onChapterRemove={
-            writingTitle
-              ? (id) => {
-                  const before = current.current;
-                  update(
-                    {
-                      ...before,
-                      writing: {
-                        ...before.writing!,
-                        chapters: before.writing!.chapters.filter(
-                          (c) => c.id !== id,
-                        ),
-                      },
-                    },
-                    before,
-                  );
-                }
-              : undefined
-          }
+          onChapterRemove={(id) => {
+            const before = current.current;
+            update(
+              {
+                ...before,
+                writing: {
+                  ...before.writing!,
+                  chapters: before.writing!.chapters.filter((c) => c.id !== id),
+                },
+              },
+              before,
+            );
+          }}
+          canAddSelected={!!(selectedNote || selectedGroup)}
+          onChapterAddSelected={(id) => {
+            const ids = selectedNoteIds();
+            if (ids.length)
+              void updateRevealing(
+                putBoxNotes(current.current, id, ids, sourceRef.current!),
+              );
+          }}
+          onNoteOrder={(chapterId, itemId, order) => {
+            const chapter = current.current.writing?.chapters.find(
+              (c) => c.id === chapterId,
+            );
+            if (!chapter) return;
+            const flat = flattenBox(chapter, sourceRef.current!);
+            changeChapter({
+              ...flat,
+              items: flat.items.map((i) =>
+                i.id === itemId ? { ...i, order } : i,
+              ),
+            });
+          }}
+          onChapterRemoveNote={(chapterId, itemId) => {
+            const chapter = current.current.writing?.chapters.find(
+              (c) => c.id === chapterId,
+            );
+            if (!chapter) return;
+            const flat = flattenBox(chapter, sourceRef.current!);
+            changeChapter({
+              ...flat,
+              items: flat.items.filter((i) => i.id !== itemId),
+            });
+          }}
           onViewChange={writingTitle ? rememberView : undefined}
           onDrop={(...args) => {
             if (!linkBusy) void drop(...args);
@@ -1496,28 +1552,38 @@ export function WhiteboardPanel({
       <details className="wb-connection-list">
         <summary>
           <span className="wb-connection-counts">
-            연결 관리 · 메모 {availableConnections.length} · 묶음{" "}
-            {board.links.length} · 생각 묶음 연결 {namedLinks.length}
+            연결 관리 · 연결된 메모 {availableConnections.length} · 생각 묶음{" "}
+            {boxes.length}
           </span>
           <span className="wb-connection-actions">
             <button
               type="button"
-              disabled={linkBusy || !selectedConnectionIds.length}
+              disabled={
+                linkBusy ||
+                (!selectedConnectionIds.length &&
+                  !checkedBoxes.some((id) => boxes.some((c) => c.id === id)))
+              }
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                showConnections(selectedConnectionIds, true);
+                void showConnections(selectedConnectionIds, true, checkedBoxes);
               }}
             >
               선택보기
             </button>
             <button
               type="button"
-              disabled={linkBusy || !availableConnections.length}
+              disabled={
+                linkBusy || (!availableConnections.length && !boxes.length)
+              }
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                showConnections("all", true);
+                void showConnections(
+                  "all",
+                  true,
+                  boxes.map((c) => c.id),
+                );
               }}
             >
               전체보기
@@ -1540,6 +1606,9 @@ export function WhiteboardPanel({
                 }
               />
             </label>
+            <span className="wb-entry-badge" aria-label="연결된 메모">
+              메
+            </span>
             <button
               className="wb-connection-select"
               type="button"
@@ -1559,46 +1628,46 @@ export function WhiteboardPanel({
             </button>
           </div>
         ))}
-        {board.links.map((l) => (
-          <div key={l.source + ":" + l.target}>
-            <span>
-              {scene.groups.find((g) => g.id === l.source)?.title ?? "묶음"} ↔{" "}
-              {scene.groups.find((g) => g.id === l.target)?.title ?? "묶음"}
+        {boxes.map((box) => (
+          <div key={box.id}>
+            <label className="wb-connection-check">
+              <input
+                type="checkbox"
+                aria-label={`${box.title} 생각 묶음 선택`}
+                checked={checkedBoxes.includes(box.id)}
+                onChange={(e) =>
+                  setCheckedBoxes((old) =>
+                    e.target.checked
+                      ? [...old, box.id]
+                      : old.filter((id) => id !== box.id),
+                  )
+                }
+              />
+            </label>
+            <span className="wb-entry-badge" aria-label="생각 묶음">
+              생
             </span>
             <button
               type="button"
-              disabled={linkBusy}
-              onClick={() => removeGroupConnection(l.source, l.target)}
-            >
-              묶음 연결 해제
-            </button>
-          </div>
-        ))}
-        {namedLinks.map((l) => (
-          <div key={"bundle:" + l.id}>
-            <button
-              type="button"
               className="wb-connection-select"
-              onClick={() => setBundleEditor({ mode: "links", linkId: l.id })}
-            >
-              {source.bundles?.find((b) => b.id === l.source_id)?.title} ↔{" "}
-              {source.bundles?.find((b) => b.id === l.target_id)?.title}{" "}
-              <small>{bundleRelations[l.relation]}</small>
-            </button>
-            <button
-              type="button"
               disabled={linkBusy}
-              onClick={() =>
-                void removeGroupConnection(
-                  "bundle:" + l.source_id,
-                  "bundle:" + l.target_id,
-                )
-              }
+              onClick={() => void showConnections([], true, [box.id])}
             >
-              묶음 연결 해제
+              {box.title || "제목 없는 상자"}{" "}
+              <small>
+                {box.boardTitle} · {box.noteCount}개
+              </small>
             </button>
           </div>
         ))}
+        {boxesResource.error && (
+          <p role="alert">
+            {boxesResource.error}{" "}
+            <button type="button" onClick={boxesResource.reload}>
+              목록 다시 조회
+            </button>
+          </p>
+        )}
       </details>
       {writingTitle && (
         <WritingAssist
@@ -1620,96 +1689,6 @@ export function WhiteboardPanel({
         onOpen={(id) => onOpen("note", id)}
         onShow={showHiddenNotes}
       />
-      {bundleEditor && (
-        <Modal
-          title={bundleEditor.mode === "bundles" ? "생각 묶음" : "묶음 연결"}
-          onClose={() => setBundleEditor(null)}
-        >
-          <BundleWorkspace
-            key={JSON.stringify(bundleEditor)}
-            source={source}
-            mode={bundleEditor.mode}
-            initialBundleId={bundleEditor.bundleId}
-            initialLinkId={bundleEditor.linkId}
-            initialNoteIds={bundleEditor.seed}
-            onSaved={resource.reload}
-            onOpen={onOpen}
-            onStored={async (id) => {
-              if (
-                bundleEditor.legacyGroup &&
-                current.current.groups.some(
-                  (g) => g.id === bundleEditor.legacyGroup,
-                )
-              ) {
-                const before = current.current;
-                const oldId = bundleEditor.legacyGroup,
-                  newId = "bundle:" + id;
-                const mappedLinks = before.links.map((l) => ({
-                  source: l.source === oldId ? newId : l.source,
-                  target: l.target === oldId ? newId : l.target,
-                }));
-                try {
-                  for (const link of mappedLinks.filter(
-                    (l) =>
-                      l.source.startsWith("bundle:") &&
-                      l.target.startsWith("bundle:"),
-                  )) {
-                    const [a, b] = [
-                      link.source.slice(7),
-                      link.target.slice(7),
-                    ].sort();
-                    const existing = sourceRef.current?.bundleLinks?.find(
-                      (l) => l.source_id === a && l.target_id === b,
-                    );
-                    if (existing?.status === "accepted") continue;
-                    await send("saveBundleLink", {
-                      ...(existing ? { id: existing.id } : {}),
-                      sourceId: a,
-                      targetId: b,
-                      relation: existing?.relation ?? "related",
-                      reason: existing?.reason ?? "기존 보드 묶음 연결",
-                      status: "accepted",
-                      expectedVersion: existing?.version ?? 0,
-                    });
-                  }
-                  update(
-                    {
-                      ...before,
-                      groupPositions: {
-                        ...before.groupPositions,
-                        ...(!before.groupPositions[newId] &&
-                        before.groupPositions[oldId]
-                          ? { [newId]: before.groupPositions[oldId] }
-                          : {}),
-                      },
-                      positions: Object.fromEntries(
-                        Object.entries(before.positions).map(([key, value]) => [
-                          key.startsWith(oldId + "::")
-                            ? newId + key.slice(oldId.length)
-                            : key,
-                          value,
-                        ]),
-                      ),
-                      collapsed: before.collapsed.map((group) =>
-                        group === oldId ? newId : group,
-                      ),
-                      groups: before.groups.filter(
-                        (g) => g.id !== bundleEditor.legacyGroup,
-                      ),
-                      links: mappedLinks,
-                    },
-                    before,
-                  );
-                  setUndo(null);
-                  resource.reload();
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }
-            }}
-          />
-        </Modal>
-      )}
     </section>
   );
 }

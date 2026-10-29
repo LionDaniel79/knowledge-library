@@ -13,7 +13,7 @@ test.beforeAll(async () => {
       },
       bundle: true,
       write: false,
-      format: "iife",
+      format: "esm",
       platform: "browser",
       jsx: "automatic",
       define: { "process.env.NODE_ENV": '"production"' },
@@ -134,6 +134,7 @@ async function mount(page: Page, savedTab = "topics") {
       });
     }
     if (path === "/api/whiteboard") return route.fulfill({ json: source });
+    if (path === "/api/note-tags") return route.fulfill({ json: [] });
     if (path === "/api/note-topics")
       return route.fulfill({ json: { topics, memberships: [] } });
     if (path === "/api/thought-map")
@@ -175,7 +176,7 @@ async function mount(page: Page, savedTab = "topics") {
     { notes, savedTab },
   );
   await page.addStyleTag({ path: "src/app/globals.css" });
-  await page.addScriptTag({ content: bundle });
+  await page.addScriptTag({ content: bundle, type: "module" });
   return { source, commands, notes, topics };
 }
 
@@ -184,11 +185,12 @@ test("legacy classification and board-topic connections remain stored without ap
 }) => {
   const f = await mount(page);
   await expect(
-    page.getByRole("button", { name: "새 묶음 연결", exact: true }),
+    page.getByRole("region", { name: "생각 묶음 관리" }),
   ).toBeVisible();
   await expect(
-    page.locator(".bundle-workspace .memo-box-list > button"),
+    page.getByRole("button", { name: "새 묶음 연결", exact: true }),
   ).toHaveCount(0);
+  await expect(page.locator(".thought-box-list > button")).toHaveCount(0);
   expect(f.source.board.data.links).toHaveLength(1);
   expect(f.source.topicLinks).toHaveLength(1);
   expect(f.source.connections).toHaveLength(1);
@@ -204,7 +206,6 @@ test("a saved legacy writing tab falls back to My Records and has no nested writ
     "내 기록",
     "연결된 메모",
     "생각 묶음",
-    "묶음 연결",
   ]);
   await expect(tabs.locator("button.primary")).toHaveText("내 기록");
 });

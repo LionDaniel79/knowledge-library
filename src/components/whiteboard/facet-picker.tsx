@@ -22,6 +22,7 @@ export function FacetPicker({
   multiple = true,
   onSearch,
   compact = false,
+  selectAll = false,
   management,
 }: {
   label: string;
@@ -31,6 +32,7 @@ export function FacetPicker({
   multiple?: boolean;
   onSearch?: (query: string) => void;
   compact?: boolean;
+  selectAll?: boolean;
   management?: FacetManagement;
 }) {
   const [open, setOpen] = useState(false),
@@ -71,6 +73,10 @@ export function FacetPicker({
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   const matches = options.filter((o) => containsSearchField(o.label, q));
+  const allValues = [...new Set(options.map((option) => option.value))];
+  const allSelected =
+    allValues.length > 0 && allValues.every((value) => values.includes(value));
+  const allLabel = selectAll ? "전체 선택" : "전체";
   const summary =
     values.length === 1
       ? (options.find((o) => o.value === values[0])?.label ?? "선택 1개")
@@ -162,17 +168,28 @@ export function FacetPicker({
               {multiple ? (
                 <label
                   role="option"
-                  aria-label="전체"
-                  aria-selected={!values.length}
+                  aria-label={allLabel}
+                  aria-selected={selectAll ? allSelected : !values.length}
                 >
                   <input
                     type="checkbox"
-                    aria-label="전체"
-                    checked={!values.length}
-                    onChange={() => onChange([])}
+                    aria-label={allLabel}
+                    checked={selectAll ? allSelected : !values.length}
+                    ref={(element) => {
+                      if (element)
+                        element.indeterminate =
+                          selectAll && values.length > 0 && !allSelected;
+                    }}
+                    onChange={(event) =>
+                      onChange(
+                        selectAll && event.target.checked
+                          ? [...new Set([...values, ...allValues])]
+                          : [],
+                      )
+                    }
                     style={checkboxStyle}
                   />
-                  <span style={{ flex: 1 }}>전체</span>
+                  <span style={{ flex: 1 }}>{allLabel}</span>
                 </label>
               ) : (
                 <button

@@ -166,6 +166,7 @@ export function TopicBrowser({
             종류
             <FacetPicker
               compact
+              selectAll
               label="종류"
               values={draft.noteTypes}
               onChange={(values) => change("noteTypes", values)}
@@ -182,6 +183,7 @@ export function TopicBrowser({
             도서 분야
             <FacetPicker
               compact
+              selectAll
               label="도서 분야"
               values={draft.categories}
               onChange={(values) => change("categories", values)}
@@ -199,6 +201,7 @@ export function TopicBrowser({
             onValuesChange={(ids) => change("bookIds", ids)}
           />
           <TopicFilter
+            selectAll
             topics={orderedTopics}
             value={selected}
             onChange={(id) => change("topics", id === "all" ? [] : [id])}
@@ -212,6 +215,7 @@ export function TopicBrowser({
           />
           <NoteTagFilter
             searchable
+            selectAll
             tags={(state.notes ?? library.notes).flatMap((n) => n.tags ?? [])}
             value={draft.tags[0] ?? "all"}
             onChange={(tag) => change("tags", tag === "all" ? [] : [tag])}

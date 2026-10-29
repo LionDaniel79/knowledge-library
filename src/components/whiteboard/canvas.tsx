@@ -59,6 +59,11 @@ export function WhiteboardCanvas({
   onChapterChange,
   onChapterMove,
   onChapterRemove,
+  numbered = false,
+  onChapterAddSelected,
+  canAddSelected = false,
+  onNoteOrder,
+  onChapterRemoveNote,
   onViewChange,
   onSave,
   saving = false,
@@ -93,6 +98,11 @@ export function WhiteboardCanvas({
   onChapterChange?: (chapter: WritingChapter) => void;
   onChapterMove?: (id: string, dx: number, dy: number) => void;
   onChapterRemove?: (id: string) => void;
+  numbered?: boolean;
+  onChapterAddSelected?: (id: string) => void;
+  canAddSelected?: boolean;
+  onNoteOrder?: (chapterId: string, itemId: string, order: number) => void;
+  onChapterRemoveNote?: (chapterId: string, itemId: string) => void;
   onViewChange?: (view: { x: number; y: number; zoom: number }) => void;
   onSave?: () => void;
   saving?: boolean;
@@ -534,6 +544,13 @@ export function WhiteboardCanvas({
           {(board.writing?.chapters ?? []).map((c) => (
             <ChapterBox
               key={c.id}
+              numbered={numbered}
+              onAddSelected={
+                onChapterAddSelected
+                  ? () => onChapterAddSelected(c.id)
+                  : undefined
+              }
+              canAddSelected={canAddSelected}
               chapter={{
                 ...c,
                 items: c.items.map((i) => ({
@@ -619,6 +636,7 @@ export function WhiteboardCanvas({
                   start(e, "pan", l.id);
                 }}
                 onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     e.stopPropagation();
@@ -669,23 +687,59 @@ export function WhiteboardCanvas({
                   height: NOTE_HEIGHT,
                 }}
                 data-note-id={n.noteId}
+                data-chapter-note-id={n.chapterId}
+                data-node-id={n.id}
                 tabIndex={0}
                 aria-label={`메모 ${n.note.title || n.note.content.slice(0, 30)}`}
                 onPointerDown={(e) => start(e, "note", n.id)}
                 onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     onSelectNote(n.noteId);
                   }
                 }}
               >
-                <strong>{n.note.title || "미분류 메모"}</strong>
+                <div className="wb-note-heading">
+                  {numbered && n.chapterId && n.itemId && (
+                    <input
+                      className="wb-note-order"
+                      type="number"
+                      min={1}
+                      max={100000}
+                      aria-label={`${n.note.title || "메모"} 순서`}
+                      value={n.order ?? 1}
+                      onChange={(e) =>
+                        onNoteOrder?.(
+                          n.chapterId!,
+                          n.itemId!,
+                          Math.max(
+                            1,
+                            Math.min(100000, Number(e.target.value) || 1),
+                          ),
+                        )
+                      }
+                    />
+                  )}
+                  <strong>{n.note.title || "미분류 메모"}</strong>
+                </div>
                 <p>{n.note.content}</p>
                 <footer>
                   <small>
                     {source.books.find((b) => b.id === n.note.bookId)?.title ??
                       "나의 생각"}
                   </small>
+                  {n.chapterId && n.itemId && onChapterRemoveNote && (
+                    <button
+                      type="button"
+                      aria-label={`${n.note.title || "메모"} 상자에서 빼기`}
+                      onClick={() =>
+                        onChapterRemoveNote(n.chapterId!, n.itemId!)
+                      }
+                    >
+                      빼기
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -714,7 +768,7 @@ export function WhiteboardCanvas({
           })}
         </div>
       </div>
-      {!scene.nodes.length && (
+      {!scene.nodes.length && !board.writing?.chapters.length && (
         <p className="wb-empty">조건에 맞는 메모가 없습니다.</p>
       )}
     </div>

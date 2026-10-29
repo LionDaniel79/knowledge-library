@@ -16,6 +16,7 @@ import { ReplicaQueryError } from "./queries";
 import type { LocalIndex } from "./queries";
 import { createWhiteboardReader } from "./whiteboard-reader";
 import { WHITEBOARD_ID, boardSaveSchema } from "../../lib/whiteboard";
+import { listThoughtBoxes } from "../../lib/thought-boxes";
 import {
   noteVisibilitySchema,
   whiteboardNoteVisible,
@@ -463,7 +464,14 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
       p: URLSearchParams,
     ): Promise<{ handled: true; value: unknown } | { handled: false }> {
       let value: unknown;
-      if (path === "/api/whiteboard") {
+      if (path === "/api/thought-boxes") {
+        value = {
+          items: listThoughtBoxes(
+            (await all("library_whiteboards")) as any,
+            (await all("library_research")) as any,
+          ),
+        };
+      } else if (path === "/api/whiteboard") {
         const boardId =
           boardSaveSchema.shape.boardId.parse(p.get("boardId") ?? undefined) ??
           WHITEBOARD_ID;

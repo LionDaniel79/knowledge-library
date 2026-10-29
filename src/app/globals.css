@@ -5833,7 +5833,7 @@ textarea {
   width: 62px;
 }
 .writing-chapter-head input:not([type="number"]) {
-  flex: 1;
+  flex: 0.8;
 }
 .writing-chapter-head button {
   font-size: 12px;
@@ -5842,40 +5842,98 @@ textarea {
 }
 .writing-chapter-content {
   padding: 8px 12px;
-  height: 124px;
+  height: 86px;
   overflow: auto;
   position: relative;
   z-index: 2;
+}
+.wb-note-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.wb-note-heading strong {
+  min-width: 0;
+  flex: 1;
+}
+.wb-note-order {
+  width: 44px;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+.wb-entry-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: none;
+  border: 1px solid #bdcfc4;
+  border-radius: 50%;
+  background: #edf4ee;
+  font-size: 0.8rem;
+}
+.thought-box-workspace {
+  min-width: 0;
+}
+.thought-box-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.5rem;
+  text-align: left;
+}
+.thought-box-list > button > small:first-child {
+  grid-column: 1 / -1;
+}
+.thought-box-list {
+  align-content: start;
+  align-self: start;
+}
+.thought-box-list small {
+  font-size: 0.8rem;
+  color: #66776f;
+  margin: 0;
+  line-height: 1.4;
+}
+.thought-box-editor {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.thought-box-editor label {
+  min-width: 0;
+}
+.thought-box-editor input:not([type="checkbox"]),
+.thought-box-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.thought-box-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #e2e7df;
+}
+.thought-box-note input[type="number"] {
+  width: 4rem;
+  flex: none;
+}
+.thought-box-note > button,
+.thought-box-note > details {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
 }
 .writing-chapter textarea {
   width: 100%;
   height: 62px;
   resize: vertical;
-}
-.writing-material-orders summary {
-  font-size: 13px;
-  cursor: pointer;
-}
-.writing-material-orders > div {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  margin: 4px 0;
-}
-.writing-material-orders input {
-  width: 56px;
-}
-.writing-material-orders span {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.writing-material-orders button {
-  font-size: 12px;
-  padding: 2px 6px;
-  min-height: 26px;
 }
 .writing-project-list {
   margin-top: 1rem;
@@ -5900,17 +5958,26 @@ textarea {
 .writing-project-list > .writing-project-row {
   display: flex;
   gap: 0.35rem;
-  width: min(100%, 28rem);
+  width: auto;
+  max-width: 100%;
   align-items: stretch;
+  flex-wrap: nowrap;
+}
+.writing-project-list > .writing-project-create {
+  flex-basis: 100%;
+  width: 100%;
+  margin: 0 0 0.25rem;
 }
 .writing-project-row > button:first-child {
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 18rem;
+  padding: 0.4rem 0.65rem;
   text-align: left;
   overflow-wrap: anywhere;
 }
 .writing-project-row > button:last-child {
   flex: none;
-  padding-inline: 0.65rem;
+  padding: 0.4rem 0.5rem;
   color: #934438;
 }
 @media (max-width: 640px) {
@@ -5927,11 +5994,12 @@ textarea {
   .writing-project-list > div {
     flex-wrap: wrap;
   }
+  .writing-project-list > .writing-project-row {
+    flex-wrap: nowrap;
+  }
 }
-.bundle-workspace {
-  min-width: 0;
-}
-.bundle-workspace fieldset {
+
+.thought-box-editor fieldset {
   border: 0;
   padding: 0;
   margin: 0;
@@ -5939,57 +6007,11 @@ textarea {
   display: grid;
   gap: 0.6rem;
 }
-.bundle-workspace label {
-  min-width: 0;
-}
-.bundle-workspace input:not([type="checkbox"]),
-.bundle-workspace select,
-.bundle-workspace textarea {
-  width: 100%;
-  min-width: 0;
-}
-.bundle-note-picker {
-  max-height: 19rem;
-  overflow-y: auto;
-  border-block: 1px solid var(--line, #dce2d8);
-  padding-block: 0.35rem;
-}
-.bundle-note-picker label {
-  display: flex;
-  align-items: start;
-  gap: 0.5rem;
-  padding: 0.35rem;
-}
-.bundle-note-picker input[type="checkbox"] {
-  flex: 0 0 auto;
-  margin-top: 0.25rem;
-}
-.bundle-note-picker small {
-  display: block;
-  color: #617067;
-  overflow-wrap: anywhere;
-}
-.bundle-members {
-  margin-block: 0.6rem;
-  border-block: 1px solid #e1e6dc;
-  padding: 0.5rem 0;
-}
-.bundle-member {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
-.bundle-member > button:first-child {
-  flex: 1;
-  text-align: left;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.bundle-member > button {
-  padding: 0.35rem 0.5rem;
-}
-.bundle-workspace .memo-box-list > button {
+.thought-box-editor .thought-box-note {
   display: grid;
-  gap: 0.25rem;
-  text-align: left;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+}
+.thought-box-note > p {
+  grid-column: 1 / -1;
+  margin: 0;
 }

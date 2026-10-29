@@ -39,7 +39,7 @@ export const materialPageQuery = z.object({
   noteType: noteType.default("all"),
   noteTypes: selections(noteType.exclude(["all"]), 30),
   tag: tag.default("all"),
-  tags: selections(tag),
+  tags: selections(tag, 20000),
   bookId: bookId.default("all"),
   bookIds: selections(bookId, 500),
   category: category.default("all"),
@@ -48,7 +48,7 @@ export const materialPageQuery = z.object({
     .enum(["default", "newest", "oldest", "category", "topic", "book"])
     .default("default"),
   topic: topic.default("all"),
-  topics: selections(topic),
+  topics: selections(topic, 20000),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
   limit: z.coerce.number().int().min(1).max(50).default(30),
 });

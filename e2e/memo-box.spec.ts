@@ -81,6 +81,9 @@ async function mount(page: Page) {
   await page.route("https://library.test/api/whiteboard", (r) =>
     r.fulfill({ json: source }),
   );
+  await page.route("https://library.test/api/thought-boxes", (r) =>
+    r.fulfill({ json: { items: [] } }),
+  );
   await page.route("https://library.test/api/note-topics*", (r) =>
     r.fulfill({ json: { topics, memberships: [] } }),
   );
@@ -230,7 +233,6 @@ test("My records is the first memo-box tab and retains its filters and new-note 
     "내 기록",
     "연결된 메모",
     "생각 묶음",
-    "묶음 연결",
   ]);
   await expect(
     page.getByRole("button", { name: "종류 선택", exact: true }),
@@ -323,19 +325,22 @@ for (const width of [390, 1280])
     });
     expect(saved.payload.title).toBe("");
   });
-test("classification topics and memo connections do not create bundle relationships", async ({
+test("classification topics and memo connections do not expose global bundle relationship controls", async ({
   page,
 }) => {
   const f = await mount(page);
   await page.getByRole("button", { name: "메모 상자", exact: true }).click();
-  await page.getByRole("button", { name: "묶음 연결", exact: true }).click();
+  await page.getByRole("button", { name: "생각 묶음", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "새 묶음 연결", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("보드에서 메모를 담은 상자를 만들면 여기에 표시됩니다.", {
+      exact: true,
+    }),
   ).toBeVisible();
   expect(f.commands).toHaveLength(0);
-  await expect(
-    page.locator(".bundle-workspace .memo-box-list > button"),
-  ).toHaveCount(0);
+  await expect(page.locator(".thought-box-list > button")).toHaveCount(0);
 });
 test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
   page,

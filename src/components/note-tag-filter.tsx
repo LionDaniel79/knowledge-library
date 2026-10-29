@@ -1,6 +1,6 @@
 "use client";
 import { libraryRequest } from "@/client/replica/request";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "./modal";
 import { containsSearchField } from "@/lib/search-fields";
 type Tag = {
@@ -18,6 +18,7 @@ export function NoteTagFilter({
   onUpdated,
   preview,
   searchable = false,
+  selectAll = false,
   onRemoved,
 }: {
   tags: string[];
@@ -28,17 +29,31 @@ export function NoteTagFilter({
   onUpdated: () => Promise<void>;
   preview: boolean;
   searchable?: boolean;
+  selectAll?: boolean;
   onRemoved?: (tag: string) => void;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
   const selected = values ?? (value === "all" ? [] : [value]);
   const [items, setItems] = useState<Tag[]>([]),
+    [removed, setRemoved] = useState<string[]>([]),
     [pending, setPending] = useState<(Tag & { requestId: string }) | null>(
       null,
     ),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [query, setQuery] = useState("");
+  useEffect(() => {
+    setRemoved((old) =>
+      old.some(
+        (tag) => !tags.includes(tag) && !items.some((item) => item.tag === tag),
+      )
+        ? old.filter(
+            (tag) =>
+              tags.includes(tag) || items.some((item) => item.tag === tag),
+          )
+        : old,
+    );
+  }, [tags, items]);
   async function load() {
     if (preview) return;
     setError("");
@@ -71,6 +86,7 @@ export function NoteTagFilter({
         onValuesChange(selected.filter((tag) => tag !== pending.tag));
       else if (value === pending.tag) onChange("all");
       setPending(null);
+      setRemoved((old) => [...old, pending.tag]);
       setItems((items) => items.filter((t) => t.tag !== pending.tag));
       onRemoved?.(pending.tag);
       void onUpdated().catch((e) => setError(e.message));
@@ -81,14 +97,20 @@ export function NoteTagFilter({
       setBusy(false);
     }
   }
-  const options = [
+  const knownTags = [
     ...new Set([
-      ...(searchable && !preview ? [] : tags),
+      ...(selectAll || !searchable || preview ? tags : []),
       ...items.map((t) => t.tag),
+      ...(selectAll ? selected.filter((tag) => tag !== "untagged") : []),
     ]),
   ]
-    .filter((t) => !searchable || containsSearchField(t, query))
+    .filter((tag) => !removed.includes(tag))
     .sort((a, b) => a.localeCompare(b, "ko"));
+  const options = knownTags.filter(
+    (tag) => !searchable || containsSearchField(tag, query),
+  );
+  const allValues = ["untagged", ...knownTags];
+  const allSelected = allValues.every((tag) => selected.includes(tag));
   function choose(tag: string) {
     if (onValuesChange) {
       onValuesChange(
@@ -179,7 +201,37 @@ export function NoteTagFilter({
               }}
             />
           )}
-          {choice("all", "모든 태그")}
+          {selectAll && onValuesChange ? (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 0",
+              }}
+            >
+              <input
+                type="checkbox"
+                aria-label="전체 선택"
+                checked={allSelected}
+                ref={(element) => {
+                  if (element)
+                    element.indeterminate = selected.length > 0 && !allSelected;
+                }}
+                onChange={(event) =>
+                  onValuesChange(
+                    event.target.checked
+                      ? [...new Set([...selected, ...allValues])]
+                      : [],
+                  )
+                }
+                style={{ width: 18, height: 18, margin: 0 }}
+              />
+              <span>전체 선택</span>
+            </label>
+          ) : (
+            choice("all", "모든 태그")
+          )}
           {choice("untagged", "태그 없는 기록")}
           {options.map((tag) => (
             <div className="tag-option" key={tag}>

@@ -12,7 +12,7 @@ import {
   PageNavigation,
   PageSizeSelect,
 } from "../list-pagination";
-import { BundleWorkspace } from "./bundle-workspace";
+import { ThoughtBoxes } from "./thought-boxes";
 import { MemoGroupDetail } from "./group-detail";
 import { ThoughtMapPanel } from "../thought-map/panel";
 export function MemoBox({
@@ -36,20 +36,21 @@ export function MemoBox({
 }) {
   const [tab, setTab] = useState("records"),
     [query, setQuery] = useState(""),
-    [selected, setSelected] = useState(""),
-    [bundleSeed, setBundleSeed] = useState<string[] | null>(null);
+    [selected, setSelected] = useState("");
   const tabKey = "library:memo-box-tab:" + ownerId;
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(tabKey);
+      const stored = localStorage.getItem(tabKey);
+      const saved = stored === "topics" ? "bundles" : stored;
       setTab(
         initialTag !== "all"
           ? "records"
-          : saved && ["records", "notes", "topics", "bundles"].includes(saved)
+          : saved && ["records", "notes", "bundles"].includes(saved)
             ? saved
             : "records",
       );
-      if (saved === "writing") localStorage.setItem(tabKey, "records");
+      if (stored === "topics") localStorage.setItem(tabKey, "bundles");
+      if (stored === "writing") localStorage.setItem(tabKey, "records");
     } catch {
       setTab("records");
     }
@@ -60,7 +61,7 @@ export function MemoBox({
   );
   const resource = usePagedResource<WhiteboardSnapshot>(
     "/api/whiteboard",
-    tab !== "records",
+    tab === "notes",
     refresh,
     { keepPreviousData: true },
   );
@@ -87,7 +88,6 @@ export function MemoBox({
           ["records", "내 기록"],
           ["notes", "연결된 메모"],
           ["bundles", "생각 묶음"],
-          ["topics", "묶음 연결"],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -98,20 +98,19 @@ export function MemoBox({
                 localStorage.setItem(tabKey, id);
               } catch {}
               setQuery("");
-              setBundleSeed(null);
             }}
           >
             {label}
           </button>
         ))}
       </div>
-      {tab !== "records" && (resource.error || command.error) && (
+      {tab === "notes" && (resource.error || command.error) && (
         <p role="alert">
           {resource.error || command.error}
           <button onClick={resource.reload}>다시 조회</button>
         </p>
       )}
-      {tab !== "records" && !model && resource.loading && (
+      {tab === "notes" && !model && resource.loading && (
         <p role="status">메모 상자를 여는 중…</p>
       )}
       {tab === "records" ? (
@@ -125,7 +124,7 @@ export function MemoBox({
           onOpen={onOpen}
           revision={revision}
         />
-      ) : model && tab === "notes" ? (
+      ) : tab === "bundles" ? null : model && tab === "notes" ? (
         <>
           <div className="memo-box-toolbar">
             <label>
@@ -171,53 +170,35 @@ export function MemoBox({
             </div>
             <div className="panel memo-box-detail">
               {active ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBundleSeed(active.notes.map((n) => n.id));
-                      setTab("bundles");
-                    }}
-                  >
-                    생각 묶음으로 저장
-                  </button>
-                  <MemoGroupDetail
-                    group={active}
-                    onOpen={onOpen}
-                    onNewNote={onNewNote}
-                    topicIdsForNote={(id) => model.noteTopics.get(id)}
-                    busy={command.busy}
-                    onSave={(p) => command.send("editConnection", p)}
-                    onRemove={(c) =>
-                      void command.send("editConnection", {
-                        id: c.id,
-                        expectedVersion: c.version,
-                        relation: c.relation,
-                        reason: c.reason,
-                        status: "rejected",
-                      })
-                    }
-                  />
-                </>
+                <MemoGroupDetail
+                  group={active}
+                  onOpen={onOpen}
+                  onNewNote={onNewNote}
+                  topicIdsForNote={(id) => model.noteTopics.get(id)}
+                  busy={command.busy}
+                  onSave={(p) => command.send("editConnection", p)}
+                  onRemove={(c) =>
+                    void command.send("editConnection", {
+                      id: c.id,
+                      expectedVersion: c.version,
+                      relation: c.relation,
+                      reason: c.reason,
+                      status: "rejected",
+                    })
+                  }
+                />
               ) : (
                 <p>메모를 선택하면 연결과 내용을 볼 수 있습니다.</p>
               )}
             </div>
           </div>
         </>
-      ) : (
-        resource.data && (
-          <BundleWorkspace
-            key={tab + ":" + (bundleSeed ?? []).join(",")}
-            mode={tab === "bundles" ? "bundles" : "links"}
-            source={resource.data}
-            initialNoteIds={bundleSeed ?? []}
-            onSaved={resource.reload}
-            onOpen={onOpen}
-            onNewNote={onNewNote}
-          />
-        )
-      )}
+      ) : null}
+      <ThoughtBoxes
+        enabled={tab === "bundles"}
+        revision={refresh}
+        onOpen={onOpen}
+      />
     </section>
   );
 }

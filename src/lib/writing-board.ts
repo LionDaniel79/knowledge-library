@@ -11,6 +11,7 @@ import type { writingChapterSchema, writingMaterialSchema } from "./whiteboard";
 import type { ResearchItem, ResearchPlacement } from "./research";
 import { unpackOutline } from "./writing";
 import { materialNoteIds, materialLabel } from "./thought-bundle-board";
+import { boxNotes } from "./thought-boxes";
 export type WritingChapter = z.infer<typeof writingChapterSchema>;
 export type WritingMaterial = z.infer<typeof writingMaterialSchema>;
 export function addChapter(board: Board, id: string): Board {
@@ -212,7 +213,7 @@ export function exportWritingBoard(
         .flatMap((chapter) => [
           heading(2, `${chapter.order}. ${chapter.title}`),
           chapter.text,
-          ...chapter.items
+          ...boxNotes(chapter, source)
             .slice()
             .sort(byOrder)
             .flatMap((item) => [

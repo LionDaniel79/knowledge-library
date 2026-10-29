@@ -1,5 +1,11 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { libraryRequest } from "@/client/replica/request";
 import type { Library, Note } from "@/lib/domain";
 import {
@@ -37,7 +43,11 @@ export const focusNames = {
   new_topic: "새 주제 제안",
   writing_idea: "글감·목차 방향",
 };
-export function AssistLauncher(props: AssistProps) {
+export function AssistLauncher({
+  children,
+  enabled = true,
+  ...props
+}: AssistProps & { children?: ReactNode; enabled?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <details
@@ -47,7 +57,12 @@ export function AssistLauncher(props: AssistProps) {
       }}
     >
       <summary>필요할 때 AI 도움</summary>
-      {open && <AssistPanel {...props} />}
+      {open && (
+        <>
+          {children}
+          {enabled && <AssistPanel {...props} />}
+        </>
+      )}
     </details>
   );
 }

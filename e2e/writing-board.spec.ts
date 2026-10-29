@@ -134,6 +134,9 @@ for (const width of [390, 1280])
         },
       });
     });
+    await page.route("https://library.test/api/thought-boxes", (r) =>
+      r.fulfill({ json: { items: [] } }),
+    );
     await page.route("https://library.test/api/thought-map", (r) =>
       r.fulfill({
         json: {
@@ -171,16 +174,14 @@ for (const width of [390, 1280])
     await page
       .getByRole("button", { name: "글감 만들기", exact: true })
       .click();
-    await page
-      .getByRole("button", { name: "+ 목차 상자", exact: true })
-      .click();
+    await page.getByRole("button", { name: "상자 추가", exact: true }).click();
     await page.getByRole("textbox", { name: "목차 제목" }).fill("나의 결론");
     await page
       .getByRole("textbox", { name: "목차 내용" })
       .fill("두 생각을 비교한다.");
     for (const note of notes) {
       await page.locator(`[data-note-id="${note.id}"]`).first().click();
-      await page.getByRole("button", { name: "선택한 메모·묶음 넣기" }).click();
+      await page.getByRole("button", { name: "선택 메모 담기" }).click();
     }
     const pinned = await page
       .locator(".wb-note")
@@ -198,7 +199,6 @@ for (const width of [390, 1280])
         .locator(".wb-note")
         .evaluateAll((els) => els.map((e) => (e as HTMLElement).style.cssText)),
     ).toEqual(pinned);
-    await page.getByText("자료 순서 · 2개", { exact: true }).click();
     await page
       .getByRole("spinbutton", { name: "처음 생각 순서", exact: true })
       .fill("2");
@@ -214,7 +214,14 @@ for (const width of [390, 1280])
       text.indexOf("처음 생각 원문 전체 본문"),
     );
     await expect
-      .poll(() => saves.at(-1)?.data.writing?.chapters[0]?.items[0]?.order)
+      .poll(
+        () =>
+          saves
+            .at(-1)
+            ?.data.writing?.chapters[0]?.items.find((i: any) =>
+              i.noteIds.includes(notes[0].id),
+            )?.order,
+      )
       .toBe(2);
     await page.waitForTimeout(800);
     const beforeCameraMoves = saves.length;
@@ -232,13 +239,13 @@ for (const width of [390, 1280])
     await expect
       .poll(() => saves.at(-1)?.data.writing?.viewport?.zoom)
       .toBeCloseTo(savedZoom, 5);
+    await page.locator(".assist-launcher > summary").click();
     await page
       .getByRole("combobox", { name: "AI 도움 방향", exact: true })
       .selectOption("titles");
     await page
       .getByRole("combobox", { name: "대상 목차", exact: true })
       .selectOption({ label: "1. 나의 결론" });
-    await page.locator(".assist-launcher > summary").click();
     await page
       .getByRole("button", { name: "분석할 기록 확인", exact: true })
       .click();

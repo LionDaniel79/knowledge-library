@@ -4,7 +4,6 @@ import type { Library, Note } from "@/lib/domain";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import type { ResearchItem, ResearchPlacement } from "@/lib/research";
 import { seedWritingBoard } from "@/lib/writing-board";
-import { containsSearchField } from "@/lib/search-fields";
 import { usePagedResource } from "../use-paged-resource";
 import { useLibraryCommand } from "../use-library-command";
 import { WhiteboardPanel } from "../whiteboard/panel";
@@ -40,7 +39,6 @@ export function WritingBoardPanel({
   const command = useLibraryCommand("/api/knowledge", resource.reload);
   const [selected, setSelected] = useState(""),
     [title, setTitle] = useState(""),
-    [query, setQuery] = useState(""),
     [pendingDelete, setPendingDelete] = useState<
       (Project & { expectedBoardVersion?: number; loadError?: string }) | null
     >(null),
@@ -142,35 +140,6 @@ export function WritingBoardPanel({
   }
   return (
     <section className="writing-board-workspace">
-      <form
-        className="writing-project-create"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!title.trim()) return;
-          void command
-            .send("createResearch", {
-              title: title.trim(),
-              kind: "thesis",
-              question: "",
-            })
-            .then((p) => {
-              if (p) {
-                choose(p.id);
-                setTitle("");
-              }
-            });
-        }}
-      >
-        <input
-          aria-label="새 글감 제목"
-          placeholder="새 글감 제목"
-          value={title}
-          maxLength={300}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <button disabled={command.busy || !title.trim()}>글감 만들기</button>
-        {project && <strong>{project.title}</strong>}
-      </form>
       {(resource.error || command.error) && (
         <p role="alert">
           {resource.error || command.error}{" "}
@@ -196,39 +165,56 @@ export function WritingBoardPanel({
             : "글감을 만들고 목차 상자에 메모를 모아 보세요."}
         </p>
       )}
-      <section className="panel writing-project-list" aria-label="글감 목록">
-        <div>
-          <h3>글감 목록</h3>
+      <section className="panel writing-project-list" aria-label="글감 선택">
+        <form
+          className="writing-project-create"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!title.trim()) return;
+            void command
+              .send("createResearch", {
+                title: title.trim(),
+                kind: "thesis",
+                question: "",
+              })
+              .then((p) => {
+                if (p) {
+                  choose(p.id);
+                  setTitle("");
+                }
+              });
+          }}
+        >
           <input
-            type="search"
-            aria-label="글감 검색"
-            placeholder="글감 제목 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            aria-label="새 글감 제목"
+            placeholder="새 글감 제목"
+            value={title}
+            maxLength={300}
+            onChange={(e) => setTitle(e.target.value)}
           />
-        </div>
-        {projects
-          .filter((p) => containsSearchField(p.title, query))
-          .map((p) => (
-            <div key={p.id} className="writing-project-row">
-              <button
-                type="button"
-                aria-pressed={project?.id === p.id}
-                className={project?.id === p.id ? "selected" : ""}
-                onClick={() => choose(p.id)}
-              >
-                {p.title}
-              </button>
-              <button
-                type="button"
-                aria-label={`${p.title} 삭제`}
-                disabled={command.busy}
-                onClick={() => void prepareDelete(p)}
-              >
-                삭제
-              </button>
-            </div>
-          ))}
+          <button disabled={command.busy || !title.trim()}>글감 만들기</button>
+          {project && <strong>{project.title}</strong>}
+        </form>
+        {projects.map((p) => (
+          <div key={p.id} className="writing-project-row">
+            <button
+              type="button"
+              aria-pressed={project?.id === p.id}
+              className={project?.id === p.id ? "selected" : ""}
+              onClick={() => choose(p.id)}
+            >
+              {p.title}
+            </button>
+            <button
+              type="button"
+              aria-label={`${p.title} 삭제`}
+              disabled={command.busy}
+              onClick={() => void prepareDelete(p)}
+            >
+              삭제
+            </button>
+          </div>
+        ))}
       </section>
       {pendingDelete && (
         <Modal
