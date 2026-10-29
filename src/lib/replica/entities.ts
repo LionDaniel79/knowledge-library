@@ -1,5 +1,34 @@
 // Explicit application-data schema. Review new columns before changing this allowlist.
 export const syncEntities = {
+  library_memo_bundles: {
+    columns: [
+      "id",
+      "title",
+      "description",
+      "note_ids",
+      "version",
+      "archived_at",
+      "created_at",
+      "updated_at",
+    ],
+    keys: ["id"],
+    privateColumns: ["owner_id"],
+  },
+  library_bundle_links: {
+    columns: [
+      "id",
+      "source_id",
+      "target_id",
+      "relation",
+      "reason",
+      "status",
+      "version",
+      "created_at",
+      "updated_at",
+    ],
+    keys: ["id"],
+    privateColumns: ["owner_id"],
+  },
   library_whiteboards: {
     columns: ["id", "data", "version", "updated_at"],
     keys: ["id"],

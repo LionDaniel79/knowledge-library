@@ -87,6 +87,12 @@ async function reviewedRow(
   entry: OutboxEntry,
 ) {
   const body = (entry.command as QueuedChange).body;
+  if (entity === "library_bundle_links" && body.type === "saveBundleLink") {
+    const ids = [body.payload.sourceId, body.payload.targetId].sort();
+    return (await repository.all(entity)).find(
+      (row) => row.source_id === ids[0] && row.target_id === ids[1],
+    );
+  }
   if (entity === "library_topic_memberships" && body.type === "assignTopic") {
     const p = body.payload;
     return (await repository.all(entity)).find(
@@ -113,6 +119,9 @@ export async function readConflictContext(
     topics = new Set<string>(),
     sources = new Map<string, { kind: string; id: string }>();
   const collect = (value: any) => {
+    if (Array.isArray(value?.note_ids))
+      for (const id of value.note_ids.slice(0, 50))
+        sources.set("note:" + id, { kind: "note", id });
     if (!value || typeof value !== "object") return;
     if (typeof value.book_id === "string") books.add(value.book_id);
     if (typeof value.bookId === "string") books.add(value.bookId);
@@ -182,6 +191,13 @@ export async function readConflictContext(
     return cache.get(key)!;
   };
   await Promise.all([
+    ...values
+      .flatMap((value: any) => [value?.source_id, value?.target_id])
+      .filter((id): id is string => typeof id === "string")
+      .map(async (id) => {
+        const r = await read("library_memo_bundles", id);
+        if (r?.title) result.sourceTitles["bundle:" + id] = r.title;
+      }),
     ...[...books].map(async (id) => {
       const r = await read("library_books", id);
       if (r?.title) {
@@ -247,7 +263,10 @@ export async function loadReplicaConflict(
   let latest = primary
     ? await baseRow(storage, primary.entity, primary.key)
     : null;
-  if (primary?.entity === "library_topic_memberships") {
+  if (
+    primary?.entity === "library_topic_memberships" ||
+    primary?.entity === "library_bundle_links"
+  ) {
     const downloaded = createLocalReplicaRepository({
       ...storage,
       listOutbox: async () => [],
@@ -572,6 +591,10 @@ async function replayReviewedChanges(
       delete body.editBase;
       if (body.payload && Object.hasOwn(body.payload, "expectedVersion"))
         body.payload.expectedVersion = row?.version ?? 0;
+      if (body.type === "saveBundleLink" && row) {
+        body.payload.id = row.id;
+        body.entityId = row.id;
+      }
       if (body.type === "assignTopic" && body.payload) {
         body.payload.expectedVersion = row?.version ?? 0;
         const source = await repository.raw(

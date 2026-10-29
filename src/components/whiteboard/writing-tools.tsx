@@ -9,7 +9,8 @@ import {
   placeChapterMaterials,
   type WritingMaterial,
 } from "@/lib/writing-board";
-import { connectedMemoGroups, buildMemoBox } from "@/lib/memo-box";
+import { connectedMemoGroups } from "@/lib/memo-box";
+import { activeBundleLinks } from "@/lib/thought-bundles";
 export function WritingTools({
   title,
   board,
@@ -30,7 +31,10 @@ export function WritingTools({
   const chapters = board.writing?.chapters ?? [],
     chapter = chapters.find((c) => c.id === target) ?? chapters[0];
   const memoGroups = connectedMemoGroups(source),
-    topicPairs = buildMemoBox(source).topicPairs;
+    bundlePairs = activeBundleLinks(
+      source.bundles ?? [],
+      source.bundleLinks ?? [],
+    );
   function add(kind: "selected" | "existing") {
     if (!chapter) return;
     let value: Omit<WritingMaterial, "id" | "order"> | undefined;
@@ -55,7 +59,15 @@ export function WritingTools({
         };
     } else {
       const group = memoGroups.find((g) => "notes:" + g.id === material);
-      const pair = topicPairs.find((p) => "topics:" + p.id === material);
+      const pair = bundlePairs.find((p) => "bundles:" + p.id === material);
+      const bundle = source.bundles?.find((b) => "bundle:" + b.id === material);
+      if (bundle)
+        value = {
+          kind: "notes",
+          label: bundle.title,
+          noteIds: bundle.note_ids,
+          groupIds: ["bundle:" + bundle.id],
+        };
       if (group)
         value = {
           kind: "notes",
@@ -67,18 +79,14 @@ export function WritingTools({
           groupIds: [],
         };
       if (pair) {
-        const model = buildMemoBox(source);
+        const groups = (source.bundles ?? []).filter(
+          (b) => b.id === pair.source_id || b.id === pair.target_id,
+        );
         value = {
-          kind: "topics",
-          label: `${model.topics.get(pair.source)?.name} ↔ ${model.topics.get(pair.target)?.name}`,
-          noteIds: source.notes
-            .filter((n) =>
-              (model.noteTopics.get(n.id) ?? []).some(
-                (t) => t === pair.source || t === pair.target,
-              ),
-            )
-            .map((n) => n.id),
-          groupIds: [],
+          kind: "notes",
+          label: groups.map((b) => b.title).join(" ↔ "),
+          noteIds: [...new Set(groups.flatMap((b) => b.note_ids))],
+          groupIds: groups.map((b) => "bundle:" + b.id),
         };
       }
     }
@@ -161,11 +169,20 @@ export function WritingTools({
               </option>
             ))}
           </optgroup>
-          <optgroup label="연결된 주제">
-            {topicPairs.map((p) => (
-              <option key={p.id} value={"topics:" + p.id}>
-                {source.topics.find((t) => t.id === p.source)?.name} ↔{" "}
-                {source.topics.find((t) => t.id === p.target)?.name}
+          <optgroup label="생각 묶음">
+            {(source.bundles ?? [])
+              .filter((b) => !b.archived_at)
+              .map((b) => (
+                <option key={b.id} value={"bundle:" + b.id}>
+                  {b.title}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="묶음 연결">
+            {bundlePairs.map((p) => (
+              <option key={p.id} value={"bundles:" + p.id}>
+                {source.bundles?.find((b) => b.id === p.source_id)?.title} ↔{" "}
+                {source.bundles?.find((b) => b.id === p.target_id)?.title}
               </option>
             ))}
           </optgroup>

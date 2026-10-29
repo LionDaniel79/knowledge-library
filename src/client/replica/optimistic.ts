@@ -34,6 +34,11 @@ import { editableFields } from "../../lib/replica/command-envelope";
 import { researchSource } from "../../lib/replica/research-source";
 import { deleteResearchSchema } from "../../lib/research";
 import {
+  memoBundleInput,
+  archiveBundleInput,
+  bundleLinkInput,
+} from "../../lib/thought-bundles";
+import {
   WHITEBOARD_ID,
   boardSaveSchema,
   boardNoteLinkSchema,
@@ -406,6 +411,63 @@ export async function prepareOptimistic(
         id: boardId,
         version: (old?.version ?? 0) + (data === original ? 0 : 1),
       };
+    } else if (body.type === "saveMemoBundle") {
+      const v = memoBundleInput.parse(p),
+        old = v.id ? await own("library_memo_bundles", v.id) : null;
+      check(old ?? undefined, v.expectedVersion);
+      if (old?.archived_at)
+        throw new ReplicaQueryError(409, "보관해제된 생각 묶음입니다.");
+      for (const n of v.noteIds)
+        if (!(old?.note_ids ?? []).includes(n)) await note(n);
+      entityId = old?.id ?? id;
+      body.entityId = entityId;
+      base = old;
+      const after = {
+        ...(old ?? { id: entityId, created_at: at, archived_at: null }),
+        title: v.title,
+        description: v.description,
+        note_ids: v.noteIds,
+        version: (old?.version ?? 0) + 1,
+        updated_at: at,
+      };
+      put("library_memo_bundles", after);
+      result = { id: entityId, version: after.version };
+    } else if (body.type === "archiveMemoBundle") {
+      const v = archiveBundleInput.parse(p),
+        old = await own("library_memo_bundles", v.id);
+      check(old, v.expectedVersion);
+      edit("library_memo_bundles", old, { archived_at: at, updated_at: at });
+    } else if (body.type === "saveBundleLink") {
+      const v = bundleLinkInput.parse(p),
+        [a, b] = [v.sourceId, v.targetId].sort();
+      for (const key of [a, b]) {
+        const bundle = await own("library_memo_bundles", key);
+        if (bundle.archived_at)
+          throw new ReplicaQueryError(409, "보관해제된 생각 묶음입니다.");
+      }
+      const old = v.id
+        ? await own("library_bundle_links", v.id)
+        : (await repository.all("library_bundle_links")).find(
+            (l) => l.source_id === a && l.target_id === b,
+          );
+      check(old, v.expectedVersion);
+      if (old && (old.source_id !== a || old.target_id !== b))
+        throw new ReplicaQueryError(400, "연결할 생각 묶음이 변경됐습니다.");
+      entityId = old?.id ?? id;
+      body.entityId = entityId;
+      base = old ?? null;
+      const after = {
+        ...(old ?? { id: entityId, created_at: at }),
+        source_id: a,
+        target_id: b,
+        relation: v.relation,
+        reason: v.reason,
+        status: v.status,
+        version: (old?.version ?? 0) + 1,
+        updated_at: at,
+      };
+      put("library_bundle_links", after);
+      result = { id: entityId, version: after.version };
     } else if (body.type === "saveWhiteboard") {
       const v = boardSaveSchema.parse(p),
         boardId = v.boardId ?? WHITEBOARD_ID;

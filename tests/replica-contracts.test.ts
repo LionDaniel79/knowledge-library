@@ -42,7 +42,7 @@ it("includes every owner application table and its complete safe column set", as
     (t) => !serverOnly.has(t) && !t.startsWith("library_sync_"),
   );
   expect(Object.keys(syncEntities).sort()).toEqual(tables.sort());
-  expect(tables).toHaveLength(39); // Includes the previously added whiteboard table.
+  expect(tables).toHaveLength(41); // Includes the previously added whiteboard table.
   for (const table of tables) {
     const fields = rows
       .filter((r) => r.table_name === table)

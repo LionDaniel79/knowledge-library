@@ -3,6 +3,7 @@ import { categoryName } from "../catalog";
 import { noteKindNames } from "../note-kinds";
 import { relationNames, type Relation } from "../knowledge";
 import { formatNames, type Format } from "../domain";
+import { bundleRelations } from "../thought-bundles";
 
 export interface ConflictContext {
   bookTitles: Record<string, string>;
@@ -52,6 +53,9 @@ const states: Record<string, string> = {
   restored: "복원",
 };
 const operations: Record<string, string> = {
+  saveMemoBundle: "생각 묶음 저장",
+  archiveMemoBundle: "생각 묶음 보관해제",
+  saveBundleLink: "묶음 연결 저장",
   addNote: "메모 추가",
   editNote: "메모 수정",
   deleteNote: "메모 삭제",
@@ -200,7 +204,39 @@ export function presentConflict(review: ReviewInput) {
       add("board_version", "보드 버전", r.writingBoard?.version ?? 0);
       return result;
     }
-    if (entity === "library_whiteboards" || type === "saveWhiteboard") {
+    if (entity === "library_memo_bundles") {
+      add("title", "생각 묶음 이름", r.title);
+      add("description", "정리 내용", r.description);
+      add(
+        "note_ids",
+        "담긴 메모",
+        Array.isArray(r.note_ids)
+          ? r.note_ids
+              .map((id: string) => context.sourceTitles["note:" + id] || "메모")
+              .join(", ")
+          : "없음",
+      );
+      add("archived_at", "보관 상태", r.archived_at ? "보관해제" : "사용 중");
+    } else if (entity === "library_bundle_links") {
+      add(
+        "source_id",
+        "출발 생각 묶음",
+        context.sourceTitles["bundle:" + r.source_id] || "생각 묶음",
+      );
+      add(
+        "target_id",
+        "도착 생각 묶음",
+        context.sourceTitles["bundle:" + r.target_id] || "생각 묶음",
+      );
+      add(
+        "relation",
+        "묶음 관계",
+        bundleRelations[r.relation as keyof typeof bundleRelations] ||
+          r.relation,
+      );
+      add("reason", "연결 이유", r.reason);
+      add("status", "연결 상태", r.status === "accepted" ? "연결됨" : "해제됨");
+    } else if (entity === "library_whiteboards" || type === "saveWhiteboard") {
       const data = row(r.data),
         positions = Object.values(row(data.positions))
           .map(row)

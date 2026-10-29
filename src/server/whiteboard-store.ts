@@ -214,7 +214,21 @@ export async function readWhiteboard(
           )
         ).rows[0]
       : null;
+    const bundles = (
+      await tx.query(
+        "SELECT id,title,description,note_ids,version,archived_at,created_at,updated_at FROM library_memo_bundles WHERE owner_id=$1 AND archived_at IS NULL ORDER BY created_at,id",
+        [owner],
+      )
+    ).rows;
+    const bundleLinks = (
+      await tx.query(
+        "SELECT id,source_id,target_id,relation,reason,status,version FROM library_bundle_links WHERE owner_id=$1",
+        [owner],
+      )
+    ).rows;
     return {
+      bundles,
+      bundleLinks,
       board: row ?? null,
       notes,
       books,

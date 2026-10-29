@@ -105,8 +105,9 @@ describe("memo box", () => {
     const model = buildMemoBox(s);
     expect(model.connected.map((n) => n.id)).toEqual(["a", "b"]);
     expect(model.noteTopics.get("a")).toEqual(["u"]);
-    expect(model.topicPairs).toHaveLength(1);
-    expect(model.topicPairs[0].connectionIds).toEqual(["ok"]);
+    expect(model.groups).toHaveLength(1);
+    expect(model.groups[0].connections.map((c) => c.id)).toEqual(["ok"]);
+    expect(model).not.toHaveProperty("topicPairs");
   });
   it("includes topic-group board links without treating manual groups as topics", () => {
     const board = emptyBoard();
@@ -122,7 +123,7 @@ describe("memo box", () => {
       memberships: [],
       connections: [],
     } as unknown as WhiteboardSnapshot);
-    expect(model.topicPairs).toHaveLength(1);
-    expect(model.topicPairs[0].board).toBe(true);
+    expect(model.groups).toHaveLength(0);
+    expect(model).not.toHaveProperty("topicPairs");
   });
 });

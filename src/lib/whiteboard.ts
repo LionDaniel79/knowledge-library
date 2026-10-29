@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { Book, Note } from "./domain";
 import { contentHash } from "./thought-map/records";
 import { containsSearchField } from "./search-fields";
+import type { MemoBundle, BundleLink } from "./thought-bundles";
+import { materialNoteIds } from "./thought-bundle-board";
 
 export const WHITEBOARD_ID = "00000000-0000-4000-8000-000000000001";
 export const NOTE_WIDTH = 220,
@@ -14,7 +16,7 @@ const point = z
   .strict();
 const groupId = z
   .string()
-  .regex(/^(unclassified|(topic|manual):[a-f0-9-]{36})$/i);
+  .regex(/^(unclassified|(topic|manual|bundle):[a-f0-9-]{36})$/i);
 export const boardFilterSchema = z
   .object({
     topics: z
@@ -155,6 +157,8 @@ export function publicBoardConnection(
   ) as unknown as BoardConnection;
 }
 export interface WhiteboardSnapshot {
+  bundles?: MemoBundle[];
+  bundleLinks?: BundleLink[];
   board: { id: string; data: Board; version: number } | null;
   resolutionToken?: string;
   notes: Note[];
@@ -254,7 +258,10 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
 }
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
   const hidden = new Set(b.hiddenNoteIds ?? []);
-  const chapterItems = b.writing?.chapters.flatMap((c) => c.items) ?? [];
+  const chapterItems =
+    b.writing?.chapters.flatMap((c) =>
+      c.items.map((i) => ({ ...i, noteIds: materialNoteIds(i, source) })),
+    ) ?? [];
   const chapterNotes = new Set(chapterItems.flatMap((i) => i.noteIds));
   const chapterGrouped = new Set(
     chapterItems.filter((i) => i.groupIds.length).flatMap((i) => i.noteIds),
@@ -269,7 +276,12 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
     ),
     notes = new Map(source.notes.map((n) => [n.id, n])),
     assigned = new Map(source.notes.map((n) => [n.id, noteTopics(source, n)])),
-    manual = new Set(b.groups.flatMap((g) => g.noteIds)),
+    manual = new Set([
+      ...b.groups.flatMap((g) => g.noteIds),
+      ...(source.bundles ?? [])
+        .filter((g) => !g.archived_at)
+        .flatMap((g) => g.note_ids),
+    ]),
     definitions: { id: string; title: string; ids: string[] }[] = b.groups.map(
       (g) => ({
         id: g.id,
@@ -277,6 +289,13 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
         ids: g.noteIds.filter((id) => notes.has(id)),
       }),
     );
+  for (const bundle of source.bundles ?? [])
+    if (!bundle.archived_at)
+      definitions.push({
+        id: "bundle:" + bundle.id,
+        title: bundle.title,
+        ids: bundle.note_ids.filter((id) => notes.has(id)),
+      });
   const chapterGroupIds = new Set(chapterItems.flatMap((i) => i.groupIds));
   if (!b.filter.topics.length || chapterGroupIds.size) {
     for (const t of source.topics)
@@ -372,6 +391,24 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
       };
     nodes.push({ id, noteId: note.id, groupId: null, note, ...p });
   });
+  const bundled = new Set((source.bundles ?? []).flatMap((g) => g.note_ids));
+  for (const chapter of b.writing?.chapters ?? [])
+    for (const item of chapter.items.filter((i) => !i.groupIds.length))
+      for (const [index, noteId] of item.noteIds.entries()) {
+        const note = notes.get(noteId);
+        if (!note || !bundled.has(noteId) || !visible.has(noteId)) continue;
+        const id = `chapter:${chapter.id}:${item.id}::${noteId}`;
+        nodes.push({
+          id,
+          noteId,
+          groupId: null,
+          note,
+          ...(b.positions[id] ?? {
+            x: chapter.x + 20 + (index % 3) * 238,
+            y: chapter.y + 195 + Math.floor(index / 3) * 190,
+          }),
+        });
+      }
   return { groups, nodes };
 }
 export function dropTarget(nodes: BoardNode[], moving: BoardNode, p: Point) {

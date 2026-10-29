@@ -1526,7 +1526,9 @@ test("searchable multi-facets apply only on search and search the complete note 
   const f = await mount(page);
   await choose(page, "태그", "상담");
   await choose(page, "태그", "철학");
-  await page.getByRole("textbox", { name: "메모 제목·내용 검색" }).fill("수용");
+  await page
+    .getByRole("searchbox", { name: "메모 제목·내용 검색" })
+    .fill("수용");
   await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByText("1개 메모", { exact: true })).toBeVisible();
@@ -1547,7 +1549,7 @@ test("pending facet choices survive a background board refresh until explicit se
   await choose(page, "분야", "철학·심리학");
   await choose(page, "도서", "상담 도서 · 상담 저자");
   await page
-    .getByRole("textbox", { name: "메모 제목·내용 검색", exact: true })
+    .getByRole("searchbox", { name: "메모 제목·내용 검색", exact: true })
     .fill("수용");
   f.state.board = {
     id: "00000000-0000-4000-8000-000000000001",
@@ -1582,7 +1584,7 @@ test("pending facet choices survive a background board refresh until explicit se
     page.getByRole("button", { name: "도서 선택", exact: true }),
   ).toContainText("상담 도서");
   await expect(
-    page.getByRole("textbox", { name: "메모 제목·내용 검색", exact: true }),
+    page.getByRole("searchbox", { name: "메모 제목·내용 검색", exact: true }),
   ).toHaveValue("수용");
   await page.getByRole("button", { name: "태그 선택", exact: true }).click();
   await page.getByRole("textbox", { name: "태그 검색", exact: true }).fill("");
@@ -1838,9 +1840,10 @@ test("drag overlap links real note IDs and supports folding, group links, open a
   await page
     .getByRole("button", { name: "신학 묶음 선택", exact: true })
     .click();
-  await expect.poll(() => f.state.board?.data.links.length).toBe(1);
-  await page.getByRole("button", { name: "되돌리기", exact: true }).click();
-  await expect.poll(() => f.state.board?.data.links.length).toBe(0);
+  await expect(page.getByRole("status")).toContainText(
+    "먼저 각 묶음을 생각 묶음으로 저장",
+  );
+  expect(f.state.board?.data.links ?? []).toHaveLength(0);
 });
 test("a click does not link and failed saves preserve an account-scoped board draft", async ({
   page,
@@ -2047,7 +2050,7 @@ test("a draft from before a resolution is preserved for choice rather than autom
   expect(f.state.board.version).toBe(1);
   expect(f.state.board.data.filter.q).toBe("");
   await page
-    .getByRole("textbox", { name: "메모 제목·내용 검색", exact: true })
+    .getByRole("searchbox", { name: "메모 제목·내용 검색", exact: true })
     .fill("선택 전 추가 편집");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await page.evaluate(() => {

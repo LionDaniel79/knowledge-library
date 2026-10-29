@@ -1,5 +1,6 @@
 import type { Board, WhiteboardSnapshot } from "./whiteboard";
 import { buildScene } from "./whiteboard";
+import { materialNoteIds } from "./thought-bundle-board";
 import type { WritingContext } from "./assist-synthesis";
 export function writingAnalysis(
   source: WhiteboardSnapshot,
@@ -13,7 +14,7 @@ export function writingAnalysis(
   const chapters = board.writing?.chapters ?? [];
   const target = chapters.find((c) => c.id === targetChapterId);
   const assigned = new Set(
-    chapters.flatMap((c) => c.items.flatMap((i) => i.noteIds)),
+    chapters.flatMap((c) => c.items.flatMap((i) => materialNoteIds(i, source))),
   );
   const terms = [
     ...new Set(
@@ -74,7 +75,9 @@ export function writingAnalysis(
         order: c.order,
         title: c.title,
         text: c.text,
-        noteIds: [...new Set(c.items.flatMap((i) => i.noteIds))],
+        noteIds: [
+          ...new Set(c.items.flatMap((i) => materialNoteIds(i, source))),
+        ],
       })),
       visibleNoteIds: [...ids],
       candidateNoteIds: candidates.map((n) => n.id),

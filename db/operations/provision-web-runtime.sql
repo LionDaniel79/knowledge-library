@@ -17,7 +17,7 @@ GRANT SELECT, INSERT, UPDATE ON
   library_books, library_cycles, library_notes, library_operations, library_whiteboards,
   library_note_trash,
   library_annual_metrics, library_documents, library_shelves,
-  library_connections, library_research, library_research_items,
+  library_connections, library_research, library_research_items,library_memo_bundles,library_bundle_links,
   library_research_placements, library_external_links, library_book_relations,
   library_topics, library_topic_memberships, library_topic_links,
   library_thought_events, library_evolution_candidates,

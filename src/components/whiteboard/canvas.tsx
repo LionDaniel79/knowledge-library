@@ -22,6 +22,7 @@ import { relationNames, type Relation } from "@/lib/knowledge";
 import { useBoardFullscreen } from "./use-fullscreen";
 import { ChapterBox } from "./chapter-box";
 import type { WritingChapter } from "@/lib/writing-board";
+import { materialLabel } from "@/lib/thought-bundle-board";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import {
   buildConnectionLines,
@@ -533,7 +534,13 @@ export function WhiteboardCanvas({
           {(board.writing?.chapters ?? []).map((c) => (
             <ChapterBox
               key={c.id}
-              chapter={c}
+              chapter={{
+                ...c,
+                items: c.items.map((i) => ({
+                  ...i,
+                  label: materialLabel(i, source),
+                })),
+              }}
               dx={drag?.kind === "chapter" && drag.id === c.id ? drag.dx : 0}
               dy={drag?.kind === "chapter" && drag.id === c.id ? drag.dy : 0}
               onDrag={(e) => start(e, "chapter", c.id)}

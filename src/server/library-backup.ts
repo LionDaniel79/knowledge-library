@@ -7,6 +7,8 @@ import { z } from "zod";
 
 // Dependency order. Never accept table names, SQL, or credentials from a backup.
 const optionalTables = [
+  "library_memo_bundles",
+  "library_bundle_links",
   "library_whiteboards",
   "library_cover_assets",
   "library_cover_mirrors",
@@ -207,6 +209,14 @@ function validateReferences(b: LibraryBackup) {
     // PDF chunks reside in the separately backed-up local index, not Postgres.
     else if (kind !== "pdf_chunk") invalid("지원하지 않는 자료 연결입니다.");
   };
+  for (const bundle of b.tables.library_memo_bundles ?? []) {
+    if (!Array.isArray(bundle.note_ids))
+      invalid("생각 묶음 메모 형식이 잘못되었습니다.");
+  }
+  for (const link of b.tables.library_bundle_links ?? []) {
+    ref("library_memo_bundles", link.source_id);
+    ref("library_memo_bundles", link.target_id);
+  }
   for (const r of b.tables.library_book_introductions ?? [])
     ref("library_books", r.book_id);
   for (const r of b.tables.library_book_exclusions ?? [])

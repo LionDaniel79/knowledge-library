@@ -19,6 +19,7 @@ import {
 } from "./whiteboard-store";
 import { noteVisibilitySchema } from "../lib/whiteboard-visibility";
 import { deleteResearchSchema } from "../lib/research";
+import { mutateThoughtBundle } from "./thought-bundles";
 
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
@@ -41,6 +42,9 @@ const command = z.object({
     "setWhiteboardNoteVisibility",
     "setWhiteboardNotesVisibility",
     "connectWhiteboardNotes",
+    "saveMemoBundle",
+    "archiveMemoBundle",
+    "saveBundleLink",
   ]),
   payload: z.unknown(),
 });
@@ -185,7 +189,19 @@ export function createKnowledgeStore(db: Database) {
         previousStatus?: string;
         deleted?: boolean;
       } = {};
-      if (c.type === "saveWhiteboard") {
+      if (
+        ["saveMemoBundle", "archiveMemoBundle", "saveBundleLink"].includes(
+          c.type,
+        )
+      ) {
+        result = await mutateThoughtBundle(
+          tx,
+          owner,
+          c.type,
+          c.payload,
+          c.entityId,
+        );
+      } else if (c.type === "saveWhiteboard") {
         result = await saveWhiteboard(tx, owner, c.payload);
       } else if (c.type === "setWhiteboardNoteVisibility") {
         const p = noteVisibilitySchema.parse(c.payload);

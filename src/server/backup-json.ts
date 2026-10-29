@@ -286,6 +286,11 @@ export function invalidBackupJsonField(
     )
       return "data_base64";
   }
+  if (
+    table === "library_memo_bundles" &&
+    !z.array(z.string().uuid()).max(5000).safeParse(row.note_ids).success
+  )
+    return "note_ids";
   for (const [field, schema] of Object.entries(fields[table] ?? {}))
     if (!schema.safeParse(row[field]).success) return field;
   return null;

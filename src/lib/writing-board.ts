@@ -10,6 +10,7 @@ import type { z } from "zod";
 import type { writingChapterSchema, writingMaterialSchema } from "./whiteboard";
 import type { ResearchItem, ResearchPlacement } from "./research";
 import { unpackOutline } from "./writing";
+import { materialNoteIds, materialLabel } from "./thought-bundle-board";
 export type WritingChapter = z.infer<typeof writingChapterSchema>;
 export type WritingMaterial = z.infer<typeof writingMaterialSchema>;
 export function addChapter(board: Board, id: string): Board {
@@ -52,6 +53,7 @@ export function placeChapterMaterials(
   });
   let y = chapter.y + 195;
   for (const item of [...chapter.items].sort(byOrder)) {
+    const currentNoteIds = materialNoteIds(item, source);
     const groups = scene.groups.filter((g) => item.groupIds.includes(g.id));
     const grouped = new Set(
       groups.flatMap((g) => g.allNodes.map((n) => n.noteId)),
@@ -62,14 +64,20 @@ export function placeChapterMaterials(
         dy = target.y - group.y;
       groupPositions[group.id] = target;
       for (const n of group.allNodes.filter((n) =>
-        item.noteIds.includes(n.noteId),
+        currentNoteIds.includes(n.noteId),
       ))
         positions[n.id] = { x: n.x + dx, y: n.y + dy };
       y += group.height + 20;
     }
-    const loose = item.noteIds.filter((id) => !grouped.has(id));
+    const loose = currentNoteIds.filter((id) => !grouped.has(id));
     loose.forEach((id, index) => {
-      const nodes = scene.nodes.filter((n) => n.noteId === id);
+      const nodes = scene.nodes.filter(
+        (n) =>
+          n.noteId === id &&
+          !n.groupId?.startsWith("bundle:") &&
+          (!n.id.startsWith("chapter:") ||
+            n.id.startsWith(`chapter:${chapter.id}:${item.id}::`)),
+      );
       const p = {
         x: chapter.x + 20 + (index % 3) * (NOTE_WIDTH + 18),
         y: y + Math.floor(index / 3) * (NOTE_HEIGHT + 24),
@@ -99,12 +107,22 @@ export function addChapterMaterial(
 ): Board {
   if (!board.writing?.chapters.some((c) => c.id === chapterId)) return board;
   const members = new Set(item.noteIds);
+  const bundleIds = item.groupIds.filter((id) => id.startsWith("bundle:"));
   const chapters = board.writing.chapters.map((c) => ({
     ...c,
     items: c.items
+      .filter(
+        (i) =>
+          !(
+            bundleIds.length && i.groupIds.some((id) => bundleIds.includes(id))
+          ),
+      )
       .map((i) => ({
         ...i,
-        noteIds: i.noteIds.filter((id) => !members.has(id)),
+        noteIds:
+          bundleIds.length || i.groupIds.some((id) => id.startsWith("bundle:"))
+            ? i.noteIds
+            : i.noteIds.filter((id) => !members.has(id)),
       }))
       .filter((i) => i.noteIds.length || i.kind === "topics"),
   }));
@@ -143,7 +161,11 @@ export function moveChapter(
     positions: Object.fromEntries(
       Object.entries(board.positions).map(([key, p]) => [
         key,
-        ids.has(key.split("::").at(-1)!) ? { x: p.x + dx, y: p.y + dy } : p,
+        groups.has(key.slice(0, key.lastIndexOf("::"))) ||
+        key.startsWith(`chapter:${id}:`) ||
+        (key.startsWith("note::") && ids.has(key.split("::").at(-1)!))
+          ? { x: p.x + dx, y: p.y + dy }
+          : p,
       ]),
     ),
     groupPositions: Object.fromEntries(
@@ -194,8 +216,11 @@ export function exportWritingBoard(
             .slice()
             .sort(byOrder)
             .flatMap((item) => [
-              heading(3, `${chapter.order}.${item.order} ${item.label}`),
-              ...item.noteIds.map((id) => {
+              heading(
+                3,
+                `${chapter.order}.${item.order} ${materialLabel(item, source)}`,
+              ),
+              ...materialNoteIds(item, source).map((id) => {
                 const note = notes.get(id);
                 if (!note) return "[원본 메모를 찾을 수 없습니다.]";
                 const book = note.bookId ? books.get(note.bookId) : null;

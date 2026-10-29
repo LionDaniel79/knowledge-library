@@ -10,12 +10,16 @@ import { usePagedResource } from "../use-paged-resource";
 import { FacetPicker } from "./facet-picker";
 import { WhiteboardCanvas } from "./canvas";
 import { HiddenWhiteboardNotes } from "./hidden-notes";
-import { connectedMemoGroups, buildMemoBox } from "@/lib/memo-box";
+import { connectedMemoGroups } from "@/lib/memo-box";
 import {
   revealMemoGroup,
   connectionGroupsForView,
 } from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
+import { BundleWorkspace } from "../memo-box/bundle-workspace";
+import { Modal } from "../modal";
+import { bundleBoard } from "@/lib/thought-bundle-board";
+import { activeBundleLinks, bundleRelations } from "@/lib/thought-bundles";
 import { WritingTools } from "./writing-tools";
 import { WritingAssist } from "./writing-assist";
 import {
@@ -35,7 +39,6 @@ import {
   moveNote,
   moveGroup,
   mergeNotes,
-  connectGroups,
   connectionForPair,
   seedBoard,
   arrangeSearchResults,
@@ -111,9 +114,19 @@ export function WhiteboardPanel({
       kind: "note" | "group";
       id: string;
     } | null>(null),
-    [undo, setUndo] = useState<{ board: Board; link?: LinkUndo } | null>(null),
+    [undo, setUndo] = useState<{
+      board: Board;
+      link?: LinkUndo;
+      bundle?: { type: string; payload: unknown };
+    } | null>(null),
     [localConnections, setLocalConnections] = useState<BoardConnection[]>([]),
-    [removedTopicLinks, setRemovedTopicLinks] = useState<string[]>([]);
+    [bundleEditor, setBundleEditor] = useState<{
+      mode: "bundles" | "links";
+      bundleId?: string;
+      linkId?: string;
+      seed?: string[];
+      legacyGroup?: string;
+    } | null>(null);
   const current = useRef(board),
     suspendedRef = useRef(suspended),
     version = useRef(0),
@@ -283,7 +296,14 @@ export function WhiteboardPanel({
     return saveTask.current;
   };
   function update(next: Board, before?: Board) {
-    next = { ...next, hiddenNoteIds: current.current.hiddenNoteIds };
+    next = {
+      ...next,
+      hiddenNoteIds: current.current.hiddenNoteIds,
+      links: next.links.filter(
+        (l) =>
+          !(l.source.startsWith("bundle:") && l.target.startsWith("bundle:")),
+      ),
+    };
     current.current = next;
     setBoard(next);
     dirty.current = true;
@@ -446,115 +466,8 @@ export function WhiteboardPanel({
       ...resource.data,
       notes: [...notes.values()],
       connections: [...map.values()],
-      topicLinks: resource.data.topicLinks?.filter(
-        (l) => !removedTopicLinks.includes(l.id),
-      ),
     };
-  }, [resource.data, localConnections, legacyNotes, removedTopicLinks]);
-  const topicModel = useMemo(
-    () =>
-      source
-        ? buildMemoBox({
-            ...source,
-            board: { id: boardId, data: board, version: version.current },
-          })
-        : null,
-    [source, board, boardId],
-  );
-  async function showTopicPair(
-    pair: NonNullable<typeof topicModel>["topicPairs"][number],
-  ) {
-    if (!source || !topicModel) return;
-    const ids = source.notes
-      .filter((n) =>
-        (topicModel.noteTopics.get(n.id) ?? []).some(
-          (t) => t === pair.source || t === pair.target,
-        ),
-      )
-      .map((n) => n.id);
-    const before = current.current;
-    const next = {
-      ...before,
-      hiddenNoteIds: (before.hiddenNoteIds ?? []).filter(
-        (id) => !ids.includes(id),
-      ),
-      filter: { ...emptyBoard().filter, topics: [pair.source, pair.target] },
-    };
-    await updateRevealing(next, before);
-    setFilter(next.filter);
-    setConnectionView(null);
-    setSearchRevision((n) => n + 1);
-  }
-  async function removeTopicPair(
-    pair: NonNullable<typeof topicModel>["topicPairs"][number],
-  ) {
-    if (!source || linkBusy) return;
-    setError("");
-    setLinkBusy(true);
-    try {
-      for (const id of pair.topicLinkIds) {
-        let link = source.topicLinks?.find((l) => l.id === id);
-        if (!link?.version) {
-          const r = await libraryRequest("/api/thought-map", {
-              cache: "no-store",
-            }),
-            j = await r.json();
-          if (!r.ok) throw Error(j.error);
-          link = j.topicLinks.find((l: { id: string }) => l.id === id);
-        }
-        if (!link?.version) throw Error("주제 연결을 다시 불러와 주세요.");
-        const r = await libraryRequest("/api/thought-map", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              requestId: crypto.randomUUID(),
-              type: "decideTopicLink",
-              payload: {
-                id,
-                expectedVersion: link.version,
-                status: "rejected",
-              },
-            }),
-          }),
-          j = await r.json();
-        if (!r.ok) throw Error(j.error);
-        setRemovedTopicLinks((old) => [...old, id]);
-      }
-      for (const id of pair.connectionIds) {
-        const c = source.connections.find((c) => c.id === id);
-        if (!c || c.status !== "accepted") continue;
-        const result = await send("editConnection", {
-          id,
-          expectedVersion: c.version,
-          status: "rejected",
-          relation: c.relation,
-          reason: c.reason,
-        });
-        patchConnection({ ...c, version: result.version, status: "rejected" });
-      }
-      if (pair.board) {
-        const before = current.current;
-        update(
-          {
-            ...before,
-            links: before.links.filter(
-              (l) =>
-                !(
-                  [l.source, l.target].includes("topic:" + pair.source) &&
-                  [l.source, l.target].includes("topic:" + pair.target)
-                ),
-            ),
-          },
-          before,
-        );
-      }
-      setMessage("주제 연결을 해제했습니다.");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLinkBusy(false);
-    }
-  }
+  }, [resource.data, localConnections, legacyNotes]);
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -582,12 +495,21 @@ export function WhiteboardPanel({
   );
   const hasFocus = connectionView !== null;
   const displaySource = useMemo(
-    () => (source && hasFocus ? { ...source, notes: focusNotes } : source),
+    () =>
+      source && hasFocus
+        ? { ...source, notes: focusNotes, bundles: [], bundleLinks: [] }
+        : source,
     [source, hasFocus, focusNotes],
   );
   const displayBoard = useMemo(
-    () => (hasFocus ? { ...board, filter: emptyBoard().filter } : board),
-    [board, hasFocus],
+    () =>
+      displaySource
+        ? bundleBoard(
+            displaySource,
+            hasFocus ? { ...board, filter: emptyBoard().filter } : board,
+          )
+        : board,
+    [board, hasFocus, displaySource],
   );
   function showConnection(c: BoardConnection) {
     const group = memoGroups.find((g) =>
@@ -764,6 +686,43 @@ export function WhiteboardPanel({
     }
     update(moved, before);
     if (!target) return;
+    if (target.overlap && target.node.groupId?.startsWith("bundle:")) {
+      const bundle = sourceRef.current?.bundles?.find(
+        (b) => b.id === target.node.groupId!.slice(7),
+      );
+      if (bundle) {
+        setLinkBusy(true);
+        try {
+          const result = await send("saveMemoBundle", {
+            id: bundle.id,
+            title: bundle.title,
+            description: bundle.description,
+            noteIds: [...new Set([...bundle.note_ids, node.noteId])],
+            expectedVersion: bundle.version,
+          });
+          setUndo({
+            board: before,
+            bundle: {
+              type: "saveMemoBundle",
+              payload: {
+                id: bundle.id,
+                title: bundle.title,
+                description: bundle.description,
+                noteIds: bundle.note_ids,
+                expectedVersion: result.version,
+              },
+            },
+          });
+          resource.reload();
+          setMessage("생각 묶음에 메모를 담았습니다.");
+        } catch (e) {
+          setError((e as Error).message);
+        } finally {
+          setLinkBusy(false);
+        }
+      }
+      return;
+    }
     setLinkBusy(true);
     setError("");
     try {
@@ -810,8 +769,7 @@ export function WhiteboardPanel({
     setSelectedGroup(id);
     setSelectedNote(null);
     if (linkSource?.kind === "group") {
-      const before = current.current;
-      update(connectGroups(before, linkSource.id, id), before);
+      void connectNamedGroups(linkSource.id, id);
       setLinkSource(null);
     }
   }
@@ -850,13 +808,71 @@ export function WhiteboardPanel({
       );
       return;
     }
-    if (near) next = connectGroups(next, group.id, near);
     update(next, before);
+    if (near) void connectNamedGroups(group.id, near, before);
+  }
+  async function connectNamedGroups(
+    a: string,
+    b: string,
+    undoBoard = current.current,
+  ) {
+    if (a === b || linkBusy) return;
+    if (!a.startsWith("bundle:") || !b.startsWith("bundle:")) {
+      setMessage("먼저 각 묶음을 생각 묶음으로 저장한 뒤 연결해 주세요.");
+      return;
+    }
+    const ids = [a.slice(7), b.slice(7)].sort();
+    const old = sourceRef.current?.bundleLinks?.find(
+      (l) => l.source_id === ids[0] && l.target_id === ids[1],
+    );
+    if (old?.status === "accepted") {
+      setBundleEditor({ mode: "links", linkId: old.id });
+      return;
+    }
+    setLinkBusy(true);
+    setError("");
+    try {
+      const result = await send("saveBundleLink", {
+        ...(old ? { id: old.id } : {}),
+        sourceId: ids[0],
+        targetId: ids[1],
+        expectedVersion: old?.version ?? 0,
+        relation: old?.relation ?? "related",
+        reason: old?.reason ?? "",
+        status: "accepted",
+      });
+      setUndo({
+        board: undoBoard,
+        bundle: {
+          type: "saveBundleLink",
+          payload: {
+            id: result.id,
+            sourceId: ids[0],
+            targetId: ids[1],
+            relation: old?.relation ?? "related",
+            reason: old?.reason ?? "",
+            status: old?.status ?? "rejected",
+            expectedVersion: result.version,
+          },
+        },
+      });
+      resource.reload();
+      setBundleEditor({ mode: "links", linkId: result.id });
+      setMessage("생각 묶음을 연결했습니다.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLinkBusy(false);
+    }
   }
   async function undoLast() {
     if (!undo || linkBusy) return;
     setLinkBusy(true);
     try {
+      if (undo.bundle) {
+        await send(undo.bundle.type, undo.bundle.payload);
+        resource.reload();
+      }
       if (undo.link) {
         const l = undo.link;
         const c = sourceRef.current?.connections.find((c) => c.id === l.id);
@@ -912,6 +928,47 @@ export function WhiteboardPanel({
   }
   async function removeGroupConnection(sourceId: string, targetId: string) {
     if (linkBusy) return;
+    if (sourceId.startsWith("bundle:") && targetId.startsWith("bundle:")) {
+      const ids = [sourceId.slice(7), targetId.slice(7)].sort(),
+        link = sourceRef.current?.bundleLinks?.find(
+          (l) => l.source_id === ids[0] && l.target_id === ids[1],
+        );
+      if (!link) return;
+      setLinkBusy(true);
+      try {
+        const result = await send("saveBundleLink", {
+          id: link.id,
+          sourceId: link.source_id,
+          targetId: link.target_id,
+          relation: link.relation,
+          reason: link.reason,
+          status: "rejected",
+          expectedVersion: link.version,
+        });
+        setUndo({
+          board: current.current,
+          bundle: {
+            type: "saveBundleLink",
+            payload: {
+              id: link.id,
+              sourceId: link.source_id,
+              targetId: link.target_id,
+              relation: link.relation,
+              reason: link.reason,
+              status: "accepted",
+              expectedVersion: result.version,
+            },
+          },
+        });
+        resource.reload();
+        setMessage("묶음 연결을 끊었습니다.");
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLinkBusy(false);
+      }
+      return;
+    }
     setLinkBusy(true);
     setError("");
     if (timer.current) clearTimeout(timer.current);
@@ -1006,6 +1063,13 @@ export function WhiteboardPanel({
     );
   const { filtered, scene, labels } = derived;
   const selected = board.groups.find((g) => g.id === selectedGroup);
+  const selectedBundle = source.bundles?.find(
+    (b) => "bundle:" + b.id === selectedGroup,
+  );
+  const namedLinks = activeBundleLinks(
+    source.bundles ?? [],
+    source.bundleLinks ?? [],
+  );
   return (
     <section
       className="whiteboard-panel"
@@ -1080,6 +1144,30 @@ export function WhiteboardPanel({
         </button>
       </form>
       <div className="wb-actions">
+        <button
+          type="button"
+          disabled={linkBusy}
+          onClick={() =>
+            setBundleEditor({
+              mode: "bundles",
+              ...(selectedBundle ? { bundleId: selectedBundle.id } : {}),
+              seed: selectedNote
+                ? [selectedNote]
+                : (scene.groups
+                    .find((g) => g.id === selectedGroup)
+                    ?.allNodes.map((n) => n.noteId) ?? []),
+              legacyGroup: selected?.id,
+            })
+          }
+        >
+          {selectedBundle
+            ? "생각 묶음 편집"
+            : selectedNote
+              ? "생각 묶음에 담기"
+              : selectedGroup
+                ? "생각 묶음으로 저장"
+                : "생각 묶음 관리"}
+        </button>
         <strong>
           {writingTitle
             ? new Set(scene.nodes.map((n) => n.noteId)).size
@@ -1409,7 +1497,7 @@ export function WhiteboardPanel({
         <summary>
           <span className="wb-connection-counts">
             연결 관리 · 메모 {availableConnections.length} · 묶음{" "}
-            {board.links.length} · 주제 {topicModel?.topicPairs.length ?? 0}
+            {board.links.length} · 생각 묶음 연결 {namedLinks.length}
           </span>
           <span className="wb-connection-actions">
             <button
@@ -1486,23 +1574,28 @@ export function WhiteboardPanel({
             </button>
           </div>
         ))}
-        {topicModel?.topicPairs.map((p) => (
-          <div key={"topic:" + p.id}>
+        {namedLinks.map((l) => (
+          <div key={"bundle:" + l.id}>
             <button
               type="button"
               className="wb-connection-select"
-              disabled={linkBusy}
-              onClick={() => showTopicPair(p)}
+              onClick={() => setBundleEditor({ mode: "links", linkId: l.id })}
             >
-              {topicModel.topics.get(p.source)?.name} ↔{" "}
-              {topicModel.topics.get(p.target)?.name} <small>주제 연결</small>
+              {source.bundles?.find((b) => b.id === l.source_id)?.title} ↔{" "}
+              {source.bundles?.find((b) => b.id === l.target_id)?.title}{" "}
+              <small>{bundleRelations[l.relation]}</small>
             </button>
             <button
               type="button"
               disabled={linkBusy}
-              onClick={() => void removeTopicPair(p)}
+              onClick={() =>
+                void removeGroupConnection(
+                  "bundle:" + l.source_id,
+                  "bundle:" + l.target_id,
+                )
+              }
             >
-              주제 연결 해제
+              묶음 연결 해제
             </button>
           </div>
         ))}
@@ -1527,6 +1620,96 @@ export function WhiteboardPanel({
         onOpen={(id) => onOpen("note", id)}
         onShow={showHiddenNotes}
       />
+      {bundleEditor && (
+        <Modal
+          title={bundleEditor.mode === "bundles" ? "생각 묶음" : "묶음 연결"}
+          onClose={() => setBundleEditor(null)}
+        >
+          <BundleWorkspace
+            key={JSON.stringify(bundleEditor)}
+            source={source}
+            mode={bundleEditor.mode}
+            initialBundleId={bundleEditor.bundleId}
+            initialLinkId={bundleEditor.linkId}
+            initialNoteIds={bundleEditor.seed}
+            onSaved={resource.reload}
+            onOpen={onOpen}
+            onStored={async (id) => {
+              if (
+                bundleEditor.legacyGroup &&
+                current.current.groups.some(
+                  (g) => g.id === bundleEditor.legacyGroup,
+                )
+              ) {
+                const before = current.current;
+                const oldId = bundleEditor.legacyGroup,
+                  newId = "bundle:" + id;
+                const mappedLinks = before.links.map((l) => ({
+                  source: l.source === oldId ? newId : l.source,
+                  target: l.target === oldId ? newId : l.target,
+                }));
+                try {
+                  for (const link of mappedLinks.filter(
+                    (l) =>
+                      l.source.startsWith("bundle:") &&
+                      l.target.startsWith("bundle:"),
+                  )) {
+                    const [a, b] = [
+                      link.source.slice(7),
+                      link.target.slice(7),
+                    ].sort();
+                    const existing = sourceRef.current?.bundleLinks?.find(
+                      (l) => l.source_id === a && l.target_id === b,
+                    );
+                    if (existing?.status === "accepted") continue;
+                    await send("saveBundleLink", {
+                      ...(existing ? { id: existing.id } : {}),
+                      sourceId: a,
+                      targetId: b,
+                      relation: existing?.relation ?? "related",
+                      reason: existing?.reason ?? "기존 보드 묶음 연결",
+                      status: "accepted",
+                      expectedVersion: existing?.version ?? 0,
+                    });
+                  }
+                  update(
+                    {
+                      ...before,
+                      groupPositions: {
+                        ...before.groupPositions,
+                        ...(!before.groupPositions[newId] &&
+                        before.groupPositions[oldId]
+                          ? { [newId]: before.groupPositions[oldId] }
+                          : {}),
+                      },
+                      positions: Object.fromEntries(
+                        Object.entries(before.positions).map(([key, value]) => [
+                          key.startsWith(oldId + "::")
+                            ? newId + key.slice(oldId.length)
+                            : key,
+                          value,
+                        ]),
+                      ),
+                      collapsed: before.collapsed.map((group) =>
+                        group === oldId ? newId : group,
+                      ),
+                      groups: before.groups.filter(
+                        (g) => g.id !== bundleEditor.legacyGroup,
+                      ),
+                      links: mappedLinks,
+                    },
+                    before,
+                  );
+                  setUndo(null);
+                  resource.reload();
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }
+            }}
+          />
+        </Modal>
+      )}
     </section>
   );
 }

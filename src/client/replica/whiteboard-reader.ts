@@ -17,6 +17,8 @@ const sources: SyncEntity[] = [
   "library_topic_memberships",
   "library_connections",
   "library_topic_links",
+  "library_memo_bundles",
+  "library_bundle_links",
 ];
 export function createWhiteboardReader(
   storage: ReplicaStorage,
@@ -63,6 +65,10 @@ export function createWhiteboardReader(
         cached = {
           token,
           value: {
+            bundles: (await reader.all("library_memo_bundles")).filter(
+              (b) => !b.archived_at,
+            ) as any,
+            bundleLinks: (await reader.all("library_bundle_links")) as any,
             notes,
             books: (await reader.all("library_books"))
               .filter((b) => !excluded.has(b.id))

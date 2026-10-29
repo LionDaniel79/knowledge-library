@@ -179,99 +179,20 @@ async function mount(page: Page, savedTab = "topics") {
   return { source, commands, notes, topics };
 }
 
-test("connected topics use a compact selectable list with a separate detail panel", async ({
+test("legacy classification and board-topic connections remain stored without appearing as thought-bundle links", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await mount(page);
-  const list = page.locator(".memo-topic-list"),
-    detail = page.locator(".memo-topic-detail");
-  await expect(list.getByRole("button")).toHaveCount(1);
-  await expect(detail.getByRole("heading", { level: 3 })).toHaveCount(0);
-  await list.getByRole("button").click();
-  await expect(detail.getByRole("heading", { level: 3 })).toBeVisible();
-  const left = (await list.boundingBox())!,
-    right = (await detail.boundingBox())!;
-  expect(left.x + left.width).toBeLessThan(right.x);
-  await detail.getByRole("button", { name: "두 주제에 기록 남기기" }).click();
-  expect(
-    await page.evaluate(() => (window as any).created.topicIds),
-  ).toHaveLength(2);
-});
-
-test("disconnects each actual source with its version and preserves the original notes", async ({
-  page,
-}) => {
-  const f = await mount(page),
-    list = page.locator(".memo-topic-list"),
-    detail = page.locator(".memo-topic-detail");
-  await list.getByRole("button").click();
-  await detail
-    .getByRole("button", { name: "화이트보드 연결 끊기", exact: true })
-    .click();
-  await expect.poll(() => f.source.board.data.links.length).toBe(0);
-  await expect(list.getByRole("button")).toHaveCount(1);
-  await detail
-    .getByRole("button", { name: "주제 연결 끊기", exact: true })
-    .click();
-  await expect.poll(() => f.source.topicLinks[0].status).toBe("rejected");
-  await expect(list.getByRole("button")).toHaveCount(1);
-  await detail
-    .getByRole("button", { name: "메모 연결 끊기", exact: true })
-    .click();
-  await expect(list.getByRole("button")).toHaveCount(0);
-  expect(f.commands).toMatchObject([
-    {
-      path: "/api/knowledge",
-      type: "saveWhiteboard",
-      payload: { boardId: f.source.board.id, expectedVersion: 7 },
-    },
-    {
-      path: "/api/thought-map",
-      type: "decideTopicLink",
-      payload: {
-        id: f.source.topicLinks[0].id,
-        expectedVersion: 3,
-        status: "rejected",
-      },
-    },
-    {
-      path: "/api/knowledge",
-      type: "editConnection",
-      payload: {
-        id: f.source.connections[0].id,
-        expectedVersion: 4,
-        status: "rejected",
-        relation: "related",
-        reason: "메모에서 발견한 연결",
-      },
-    },
-  ]);
-  expect(f.notes.map((note) => note.content)).toEqual([
-    "첫 메모의 원문을 그대로 보존합니다",
-    "둘째 메모의 원문을 그대로 보존합니다",
-  ]);
-});
-
-test("selected topic details fit a narrow screen and expose related memo text", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await mount(page);
-  await page.locator(".memo-topic-list").getByRole("button").click();
-  await page
-    .locator(".memo-topic-detail")
-    .locator(".memo-group-note summary")
-    .first()
-    .click();
+  const f = await mount(page);
   await expect(
-    page.getByText("첫 메모의 원문을 그대로 보존합니다", { exact: true }),
+    page.getByRole("button", { name: "새 묶음 연결", exact: true }),
   ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  await expect(
+    page.locator(".bundle-workspace .memo-box-list > button"),
+  ).toHaveCount(0);
+  expect(f.source.board.data.links).toHaveLength(1);
+  expect(f.source.topicLinks).toHaveLength(1);
+  expect(f.source.connections).toHaveLength(1);
+  expect(f.commands).toHaveLength(0);
 });
 
 test("a saved legacy writing tab falls back to My Records and has no nested writing entry", async ({
@@ -282,7 +203,8 @@ test("a saved legacy writing tab falls back to My Records and has no nested writ
   await expect(tabs.getByRole("button")).toHaveText([
     "내 기록",
     "연결된 메모",
-    "연결된 주제",
+    "생각 묶음",
+    "묶음 연결",
   ]);
   await expect(tabs.locator("button.primary")).toHaveText("내 기록");
 });

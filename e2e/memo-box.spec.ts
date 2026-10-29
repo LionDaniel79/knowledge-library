@@ -229,7 +229,8 @@ test("My records is the first memo-box tab and retains its filters and new-note 
   await expect(tabs.getByRole("button")).toHaveText([
     "내 기록",
     "연결된 메모",
-    "연결된 주제",
+    "생각 묶음",
+    "묶음 연결",
   ]);
   await expect(
     page.getByRole("button", { name: "종류 선택", exact: true }),
@@ -322,33 +323,19 @@ for (const width of [390, 1280])
     });
     expect(saved.payload.title).toBe("");
   });
-test("topic pairs edit details and create a new thought classified into both topics", async ({
+test("classification topics and memo connections do not create bundle relationships", async ({
   page,
 }) => {
   const f = await mount(page);
   await page.getByRole("button", { name: "메모 상자", exact: true }).click();
-  await page.getByRole("button", { name: "연결된 주제", exact: true }).click();
-  await page.locator(".memo-topic-list > button").first().click();
-  await page.getByRole("button", { name: "공감 수정", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "주제 수정" });
-  await dialog.getByLabel("주제 설명").fill("공감의 의미를 계속 검토");
-  await dialog.getByRole("button", { name: "주제 저장", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(
-    f.commands.find((c) => c.type === "upsertTopic").payload,
-  ).toMatchObject({
-    id: f.topics[0].id,
-    expectedVersion: 1,
-    description: "공감의 의미를 계속 검토",
-  });
-  await page.getByRole("button", { name: "두 주제에 기록 남기기" }).click();
-  await page.locator(".note-topic-field summary").click();
+  await page.getByRole("button", { name: "묶음 연결", exact: true }).click();
   await expect(
-    page.getByRole("checkbox", { name: "공감", exact: true }),
-  ).toBeChecked();
+    page.getByRole("button", { name: "새 묶음 연결", exact: true }),
+  ).toBeVisible();
+  expect(f.commands).toHaveLength(0);
   await expect(
-    page.getByRole("checkbox", { name: "경계", exact: true }),
-  ).toBeChecked();
+    page.locator(".bundle-workspace .memo-box-list > button"),
+  ).toHaveCount(0);
 });
 test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
   page,

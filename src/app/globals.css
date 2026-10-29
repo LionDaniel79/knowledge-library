@@ -5928,3 +5928,68 @@ textarea {
     flex-wrap: wrap;
   }
 }
+.bundle-workspace {
+  min-width: 0;
+}
+.bundle-workspace fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.bundle-workspace label {
+  min-width: 0;
+}
+.bundle-workspace input:not([type="checkbox"]),
+.bundle-workspace select,
+.bundle-workspace textarea {
+  width: 100%;
+  min-width: 0;
+}
+.bundle-note-picker {
+  max-height: 19rem;
+  overflow-y: auto;
+  border-block: 1px solid var(--line, #dce2d8);
+  padding-block: 0.35rem;
+}
+.bundle-note-picker label {
+  display: flex;
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.35rem;
+}
+.bundle-note-picker input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+}
+.bundle-note-picker small {
+  display: block;
+  color: #617067;
+  overflow-wrap: anywhere;
+}
+.bundle-members {
+  margin-block: 0.6rem;
+  border-block: 1px solid #e1e6dc;
+  padding: 0.5rem 0;
+}
+.bundle-member {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.bundle-member > button:first-child {
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bundle-member > button {
+  padding: 0.35rem 0.5rem;
+}
+.bundle-workspace .memo-box-list > button {
+  display: grid;
+  gap: 0.25rem;
+  text-align: left;
+}
