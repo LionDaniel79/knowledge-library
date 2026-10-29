@@ -9,7 +9,13 @@ import {
   formatStorageBytes,
 } from "@/client/replica/device";
 import { syncLabel } from "./sync-status";
-export function SyncSettings({ onClose }: { onClose: () => void }) {
+export function SyncSettings({
+  onClose,
+  onError,
+}: {
+  onClose: () => void;
+  onError?: (error: Error) => void;
+}) {
   const replica = useReplicaOptional(),
     [capacity, setCapacity] = useState<Awaited<
       ReturnType<typeof readStorageStatus>
@@ -62,17 +68,12 @@ export function SyncSettings({ onClose }: { onClose: () => void }) {
         ["preparing", "downloading", "checking", "pulling", "pushing"].includes(
           status.phase,
         ));
-  async function sync(rebuild = false) {
-    if (!replica) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await replica.runtime.sync({ reason: "manual", rebuild });
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "다시 시도해 주세요.");
-    } finally {
-      setBusy(false);
-    }
+  function sync(rebuild = false) {
+    if (!replica || working) return;
+    void replica.runtime.sync({ reason: "manual", rebuild }).catch((error) => {
+      onError?.(error instanceof Error ? error : Error("다시 시도해 주세요."));
+    });
+    onClose();
   }
   return (
     <Modal title="기기 저장·동기화" onClose={onClose}>

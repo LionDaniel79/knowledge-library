@@ -56,7 +56,7 @@ export function createReplicaCoordinator(input: {
     },
     storage: ReplicaStorage = input.storage,
   ) {
-    update({ phase: "preparing", error: "" });
+    update({ phase: "preparing", error: "", upload: undefined });
     try {
       update(await counts());
       const saved = await storage.checkpoint();
@@ -138,6 +138,7 @@ export function createReplicaCoordinator(input: {
         update({ phase: "pushing" });
         await pushReplica({
           storage,
+          onProgress: (upload) => update({ upload }),
           send: (entry) => transport.push!(entry, options.signal),
           pull: async () => {
             const meta = await transport.meta(false, options.signal),

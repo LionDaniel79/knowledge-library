@@ -1,7 +1,7 @@
 "use client";
 import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
 import { useEffect, useState } from "react";
-import { useReplicaOptional } from "./replica/provider";
+import { useReplicaDataOptional } from "./replica/provider";
 
 export function usePagedResource<T>(
   path: string,
@@ -10,7 +10,7 @@ export function usePagedResource<T>(
   options: { keepPreviousData?: boolean } = {},
 ) {
   const keepPreviousData = options.keepPreviousData ?? false;
-  const replica = useReplicaOptional();
+  const replica = useReplicaDataOptional();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{
     path: string;

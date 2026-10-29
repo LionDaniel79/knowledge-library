@@ -3924,7 +3924,8 @@ textarea {
 .sync-summary {
   font-size: 0.78rem;
   color: var(--muted, #66736c);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .replica-opening {
   max-width: 680px;
@@ -5895,6 +5896,22 @@ textarea {
 .writing-project-list .selected {
   background: #244b3e;
   color: white;
+}
+.writing-project-list > .writing-project-row {
+  display: flex;
+  gap: 0.35rem;
+  width: min(100%, 28rem);
+  align-items: stretch;
+}
+.writing-project-row > button:first-child {
+  flex: 1;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.writing-project-row > button:last-child {
+  flex: none;
+  padding-inline: 0.65rem;
+  color: #934438;
 }
 @media (max-width: 640px) {
   .writing-tools label {

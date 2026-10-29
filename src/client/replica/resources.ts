@@ -467,7 +467,18 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
         const boardId =
           boardSaveSchema.shape.boardId.parse(p.get("boardId") ?? undefined) ??
           WHITEBOARD_ID;
-        if (p.get("view") === "visibility") {
+        if (p.get("view") === "summary") {
+          if (
+            boardId !== WHITEBOARD_ID &&
+            !(await reader.raw("library_research", boardId))
+          )
+            throw new ReplicaQueryError(404, "글감 묶음을 찾을 수 없습니다.");
+          value = {
+            id: boardId,
+            version:
+              (await reader.raw("library_whiteboards", boardId))?.version ?? 0,
+          };
+        } else if (p.get("view") === "visibility") {
           if (
             boardId !== WHITEBOARD_ID &&
             !(await reader.raw("library_research", boardId))

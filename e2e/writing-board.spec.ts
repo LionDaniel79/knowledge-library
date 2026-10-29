@@ -101,10 +101,30 @@ for (const width of [390, 1280])
         saves.push(c.payload);
         return r.fulfill({ json: { id, version } });
       }
+      if (c.type === "deleteResearch") {
+        const index = projects.findIndex((p) => p.id === c.payload.id);
+        if (index < 0)
+          return r.fulfill({
+            status: 404,
+            json: { error: "글감을 찾을 수 없습니다." },
+          });
+        projects.splice(index, 1);
+        boards.delete(c.payload.id);
+        return r.fulfill({ json: { id: c.payload.id, deleted: true } });
+      }
       return r.fulfill({ json: {} });
     });
-    await page.route("https://library.test/api/whiteboard*", (r) =>
-      r.fulfill({
+    await page.route("https://library.test/api/whiteboard*", (r) => {
+      const url = new URL(r.request().url());
+      const board = boards.get(url.searchParams.get("boardId")!);
+      if (url.searchParams.get("view") === "summary")
+        return r.fulfill({
+          json: {
+            id: url.searchParams.get("boardId"),
+            version: board?.version ?? 0,
+          },
+        });
+      return r.fulfill({
         json: {
           ...source,
           board:
@@ -112,8 +132,8 @@ for (const width of [390, 1280])
               new URL(r.request().url()).searchParams.get("boardId")!,
             ) ?? null,
         },
-      }),
-    );
+      });
+    });
     await page.route("https://library.test/api/thought-map", (r) =>
       r.fulfill({
         json: {
@@ -196,10 +216,22 @@ for (const width of [390, 1280])
     await expect
       .poll(() => saves.at(-1)?.data.writing?.chapters[0]?.items[0]?.order)
       .toBe(2);
+    await page.waitForTimeout(800);
+    const beforeCameraMoves = saves.length;
+    await page.getByRole("button", { name: "확대", exact: true }).click();
+    await page.getByRole("button", { name: "확대", exact: true }).click();
+    await page.waitForTimeout(1100);
+    expect(saves.length).toBe(beforeCameraMoves);
     await page
       .locator(".wb-zoom")
       .getByRole("button", { name: "저장", exact: true })
       .click();
+    const savedZoom = await page
+      .locator(".wb-world")
+      .evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+    await expect
+      .poll(() => saves.at(-1)?.data.writing?.viewport?.zoom)
+      .toBeCloseTo(savedZoom, 5);
     await page
       .getByRole("combobox", { name: "AI 도움 방향", exact: true })
       .selectOption("titles");
@@ -239,4 +271,36 @@ for (const width of [390, 1280])
     );
     expect(boards.size).toBe(1);
     expect(boards.has("00000000-0000-4000-8000-000000000001")).toBe(false);
+    await page
+      .getByRole("button", { name: "생각의 변화 삭제", exact: true })
+      .click();
+    const confirmation = page.getByRole("dialog", {
+      name: "글감 삭제",
+      exact: true,
+    });
+    await expect(confirmation).toContainText(
+      "원래 메모와 연결 관계는 유지됩니다.",
+    );
+    await confirmation
+      .getByRole("button", { name: "취소", exact: true })
+      .click();
+    expect(projects).toHaveLength(1);
+    await page
+      .getByRole("textbox", { name: "목차 내용" })
+      .fill("삭제 직전 수정");
+    await page
+      .getByRole("button", { name: "생각의 변화 삭제", exact: true })
+      .click();
+    await confirmation
+      .getByRole("button", { name: "삭제", exact: true })
+      .click();
+    await expect(confirmation).toHaveCount(0);
+    await expect(page.locator(".wb-canvas-shell")).toHaveCount(0);
+    await page.waitForTimeout(1200);
+    expect(boards.size).toBe(0);
+    expect(projects).toHaveLength(0);
+    expect(notes).toHaveLength(2);
+    await expect(
+      page.getByRole("button", { name: "생각의 변화 삭제", exact: true }),
+    ).toHaveCount(0);
   });

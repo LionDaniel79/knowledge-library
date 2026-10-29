@@ -1,3 +1,12 @@
+import { z } from "zod";
+export const deleteResearchSchema = z
+  .object({
+    id: z.string().uuid(),
+    expectedTitle: z.string().max(300),
+    expectedQuestion: z.string().max(2000),
+    expectedBoardVersion: z.number().int().nonnegative(),
+  })
+  .strict();
 export const researchRoles: Record<string, string> = {
   question: "질문",
   claim: "주장",

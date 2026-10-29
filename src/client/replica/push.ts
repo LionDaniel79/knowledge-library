@@ -59,6 +59,7 @@ export async function pushReplica(input: {
   storage: ReplicaStorage;
   send: (entry: OutboxEntry) => Promise<unknown>;
   pull: () => Promise<void>;
+  onProgress?: (progress: { processed: number; total: number }) => void;
 }): Promise<PushReport> {
   const { storage, send, pull } = input,
     entries = (await storage.listOutbox()).sort(
@@ -66,7 +67,13 @@ export async function pushReplica(input: {
     ),
     confirmed: string[] = [];
   const attempted = new Set<string>(),
-    batchIds = new Set(entries.map((e) => e.requestId));
+    batchIds = new Set(entries.map((e) => e.requestId)),
+    total = entries.filter(
+      (e) => !["conflict", "failed"].includes(e.state),
+    ).length;
+  const progress = () =>
+    input.onProgress?.({ processed: attempted.size, total });
+  progress();
   while (true) {
     const latest = (await storage.listOutbox()).sort(
       (a, b) => a.order - b.order || a.requestId.localeCompare(b.requestId),
@@ -129,6 +136,8 @@ export async function pushReplica(input: {
       // The request may already be committed. Keep its id and input for replay.
       await storage.putOutbox({ ...entry, state: "pending" });
       throw error;
+    } finally {
+      progress();
     }
   }
   if (confirmed.length) {

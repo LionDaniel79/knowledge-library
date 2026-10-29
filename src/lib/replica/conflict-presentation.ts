@@ -77,6 +77,7 @@ const operations: Record<string, string> = {
   connectWhiteboardNotes: "메모 연결",
   createResearch: "글감 묶음 만들기",
   updateResearch: "글감 묶음 수정",
+  deleteResearch: "글감 삭제",
   addResearchNote: "글감 추가",
   placeResearchItem: "글감 배치",
   moveResearchItems: "글감 순서 수정",
@@ -180,6 +181,23 @@ export function presentConflict(review: ReviewInput) {
       result.image = image;
     if (value == null) {
       result.title = "해당 자료 없음";
+      return result;
+    }
+    if (type === "deleteResearch") {
+      const chapters = r.writingBoard?.data?.writing?.chapters;
+      result.intent =
+        side === "pc" ? "이 글감의 목차와 배치 삭제" : "최신 글감 유지";
+      add("title", "글감 제목", r.title);
+      add("question", "글감 내용", r.question);
+      add(
+        "chapters",
+        "목차",
+        Array.isArray(chapters)
+          ? chapters.map((c: Row) => `${c.order}. ${c.title}`).join(" / ") ||
+              "없음"
+          : "없음",
+      );
+      add("board_version", "보드 버전", r.writingBoard?.version ?? 0);
       return result;
     }
     if (entity === "library_whiteboards" || type === "saveWhiteboard") {

@@ -155,6 +155,7 @@ export interface SyncStatus {
   bytes: number;
   remaining: number;
   pending: number;
+  upload?: { processed: number; total: number };
   failed: number;
   conflicts: number;
   lastSyncedAt: string | null;

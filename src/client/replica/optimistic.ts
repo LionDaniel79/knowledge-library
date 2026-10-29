@@ -32,6 +32,7 @@ import {
 import type { OutboxEntry } from "../../lib/replica/contracts";
 import { editableFields } from "../../lib/replica/command-envelope";
 import { researchSource } from "../../lib/replica/research-source";
+import { deleteResearchSchema } from "../../lib/research";
 import {
   WHITEBOARD_ID,
   boardSaveSchema,
@@ -464,6 +465,45 @@ export async function prepareOptimistic(
         question: z.string().trim().max(2000).parse(p.question),
         created_at: at,
       });
+    } else if (body.type === "deleteResearch") {
+      const p = deleteResearchSchema.parse(body.payload);
+      const research = await own("library_research", p.id);
+      if (
+        research.title !== p.expectedTitle ||
+        research.question !== p.expectedQuestion
+      )
+        throw new ReplicaQueryError(
+          409,
+          "글감의 제목이나 내용이 바뀌었습니다. 목록을 새로 확인한 뒤 삭제해 주세요.",
+        );
+      const items = (await repository.all("library_research_items")).filter(
+        (i) => i.research_id === p.id,
+      );
+      const ids = new Set(items.map((i) => i.id));
+      const placements = (
+        await repository.all("library_research_placements")
+      ).filter((p) => ids.has(p.id));
+      const board = await repository.raw("library_whiteboards", p.id);
+      if ((board?.version ?? 0) !== p.expectedBoardVersion)
+        throw new ReplicaQueryError(
+          409,
+          "글감의 목차나 배치가 변경됐습니다. 최신 글감을 확인한 뒤 다시 삭제해 주세요.",
+        );
+      entityId = p.id;
+      base = { ...research, writingBoard: board ?? null };
+      for (const row of placements) remove("library_research_placements", row);
+      for (const row of items) remove("library_research_items", row);
+      if (board) remove("library_whiteboards", board);
+      remove("library_research", research);
+      put("library_revisions", {
+        id: body.requestId,
+        entity_id: p.id,
+        action: "deleteResearch",
+        before_data: { research, items, placements, board: board ?? null },
+        after_data: null,
+        created_at: at,
+      });
+      result = { id: p.id, deleted: true };
     } else if (body.type === "updateResearch") {
       const old = await own("library_research", p.id);
       if (old.title !== p.expectedTitle || old.question !== p.expectedQuestion)

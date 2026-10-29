@@ -43,7 +43,13 @@ try {
   await client.query(await readFile("db/027_library_archives.sql", "utf8"));
   await client.query(await readFile("db/028_whiteboard.sql", "utf8"));
   await client.query(await readFile("db/029_scoped_whiteboards.sql", "utf8"));
+  await client.query(await readFile("db/030_delete_research.sql", "utf8"));
   if (role) {
+    await client.query(
+      'GRANT EXECUTE ON FUNCTION public.library_delete_research(text,uuid) TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_whiteboards TO "' + role + '"',
     );

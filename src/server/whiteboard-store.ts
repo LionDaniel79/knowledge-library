@@ -21,6 +21,21 @@ async function requireBoard(tx: Executor, owner: string, boardId: string) {
   )
     throw new LibraryError(404, "글감 묶음을 찾을 수 없습니다.");
 }
+export async function readWhiteboardSummary(
+  db: Database,
+  owner: string,
+  boardId = WHITEBOARD_ID,
+) {
+  if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
+  await requireBoard(db, owner, boardId);
+  const row = (
+    await db.query(
+      "SELECT version FROM library_whiteboards WHERE owner_id=$1 AND id=$2",
+      [owner, boardId],
+    )
+  ).rows[0];
+  return { id: boardId, version: row?.version ?? 0 };
+}
 export async function saveWhiteboard(
   tx: Executor,
   owner: string,

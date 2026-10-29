@@ -111,6 +111,12 @@ export function WhiteboardCanvas({
   const viewCallback = useRef(onViewChange),
     firstFit = useRef(true);
   viewCallback.current = onViewChange;
+  useEffect(
+    () => () => {
+      viewCallback.current?.(viewRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!viewCallback.current) return;
     const timer = setTimeout(() => viewCallback.current?.(view), 600);

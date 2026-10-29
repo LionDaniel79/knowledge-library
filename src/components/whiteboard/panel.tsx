@@ -66,6 +66,7 @@ export function WhiteboardPanel({
   writingTitle,
   initialBoard,
   legacyNotes = NO_LEGACY_NOTES,
+  suspended = false,
 }: {
   library: Library;
   onOpen: (kind: string, id: string, anchor?: ModalAnchor) => void;
@@ -75,6 +76,7 @@ export function WhiteboardPanel({
   writingTitle?: string;
   initialBoard?: Board;
   legacyNotes?: WhiteboardSnapshot["notes"];
+  suspended?: boolean;
 }) {
   const replica = useReplicaOptional(),
     runtime = replica?.runtime;
@@ -113,6 +115,7 @@ export function WhiteboardPanel({
     [localConnections, setLocalConnections] = useState<BoardConnection[]>([]),
     [removedTopicLinks, setRemovedTopicLinks] = useState<string[]>([]);
   const current = useRef(board),
+    suspendedRef = useRef(suspended),
     version = useRef(0),
     initialized = useRef(false),
     pending = useRef<Board | null>(null),
@@ -129,9 +132,58 @@ export function WhiteboardPanel({
     lastDraft = useRef<string | null>(null),
     runSave = useRef<() => Promise<void>>(async () => {}),
     saveTask = useRef<Promise<void> | null>(null);
+  suspendedRef.current = suspended;
   const key = ownerId
     ? `library:whiteboard-draft:${ownerId}${boardId === WHITEBOARD_ID ? "" : ":" + boardId}`
     : "";
+  const viewKey = ownerId
+    ? `library:whiteboard-view:${ownerId}:${boardId}`
+    : "";
+  function localView(value: Board) {
+    if (!writingTitle || !viewKey) return value;
+    try {
+      const view = JSON.parse(localStorage.getItem(viewKey) ?? "null");
+      if (
+        view &&
+        Number.isFinite(view.x) &&
+        Number.isFinite(view.y) &&
+        Number.isFinite(view.zoom) &&
+        view.zoom >= 0.1 &&
+        view.zoom <= 1.8
+      )
+        return {
+          ...value,
+          writing: {
+            chapters: value.writing?.chapters ?? [],
+            ...value.writing,
+            viewport: { x: view.x, y: view.y, zoom: view.zoom },
+          },
+        };
+    } catch {}
+    return value;
+  }
+  function rememberView(view: { x: number; y: number; zoom: number }) {
+    if (suspendedRef.current) return;
+    const before = current.current;
+    if (JSON.stringify(before.writing?.viewport) === JSON.stringify(view))
+      return;
+    const next = {
+      ...before,
+      writing: {
+        chapters: before.writing?.chapters ?? [],
+        ...before.writing,
+        viewport: view,
+      },
+    };
+    current.current = next;
+    if (alive.current) setBoard(next);
+    if (pending.current)
+      pending.current = { ...pending.current, writing: { ...next.writing } };
+    try {
+      if (viewKey) localStorage.setItem(viewKey, JSON.stringify(view));
+    } catch {}
+    if (dirty.current) remember(next, true);
+  }
   function layoutStamp(data: Board | undefined) {
     return boardStamp({
       id: boardId,
@@ -178,13 +230,14 @@ export function WhiteboardPanel({
     return data;
   }
   runSave.current = () => {
+    if (suspendedRef.current) return Promise.resolve();
     if (saveTask.current) return saveTask.current;
     saveTask.current = (async () => {
       if (writing.current || needsChoice.current) return;
       writing.current = true;
       if (alive.current) setSaving(true);
       try {
-        while (pending.current) {
+        while (pending.current && !suspendedRef.current) {
           const value = pending.current;
           pending.current = null;
           try {
@@ -251,9 +304,14 @@ export function WhiteboardPanel({
     return () => {
       alive.current = false;
       if (timer.current) clearTimeout(timer.current);
-      if (pending.current) void runSave.current();
+      if (pending.current && !suspendedRef.current) void runSave.current();
     };
   }, []);
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (!suspended && pending.current)
+      timer.current = setTimeout(() => void runSave.current(), 350);
+  }, [suspended]);
   useEffect(() => {
     const data = resource.data;
     if (!data) return;
@@ -311,6 +369,7 @@ export function WhiteboardPanel({
           pending.current = value;
         }
       }
+      value = localView(value);
       current.current = value;
       setBoard(value);
       setFilter(value.filter);
@@ -363,7 +422,9 @@ export function WhiteboardPanel({
         setConflict(true);
         remember(current.current, true);
       } else {
-        const value = seedBoard(data, data.board?.data ?? emptyBoard());
+        const value = localView(
+          seedBoard(data, data.board?.data ?? emptyBoard()),
+        );
         version.current = v;
         current.current = value;
         setBoard(value);
@@ -1275,25 +1336,7 @@ export function WhiteboardPanel({
                 }
               : undefined
           }
-          onViewChange={
-            writingTitle
-              ? (view) => {
-                  const before = current.current;
-                  if (
-                    JSON.stringify(before.writing?.viewport) ===
-                    JSON.stringify(view)
-                  )
-                    return;
-                  update({
-                    ...before,
-                    writing: {
-                      chapters: before.writing?.chapters ?? [],
-                      viewport: view,
-                    },
-                  });
-                }
-              : undefined
-          }
+          onViewChange={writingTitle ? rememberView : undefined}
           onDrop={(...args) => {
             if (!linkBusy) void drop(...args);
           }}

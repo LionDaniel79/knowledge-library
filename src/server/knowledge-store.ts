@@ -18,6 +18,7 @@ import {
   setWhiteboardNotesVisibility,
 } from "./whiteboard-store";
 import { noteVisibilitySchema } from "../lib/whiteboard-visibility";
+import { deleteResearchSchema } from "../lib/research";
 
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
@@ -32,6 +33,7 @@ const command = z.object({
     "editConnection",
     "createResearch",
     "updateResearch",
+    "deleteResearch",
     "moveResearchItems",
     "addResearchNote",
     "placeResearchItem",
@@ -181,6 +183,7 @@ export function createKnowledgeStore(db: Database) {
         connection?: BoardConnection;
         changed?: boolean;
         previousStatus?: string;
+        deleted?: boolean;
       } = {};
       if (c.type === "saveWhiteboard") {
         result = await saveWhiteboard(tx, owner, c.payload);
@@ -348,6 +351,58 @@ export function createKnowledgeStore(db: Database) {
         ).rows[0];
         await revise(id, c.type, null, after);
         result = { id };
+      } else if (c.type === "deleteResearch") {
+        const p = deleteResearchSchema.parse(c.payload);
+        const research = (
+          await tx.query(
+            "SELECT * FROM library_research WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+            [owner, p.id],
+          )
+        ).rows[0];
+        if (!research) throw new LibraryError(404, "글감을 찾을 수 없습니다.");
+        if (
+          research.title !== p.expectedTitle ||
+          research.question !== p.expectedQuestion
+        )
+          throw new LibraryError(
+            409,
+            "글감의 제목이나 내용이 바뀌었습니다. 목록을 새로 확인한 뒤 삭제해 주세요.",
+          );
+        const items = (
+          await tx.query(
+            "SELECT * FROM library_research_items WHERE owner_id=$1 AND research_id=$2",
+            [owner, p.id],
+          )
+        ).rows;
+        const placements = (
+          await tx.query(
+            "SELECT * FROM library_research_placements WHERE owner_id=$1 AND id=ANY($2::uuid[])",
+            [owner, items.map((i) => i.id)],
+          )
+        ).rows;
+        const board =
+          (
+            await tx.query(
+              "SELECT * FROM library_whiteboards WHERE owner_id=$1 AND id=$2",
+              [owner, p.id],
+            )
+          ).rows[0] ?? null;
+        if ((board?.version ?? 0) !== p.expectedBoardVersion)
+          throw new LibraryError(
+            409,
+            "글감의 목차나 배치가 변경됐습니다. 최신 글감을 확인한 뒤 다시 삭제해 주세요.",
+          );
+        await revise(
+          p.id,
+          c.type,
+          { research, items, placements, board },
+          null,
+        );
+        await tx.query("SELECT public.library_delete_research($1,$2)", [
+          owner,
+          p.id,
+        ]);
+        result = { id: p.id, deleted: true };
       } else if (c.type === "updateResearch") {
         const p = z
           .object({

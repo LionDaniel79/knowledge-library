@@ -4,7 +4,7 @@ import type { ModalAnchor } from "@/lib/modal-placement";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
-import { useReplicaOptional } from "./replica/provider";
+import { useReplicaDataOptional } from "./replica/provider";
 import { writeStartup } from "@/client/replica/startup-cache";
 import { ConflictReviewPanel } from "./replica/conflict-review";
 import { OfflineDrafts } from "./offline-drafts";
@@ -126,7 +126,7 @@ export function LibraryApp({
   initialView?: "home" | "pdf";
   initialOperationsOpen?: boolean;
 }) {
-  const replica = useReplicaOptional();
+  const replica = useReplicaDataOptional();
   const [draftRevision, setDraftRevision] = useState(0);
   async function keepDraft(c: Command) {
     writeDraft(localStorage, newDraft(ownerId, c));
@@ -772,7 +772,7 @@ export function LibraryApp({
               <h1>{navigation.find((n) => n.id === view)?.label}</h1>
             </div>
             <div className="heading-actions">
-              {view === "home" && !preview && (
+              {!preview && (
                 <SyncButton onError={(e) => setFailure(e.message)} />
               )}
               {(view === "home" || view === "books") && (
@@ -783,7 +783,7 @@ export function LibraryApp({
                   <Plus size={17} />책 추가
                 </button>
               )}
-              {view === "home" && !preview && <SyncSummary />}
+              {!preview && <SyncSummary />}
             </div>
           </div>
           {(message || failure) && (
@@ -1397,7 +1397,10 @@ export function LibraryApp({
       )}
       {syncSettingsOpen && (
         <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
-          <SyncSettings onClose={() => setSyncSettingsOpen(false)} />
+          <SyncSettings
+            onClose={() => setSyncSettingsOpen(false)}
+            onError={(error) => setFailure(error.message)}
+          />
         </Suspense>
       )}
       {openingNote && (

@@ -20,6 +20,49 @@ import {
   queuedConflictRow,
   type ConflictContext,
 } from "../../lib/replica/conflict-presentation";
+function primaryEffect(entry: OutboxEntry) {
+  const c = entry.command as QueuedChange;
+  const preferred = [
+    "createResearch",
+    "updateResearch",
+    "deleteResearch",
+  ].includes(c.body.type)
+    ? "library_research"
+    : [
+          "saveWhiteboard",
+          "setWhiteboardNoteVisibility",
+          "setWhiteboardNotesVisibility",
+        ].includes(c.body.type)
+      ? "library_whiteboards"
+      : null;
+  return (
+    (preferred
+      ? c.effects.find(
+          (e) =>
+            e.entity === preferred &&
+            e.key === JSON.stringify([entry.entityId]),
+        )
+      : undefined) ??
+    c.effects.find(
+      (e) => e.entity !== "library_revisions" && e.after?.id === entry.entityId,
+    ) ??
+    c.effects.find((e) => e.entity !== "library_revisions")
+  );
+}
+function primaryEntity(entry: OutboxEntry): SyncEntity | undefined {
+  const type = (entry.command as QueuedChange).body.type;
+  if (["createResearch", "updateResearch", "deleteResearch"].includes(type))
+    return "library_research";
+  if (
+    [
+      "saveWhiteboard",
+      "setWhiteboardNoteVisibility",
+      "setWhiteboardNotesVisibility",
+    ].includes(type)
+  )
+    return "library_whiteboards";
+  return primaryEffect(entry)?.entity;
+}
 async function baseRow(
   storage: ReplicaStorage,
   entity: SyncEntity,
@@ -176,6 +219,7 @@ export async function loadReplicaConflict(
         (e) =>
           e.entityId === entry.entityId && !(e.command as QueuedChange).ack,
       )
+      .filter((e) => primaryEntity(e) === primaryEntity(entry))
       .sort(
         (a, b) => a.order - b.order || a.requestId.localeCompare(b.requestId),
       ),
@@ -189,13 +233,16 @@ export async function loadReplicaConflict(
     last = chain.at(-1) ?? entry,
     change = last.command as QueuedChange;
   const primary =
-    [...chain]
-      .reverse()
-      .flatMap((e) => (e.command as QueuedChange).effects)
-      .find(
-        (e) =>
-          e.after?.id === entry.entityId && e.entity !== "library_revisions",
-      ) ?? first.effects.find((e) => e.entity !== "library_revisions");
+    primaryEffect(last)?.entity === "library_research"
+      ? primaryEffect(last)
+      : ([...chain]
+          .reverse()
+          .flatMap((e) => (e.command as QueuedChange).effects)
+          .find(
+            (e) =>
+              e.after?.id === entry.entityId &&
+              e.entity !== "library_revisions",
+          ) ?? first.effects.find((e) => e.entity !== "library_revisions"));
   const cp = (await storage.checkpoint())!;
   let latest = primary
     ? await baseRow(storage, primary.entity, primary.key)
@@ -211,6 +258,19 @@ export async function loadReplicaConflict(
       downloaded.close();
     }
   }
+  if (
+    primary?.entity === "library_research" &&
+    latest &&
+    change.body.type === "deleteResearch"
+  )
+    latest = {
+      ...latest,
+      writingBoard: await baseRow(
+        storage,
+        "library_whiteboards",
+        JSON.stringify([entry.entityId]),
+      ),
+    };
   const trash =
       primary?.entity === "library_notes"
         ? await baseRow(storage, "library_note_trash", primary.key)
@@ -229,7 +289,11 @@ export async function loadReplicaConflict(
           : !latest && (firstEntry.baseVersion !== null || !!first.base)
             ? "서버에서 자료를 찾을 수 없습니다."
             : null;
-  const local = primary?.after ?? change.body.payload ?? change.body;
+  const local =
+    primary?.after ??
+    (change.body.type === "deleteResearch" ? change.base : null) ??
+    change.body.payload ??
+    change.body;
   const topic =
     primary?.entity === "library_topic_memberships" && local?.topic_id
       ? await baseRow(
@@ -501,12 +565,7 @@ async function replayReviewedChanges(
         body = structuredClone(c.body),
         requestId = crypto.randomUUID(),
         at = new Date().toISOString(),
-        entity =
-          c.effects.find(
-            (e) =>
-              e.entity !== "library_revisions" && e.after?.id === old.entityId,
-          )?.entity ??
-          c.effects.find((e) => e.entity !== "library_revisions")?.entity,
+        entity = primaryEffect(old)?.entity,
         row = await reviewedRow(repository, entity, old);
       body.requestId = requestId;
       body.entityId = old.entityId;
@@ -530,6 +589,10 @@ async function replayReviewedChanges(
         body.payload.expectedTitle = row?.title;
       if (body.payload && Object.hasOwn(body.payload, "expectedQuestion"))
         body.payload.expectedQuestion = row?.question;
+      if (body.type === "deleteResearch")
+        body.payload.expectedBoardVersion =
+          (await repository.raw("library_whiteboards", body.payload.id))
+            ?.version ?? 0;
       if (["addNote", "editNote"].includes(body.type)) {
         const memberships = body.payload.topicChanges?.length
           ? await repository.all("library_topic_memberships")
@@ -706,6 +769,9 @@ export async function applyReplicaResolution(
     }
   const replay =
     (current.primary?.entity !== "library_whiteboards" ||
+      dependentEntries.some(
+        (e) => (e.command as QueuedChange).body.type === "deleteResearch",
+      ) ||
       (!current.latest &&
         !current.unavailable &&
         current.firstEntry.baseVersion === null &&

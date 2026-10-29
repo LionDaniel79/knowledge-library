@@ -19,7 +19,7 @@ export function SyncButton({ onError }: { onError: (error: Error) => void }) {
       aria-label="동기화"
       aria-busy={busy}
       disabled={!replica || busy}
-      title={replica?.status.error || "변경된 자료를 동기화합니다."}
+      title={replica?.status.error || "다른 메뉴를 사용해도 계속 동기화합니다."}
       onClick={() => {
         if (replica)
           void replica.runtime
@@ -49,6 +49,8 @@ export function SyncSummary() {
       }
     >
       {label}
+      {busyPhases.includes(s.phase) &&
+        " · 다른 메뉴를 사용해도 계속 동기화합니다."}
       {r.authRequired && (
         <>
           {" "}
