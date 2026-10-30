@@ -64,9 +64,10 @@ export function MemoGroupDetail({
   };
   return (
     <div className={`memo-group-detail${compact ? " memo-group-compact" : ""}`}>
+      {group.title && <h3>{group.title}</h3>}
       {!compact && group.notes.map(renderNote)}
       {group.connections.map((c) => {
-        const title = (
+        const title = c.title?.trim() || (
           <>
             {notes.get(c.source_id)?.title || "메모"} ↔{" "}
             {notes.get(c.target_id)?.title || "메모"}

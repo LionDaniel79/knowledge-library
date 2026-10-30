@@ -73,10 +73,12 @@ export function MemoBox({
   );
   const shown = useMemo(
     () =>
-      model?.groups.filter((group) =>
-        group.notes.some((n) =>
-          containsSearchField([n.title, n.content].join(" "), query),
-        ),
+      model?.groups.filter(
+        (group) =>
+          containsSearchField(group.title, query) ||
+          group.notes.some((n) =>
+            containsSearchField([n.title, n.content].join(" "), query),
+          ),
       ) ?? [],
     [model, query],
   );
@@ -149,11 +151,15 @@ export function MemoBox({
                       key={group.id}
                       onClick={() => setSelected(group.id)}
                     >
-                      {group.notes.map((n) => (
-                        <span className="memo-group-title" key={n.id}>
-                          {n.title || n.content.slice(0, 50)}
-                        </span>
-                      ))}
+                      {group.title ? (
+                        <span className="memo-group-title">{group.title}</span>
+                      ) : (
+                        group.notes.map((n) => (
+                          <span className="memo-group-title" key={n.id}>
+                            {n.title || n.content.slice(0, 50)}
+                          </span>
+                        ))
+                      )}
                     </button>
                   ))}
               </div>

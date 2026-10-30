@@ -231,6 +231,7 @@ export const syncEntities = {
       "method",
       "version",
       "created_at",
+      "title",
     ],
     keys: ["id"],
     privateColumns: ["owner_id"],

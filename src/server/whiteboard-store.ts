@@ -14,7 +14,7 @@ async function requireBoard(tx: Executor, owner: string, boardId: string) {
     boardId !== WHITEBOARD_ID &&
     !(
       await tx.query(
-        "SELECT id FROM library_research WHERE owner_id=$1 AND id=$2",
+        "SELECT id FROM library_research WHERE owner_id=$1 AND id=$2 FOR KEY SHARE",
         [owner, boardId],
       )
     ).rows.length
@@ -199,7 +199,7 @@ export async function readWhiteboard(
     const ids = new Set(notes.map((n) => n.id));
     const connections = (
       await tx.query(
-        "SELECT id,source_kind,source_id,target_kind,target_id,relation,reason,status,version FROM library_connections WHERE owner_id=$1 AND source_kind='note' AND target_kind='note'",
+        "SELECT id,source_kind,source_id,target_kind,target_id,relation,reason,status,version,title FROM library_connections WHERE owner_id=$1 AND source_kind='note' AND target_kind='note'",
         [owner],
       )
     ).rows.filter((c) => ids.has(c.source_id) && ids.has(c.target_id));
@@ -216,7 +216,7 @@ export async function readWhiteboard(
       : null;
     const bundles = (
       await tx.query(
-        "SELECT id,title,description,note_ids,version,archived_at,created_at,updated_at FROM library_memo_bundles WHERE owner_id=$1 AND archived_at IS NULL ORDER BY created_at,id",
+        "SELECT id,title,description,note_ids,version,archived_at,created_at,updated_at FROM library_memo_bundles WHERE owner_id=$1 ORDER BY created_at,id",
         [owner],
       )
     ).rows;

@@ -34,6 +34,16 @@ import { editableFields } from "../../lib/replica/command-envelope";
 import { researchSource } from "../../lib/replica/research-source";
 import { deleteResearchSchema } from "../../lib/research";
 import {
+  planThoughtBoxPromotion,
+  thoughtPromotionInput,
+} from "../../lib/shared-thought-boxes";
+import {
+  mergeWritingBoards,
+  mergeWritingProjectsSchema,
+} from "../../lib/merge-writing-boards";
+import { buildScene } from "../../lib/whiteboard";
+import { seedWritingBoard } from "../../lib/writing-board";
+import {
   memoBundleInput,
   archiveBundleInput,
   bundleLinkInput,
@@ -411,6 +421,160 @@ export async function prepareOptimistic(
         id: boardId,
         version: (old?.version ?? 0) + (data === original ? 0 : 1),
       };
+    } else if (body.type === "promoteThoughtBoxes") {
+      const value = thoughtPromotionInput.parse(p);
+      const before = await repository.all("library_whiteboards");
+      const projects = await repository.all("library_research");
+      const boards = before.filter(
+        (b) => b.id === WHITEBOARD_ID || projects.some((r) => r.id === b.id),
+      );
+      const plan = planThoughtBoxPromotion(
+        boards as any,
+        (await repository.all("library_memo_bundles")) as any,
+        value.legacyToken,
+      );
+      if (plan.conflicts.length && value.legacyToken !== plan.legacyToken)
+        throw new ReplicaQueryError(
+          409,
+          "이전 상자에만 있는 메모가 있습니다. 원본과 비교한 뒤 메모 합치기를 선택해 주세요.",
+        );
+      for (const bundle of plan.updated) {
+        const old = await own("library_memo_bundles", bundle.id);
+        put("library_memo_bundles", { ...old, ...bundle, updated_at: at });
+        put("library_revisions", {
+          id: crypto.randomUUID(),
+          entity_id: bundle.id,
+          action: "mergeLegacyThoughtBoxes",
+          before_data: old,
+          after_data: { ...old, ...bundle, updated_at: at },
+          created_at: at,
+        });
+      }
+      for (const bundle of plan.created)
+        put("library_memo_bundles", {
+          ...bundle,
+          created_at: at,
+          updated_at: at,
+        });
+      for (const board of plan.boards) {
+        const old = before.find((b) => b.id === board.id)!;
+        if (board.data !== old.data)
+          put("library_whiteboards", {
+            ...old,
+            data: board.data,
+            version: old.version + 1,
+            updated_at: at,
+          });
+      }
+      entityId = WHITEBOARD_ID;
+      body.entityId = entityId;
+      result = { count: plan.created.length };
+    } else if (body.type === "mergeWritingProjects") {
+      const value = mergeWritingProjectsSchema.parse(p),
+        sources: { id: string; data: any }[] = [],
+        visible = new Set<string>(),
+        universe = new Set<string>();
+      const oldItems = await repository.all("library_research_items"),
+        placements = await repository.all("library_research_placements");
+      for (const selected of value.sources) {
+        const project = await own("library_research", selected.id),
+          old = await repository.raw("library_whiteboards", selected.id);
+        if (
+          project.title !== selected.expectedTitle ||
+          project.question !== selected.expectedQuestion
+        )
+          throw new ReplicaQueryError(
+            409,
+            "글감 제목이 변경되었습니다. 다시 확인해 주세요.",
+          );
+        check(old, selected.expectedBoardVersion);
+        const items = oldItems.filter(
+          (i) =>
+            i.research_id === selected.id &&
+            placements.find((p) => p.id === i.id)?.state !== "removed",
+        );
+        const snapshot: any = await repository.read(
+          "/api/whiteboard?boardId=" + selected.id,
+        );
+        const notes = new Map(snapshot.notes.map((n: any) => [n.id, n]));
+        for (const item of items) {
+          const n = item.snapshot.note,
+            noteId = n.id ?? item.id;
+          if (!notes.has(noteId))
+            notes.set(noteId, {
+              ...n,
+              id: noteId,
+              bookId: item.snapshot.book?.id ?? null,
+              tags: n.tags ?? [],
+              createdAt: item.created_at,
+              updatedAt: item.created_at,
+            });
+        }
+        const original =
+          old?.data ??
+          seedWritingBoard(
+            { question: project.question },
+            items as any,
+            placements.filter((p) => items.some((i) => i.id === p.id)) as any,
+          );
+        const data = {
+          ...original,
+          writing: {
+            ...(original.writing ?? { chapters: [] }),
+            excludedNoteIds: original.writing?.excludedNoteIds ?? [],
+          },
+        };
+        for (const node of buildScene(
+          { ...snapshot, notes: [...notes.values()] },
+          data,
+        ).nodes)
+          visible.add(node.noteId);
+        for (const key of notes.keys()) universe.add(key as string);
+        sources.push({ id: selected.id, data });
+      }
+      const data = mergeWritingBoards(sources);
+      data.writing!.excludedNoteIds = [...universe].filter(
+        (id) => !visible.has(id),
+      );
+      boardSaveSchema.shape.data.parse(data);
+      entityId = id;
+      body.entityId = id;
+      put("library_research", {
+        id,
+        title: value.title,
+        kind: "thesis",
+        question: "",
+        created_at: at,
+      });
+      put("library_whiteboards", { id, data, version: 1, updated_at: at });
+      const copied = new Set<string>();
+      for (const selected of value.sources)
+        for (const item of oldItems.filter(
+          (i) => i.research_id === selected.id,
+        )) {
+          const placement = placements.find((p) => p.id === item.id);
+          if (placement?.state === "removed" || copied.has(item.note_id))
+            continue;
+          copied.add(item.note_id);
+          const itemId = noteContextId(id, "merged-material:" + item.id, 0),
+            snapshot = structuredClone(item.snapshot);
+          snapshot.note.id ??= item.id;
+          put("library_research_items", {
+            ...item,
+            id: itemId,
+            research_id: id,
+            snapshot,
+            created_at: at,
+          });
+          if (placement)
+            put("library_research_placements", {
+              ...placement,
+              id: itemId,
+              version: 1,
+              updated_at: at,
+            });
+        }
+      result = { id, version: 1 };
     } else if (body.type === "saveMemoBundle") {
       const v = memoBundleInput.parse(p),
         old = v.id ? await own("library_memo_bundles", v.id) : null;
@@ -702,6 +866,9 @@ export async function prepareOptimistic(
         const old = await own("library_connections", p.id);
         check(old, p.expectedVersion);
         edit("library_connections", old, {
+          ...(p.title === undefined
+            ? {}
+            : { title: z.string().trim().max(300).parse(p.title) }),
           relation,
           reason,
           status: z.enum(["suggested", "accepted", "rejected"]).parse(p.status),

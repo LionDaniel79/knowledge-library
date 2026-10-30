@@ -3,6 +3,7 @@ import type { Book, Note } from "./domain";
 import { contentHash } from "./thought-map/records";
 import { containsSearchField } from "./search-fields";
 import type { MemoBundle, BundleLink } from "./thought-bundles";
+import { projectSharedBoxes } from "./shared-thought-boxes";
 import {
   boxNotes,
   boxNodeId,
@@ -46,6 +47,7 @@ export const writingMaterialSchema = z
   .strict();
 export const writingChapterSchema = z
   .object({
+    bundleId: z.string().uuid().optional(),
     sourceBox: z
       .object({ boardId: z.string().uuid(), chapterId: z.string().uuid() })
       .strict()
@@ -89,6 +91,7 @@ export const boardSchema = z
     hiddenNoteIds: z.array(z.string().uuid()).max(10000).optional(),
     writing: z
       .object({
+        excludedNoteIds: z.array(z.string().uuid()).max(10000).optional(),
         chapters: z.array(writingChapterSchema).max(500),
         viewport: z
           .object({
@@ -139,6 +142,7 @@ export type Board = z.infer<typeof boardSchema>;
 export type BoardFilter = z.infer<typeof boardFilterSchema>;
 export type Point = { x: number; y: number };
 export type BoardConnection = {
+  title?: string;
   id: string;
   source_kind: string;
   source_id: string;
@@ -163,6 +167,7 @@ export function publicBoardConnection(
       "reason",
       "status",
       "version",
+      ...(row.title === undefined ? [] : ["title"]),
     ].map((k) => [k, row[k]]),
   ) as unknown as BoardConnection;
 }
@@ -270,10 +275,15 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
   });
 }
 export function buildScene(source: WhiteboardSnapshot, b: Board) {
-  const hidden = new Set(b.hiddenNoteIds ?? []);
+  b = projectSharedBoxes(b, source);
   const chapterItems =
     b.writing?.chapters.flatMap((c) => boxNotes(c, source)) ?? [];
   const chapterNotes = new Set(chapterItems.flatMap((i) => i.noteIds));
+  const hidden = new Set(
+    b.writing?.excludedNoteIds === undefined
+      ? (b.hiddenNoteIds ?? [])
+      : b.writing.excludedNoteIds.filter((id) => !chapterNotes.has(id)),
+  );
   const chapterGrouped = new Set(
     chapterItems.filter((i) => i.groupIds.length).flatMap((i) => i.noteIds),
   );
@@ -601,6 +611,7 @@ export function arrangeSearchResults(
   source: WhiteboardSnapshot,
   b: Board,
 ): Board {
+  b = projectSharedBoxes(b, source);
   const pinned = new Set(
     b.writing?.chapters.flatMap((c) => c.items.flatMap((i) => i.noteIds)) ?? [],
   );

@@ -6,8 +6,9 @@ import { connectedMemoGroups } from "./memo-box";
 export const BOX_NOTE_TOP = 152,
   BOX_NOTE_DX = 238,
   BOX_NOTE_DY = 194;
-const DEFAULT_BOARD = "00000000-0000-4000-8000-000000000001";
 export interface ThoughtBoxSummary {
+  bundleId?: string;
+  bundleVersion?: number;
   id: string;
   boardId: string;
   chapterId: string;
@@ -21,32 +22,6 @@ export const boxKey = (boardId: string, chapterId: string) =>
   boardId + ":" + chapterId;
 export const boxNodeId = (chapterId: string, itemId: string, noteId: string) =>
   `chapter:${chapterId}:${itemId}::${noteId}`;
-export function listThoughtBoxes(
-  boards: { id: string; data: Board; version: number }[],
-  projects: { id: string; title: string }[],
-): ThoughtBoxSummary[] {
-  const titles = new Map(projects.map((p) => [p.id, p.title]));
-  return boards
-    .filter((b) => b.id === DEFAULT_BOARD || titles.has(b.id))
-    .flatMap((b) =>
-      (b.data.writing?.chapters ?? []).map((c) => ({
-        id: boxKey(b.id, c.id),
-        boardId: b.id,
-        chapterId: c.id,
-        boardTitle: titles.get(b.id) ?? "화이트보드",
-        title: c.title,
-        order: c.order,
-        noteCount: new Set(c.items.flatMap((i) => i.noteIds)).size,
-        boardVersion: b.version,
-      })),
-    )
-    .sort(
-      (a, b) =>
-        a.boardTitle.localeCompare(b.boardTitle, "ko") ||
-        a.order - b.order ||
-        a.id.localeCompare(b.id),
-    );
-}
 export function flattenBox(
   chapter: WritingChapter,
   source: WhiteboardSnapshot,
@@ -219,55 +194,6 @@ export function putBoxNotes(
     source,
   );
 }
-export function copyThoughtBox(
-  board: Board,
-  sourceBoardId: string,
-  chapter: WritingChapter,
-  source: WhiteboardSnapshot,
-  id = crypto.randomUUID(),
-): Board {
-  const old = board.writing?.chapters.find(
-    (c) =>
-      c.sourceBox?.boardId === sourceBoardId &&
-      c.sourceBox?.chapterId === chapter.id,
-  );
-  if (old) return board;
-  let next = addThoughtBox(board, id, chapter.title);
-  const flat = flattenBox(chapter, source),
-    copy = next.writing!.chapters.at(-1)!;
-  copy.width = chapter.width;
-  copy.height = chapter.height;
-  copy.text = chapter.text;
-  copy.sourceBox = { boardId: sourceBoardId, chapterId: chapter.id };
-  copy.items = flat.items.map((item) => ({
-    ...item,
-    id: noteContextId(id, item.noteIds[0], 0),
-  }));
-  const positions = { ...next.positions };
-  const original =
-    source.board?.id === sourceBoardId ? source.board.data.positions : {};
-  copy.items.forEach((item, index) => {
-    const prior = flat.items[index],
-      noteId = item.noteIds[0];
-    const saved =
-      original[boxNodeId(chapter.id, prior.id, noteId)] ??
-      Object.entries(original).find(
-        ([key, p]) =>
-          key.endsWith("::" + noteId) &&
-          p.x >= chapter.x &&
-          p.x < chapter.x + chapter.width &&
-          p.y >= chapter.y &&
-          p.y < chapter.y + chapter.height,
-      )?.[1];
-    if (saved)
-      positions[boxNodeId(copy.id, item.id, noteId)] = {
-        x: copy.x + saved.x - chapter.x,
-        y: copy.y + saved.y - chapter.y,
-      };
-  });
-  next = arrangeBox({ ...next, positions }, id, source);
-  return next;
-}
 export function thoughtView(
   source: WhiteboardSnapshot,
   board: Board,
@@ -313,13 +239,13 @@ export function thoughtView(
             };
     });
     y += Math.max(240, Math.ceil(ids.length / 3) * 182 + 60) + 40;
-    return [{ id, title: "연결된 메모", noteIds: ids }];
+    return [{ id, title: g.title || "연결된 메모", noteIds: ids }];
   });
   return {
     source: {
       ...source,
       notes: source.notes.filter((n) => wanted.has(n.id)),
-      bundles: [],
+      bundles: source.bundles,
       bundleLinks: [],
     },
     board: {

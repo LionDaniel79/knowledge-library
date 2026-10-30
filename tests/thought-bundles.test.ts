@@ -125,7 +125,9 @@ it("persists independent overlapping bundles, enforces ownership/version, and un
     owner,
     cmd("archiveMemoBundle", { id: first.id, expectedVersion: 1 }),
   );
-  expect((await readWhiteboard(f.db, owner)).bundles).toHaveLength(1);
+  const remaining = (await readWhiteboard(f.db, owner)).bundles!;
+  expect(remaining.filter((b) => !b.archived_at)).toHaveLength(1);
+  expect(remaining.find((b) => b.id === first.id)?.archived_at).toBeTruthy();
   expect((await library.snapshot(owner)).notes).toHaveLength(2);
 });
 it("queues overlapping bundles and their links immediately on a device", async () => {

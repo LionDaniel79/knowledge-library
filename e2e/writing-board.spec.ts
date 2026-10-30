@@ -81,6 +81,7 @@ for (const width of [390, 1280])
       memberships: [],
       connections: [],
       topicLinks: [],
+      bundles: [],
       board: null,
     };
     await page.route("https://library.test/api/knowledge", async (r) => {
@@ -100,6 +101,30 @@ for (const width of [390, 1280])
         boards.set(id, { id, data: c.payload.data, version });
         saves.push(c.payload);
         return r.fulfill({ json: { id, version } });
+      }
+      if (c.type === "saveMemoBundle") {
+        const old = source.bundles.find((b: any) => b.id === c.payload.id);
+        if (old) {
+          if (old.version !== c.payload.expectedVersion)
+            return r.fulfill({ status: 409, json: { error: "원본 변경" } });
+          Object.assign(old, {
+            title: c.payload.title,
+            description: c.payload.description,
+            note_ids: c.payload.noteIds,
+            version: old.version + 1,
+          });
+          return r.fulfill({ json: { id: old.id, version: old.version } });
+        }
+        const b = {
+          id: crypto.randomUUID(),
+          title: c.payload.title,
+          description: c.payload.description,
+          note_ids: c.payload.noteIds,
+          version: 1,
+          archived_at: null,
+        };
+        source.bundles.push(b);
+        return r.fulfill({ json: { id: b.id, version: 1 } });
       }
       if (c.type === "deleteResearch") {
         const index = projects.findIndex((p) => p.id === c.payload.id);

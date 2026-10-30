@@ -5858,7 +5858,12 @@ textarea {
   flex: 1;
 }
 .wb-note-order {
-  width: 44px;
+  width: 50px;
+  flex: 0 0 50px;
+  color: #183c31;
+  -webkit-text-fill-color: #183c31;
+  background: #fff;
+  font-weight: 700;
   min-width: 0;
   height: 28px;
   min-height: 28px;
@@ -5866,6 +5871,7 @@ textarea {
   font-size: 13px;
   border-radius: 4px;
 }
+
 .wb-entry-badge {
   display: inline-flex;
   align-items: center;
@@ -5968,12 +5974,26 @@ textarea {
   width: 100%;
   margin: 0 0 0.25rem;
 }
-.writing-project-row > button:first-child {
+.writing-project-row > button[aria-pressed] {
   flex: 0 1 auto;
   max-width: 18rem;
   padding: 0.4rem 0.65rem;
   text-align: left;
   overflow-wrap: anywhere;
+}
+.writing-project-row > input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: none;
+  margin: 0 0.15rem;
+  align-self: center;
+}
+.writing-project-merge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-basis: 100%;
 }
 .writing-project-row > button:last-child {
   flex: none;

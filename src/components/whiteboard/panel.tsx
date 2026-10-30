@@ -15,15 +15,23 @@ import { connectionGroupsForView } from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
 import { bundleBoard } from "@/lib/thought-bundle-board";
 import {
-  addThoughtBox,
   putBoxNotes,
-  copyThoughtBox,
   thoughtView,
-  listThoughtBoxes,
   flattenBox,
   type ThoughtBoxSummary,
 } from "@/lib/thought-boxes";
 import { WritingAssist } from "./writing-assist";
+import { useSharedBoxEdits } from "./use-shared-box-edits";
+import {
+  LegacyThoughtReview,
+  type LegacyThoughtReviewState,
+} from "./legacy-thought-review";
+import {
+  projectSharedBoxes,
+  referenceThoughtBox,
+  sharedBoxSummaries,
+  arrangeThoughtBoard,
+} from "@/lib/shared-thought-boxes";
 import {
   chapterAt,
   moveChapter,
@@ -71,6 +79,7 @@ export function WhiteboardPanel({
   initialBoard,
   legacyNotes = NO_LEGACY_NOTES,
   suspended = false,
+  onRegisterFlush,
 }: {
   library: Library;
   onOpen: (kind: string, id: string, anchor?: ModalAnchor) => void;
@@ -81,6 +90,7 @@ export function WhiteboardPanel({
   initialBoard?: Board;
   legacyNotes?: WhiteboardSnapshot["notes"];
   suspended?: boolean;
+  onRegisterFlush?: (flush: (() => Promise<void>) | null) => void;
 }) {
   const replica = useReplicaOptional(),
     runtime = replica?.runtime;
@@ -96,12 +106,12 @@ export function WhiteboardPanel({
     refresh,
     { keepPreviousData: true },
   );
-  const boxesResource = usePagedResource<{ items: ThoughtBoxSummary[] }>(
-    "/api/thought-boxes",
-    true,
-    refresh,
-    { keepPreviousData: true },
-  );
+  const boxesResource = usePagedResource<
+    LegacyThoughtReviewState & {
+      items: ThoughtBoxSummary[];
+      pendingLegacy?: boolean;
+    }
+  >("/api/thought-boxes", true, refresh, { keepPreviousData: true });
   const [board, setBoard] = useState<Board>(emptyBoard),
     [filter, setFilter] = useState<BoardFilter>(emptyBoard().filter),
     [error, setError] = useState(""),
@@ -126,8 +136,16 @@ export function WhiteboardPanel({
       board: Board;
       link?: LinkUndo;
       bundle?: { type: string; payload: unknown };
+      shared?: {
+        id: string;
+        title: string;
+        description: string;
+        noteIds: string[];
+      }[];
     } | null>(null),
     [localConnections, setLocalConnections] = useState<BoardConnection[]>([]);
+  const sharedFlush = useRef<() => Promise<void>>(async () => {}),
+    promoting = useRef(false);
   const current = useRef(board),
     suspendedRef = useRef(suspended),
     version = useRef(0),
@@ -154,7 +172,16 @@ export function WhiteboardPanel({
     ? `library:whiteboard-view:${ownerId}:${boardId}`
     : "";
   function localView(value: Board) {
-    if (!writingTitle || !viewKey) return value;
+    if (writingTitle)
+      value = {
+        ...value,
+        writing: {
+          chapters: value.writing?.chapters ?? [],
+          ...value.writing,
+          excludedNoteIds: value.writing?.excludedNoteIds ?? [],
+        },
+      };
+    if (!viewKey) return value;
     try {
       const view = JSON.parse(localStorage.getItem(viewKey) ?? "null");
       if (
@@ -314,12 +341,18 @@ export function WhiteboardPanel({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void runSave.current(), 350);
   }
-  async function updateRevealing(next: Board, before = current.current) {
-    const hidden = new Set(next.hiddenNoteIds ?? []);
-    const reveal = (before.hiddenNoteIds ?? []).filter((id) => !hidden.has(id));
-    if (reveal.length && !(await showHiddenNotes(reveal))) return;
-    update(next, before);
-  }
+  useEffect(() => {
+    onRegisterFlush?.(async () => {
+      if (timer.current) clearTimeout(timer.current);
+      await sharedFlush.current();
+      await runSave.current();
+      if (dirty.current || needsChoice.current)
+        throw Error(
+          "현재 글감의 저장을 먼저 완료해 주세요. 입력한 내용은 유지됩니다.",
+        );
+    });
+    return () => onRegisterFlush?.(null);
+  }, [onRegisterFlush]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -454,6 +487,34 @@ export function WhiteboardPanel({
       }
     }
   }, [resource.data, key, saving]);
+  const shared = useSharedBoxEdits(
+    ownerId,
+    resource.data?.bundles,
+    send,
+    resource.reload,
+  );
+  sharedFlush.current = shared.flush;
+  useEffect(() => {
+    if (
+      !boxesResource.data?.pendingLegacy ||
+      boxesResource.data?.legacyConflicts?.length ||
+      promoting.current ||
+      dirty.current
+    )
+      return;
+    promoting.current = true;
+    setLinkBusy(true);
+    void send("promoteThoughtBoxes", {})
+      .then(() => {
+        resource.reload();
+        boxesResource.reload();
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => {
+        promoting.current = false;
+        setLinkBusy(false);
+      });
+  }, [boxesResource.data, saving]);
   const source = useMemo(() => {
     if (!resource.data) return null;
     const map = new Map(resource.data.connections.map((c) => [c.id, c]));
@@ -465,10 +526,11 @@ export function WhiteboardPanel({
     for (const note of resource.data.notes) notes.set(note.id, note);
     return {
       ...resource.data,
+      bundles: shared.bundles,
       notes: [...notes.values()],
       connections: [...map.values()],
     };
-  }, [resource.data, localConnections, legacyNotes]);
+  }, [resource.data, localConnections, legacyNotes, shared.bundles]);
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -498,7 +560,7 @@ export function WhiteboardPanel({
   const focused = useMemo(
     () =>
       source && connectionView !== null
-        ? thoughtView(source, board, connectionView)
+        ? thoughtView(source, projectSharedBoxes(board, source), connectionView)
         : null,
     [source, board, connectionView],
   );
@@ -506,22 +568,14 @@ export function WhiteboardPanel({
   const displayBoard = useMemo(
     () =>
       displaySource
-        ? bundleBoard(displaySource, focused?.board ?? board)
+        ? projectSharedBoxes(
+            bundleBoard(displaySource, focused?.board ?? board),
+            displaySource,
+          )
         : board,
     [displaySource, focused, board],
   );
-  const boxes = useMemo(() => {
-    const own = listThoughtBoxes(
-      [{ id: boardId, data: board, version: version.current }],
-      boardId === WHITEBOARD_ID
-        ? []
-        : [{ id: boardId, title: writingTitle ?? "글감" }],
-    );
-    return [
-      ...(boxesResource.data?.items ?? []).filter((c) => c.boardId !== boardId),
-      ...own,
-    ];
-  }, [board, boardId, writingTitle, boxesResource.data]);
+  const boxes = sharedBoxSummaries(source?.bundles ?? []);
   function showConnection(c: BoardConnection) {
     const group = memoGroups.find((g) =>
       g.connections.some((edge) => edge.id === c.id),
@@ -538,41 +592,15 @@ export function WhiteboardPanel({
     setError("");
     setLinkBusy(true);
     try {
-      const chosen = boxIds
-        .map((id) => boxes.find((c) => c.id === id))
-        .filter((c): c is ThoughtBoxSummary => !!c);
-      const snapshots = new Map<string, WhiteboardSnapshot>();
-      for (const id of new Set(
-        chosen.map((c) => c.boardId).filter((id) => id !== boardId),
-      )) {
-        const response = await libraryRequest("/api/whiteboard?boardId=" + id, {
-          cache: "no-store",
-          signal: AbortSignal.timeout(15000),
-        });
-        const value = await response.json();
-        if (!response.ok)
-          throw Error(value.error || "생각 묶음을 불러오지 못했습니다.");
-        snapshots.set(id, value);
-      }
       const before = current.current;
-      let next = before;
-      for (const box of chosen) {
-        if (box.boardId === boardId) continue;
-        const snapshot = snapshots.get(box.boardId),
-          chapter = snapshot?.board?.data.writing?.chapters.find(
-            (c) => c.id === box.chapterId,
-          );
-        if (!snapshot || !chapter)
-          throw Error("변경된 생각 묶음 목록을 다시 확인해 주세요.");
-        next = copyThoughtBox(next, box.boardId, chapter, {
-          ...snapshot,
-          notes: [
-            ...new Map(
-              [...snapshot.notes, ...s.notes].map((n) => [n.id, n]),
-            ).values(),
-          ],
-        });
+      let next = projectSharedBoxes(before, s);
+      for (const id of boxIds) {
+        if (boxesResource.data?.legacyConflicts?.some((c) => c.id === id))
+          continue;
+        const bundle = s.bundles?.find((b) => b.id === id && !b.archived_at);
+        if (bundle) next = referenceThoughtBox(next, bundle, s);
       }
+      if (boxIds.length === 0) next = before;
       if (next !== before) update(next, before);
       setSelectedGroup(null);
       setSelectedNote(null);
@@ -593,7 +621,7 @@ export function WhiteboardPanel({
   function download(format: "md" | "txt") {
     const content = exportWritingBoard(
       writingTitle ?? "글감",
-      current.current,
+      projectSharedBoxes(current.current, sourceRef.current!),
       sourceRef.current!,
       format,
     );
@@ -614,6 +642,32 @@ export function WhiteboardPanel({
   }
   function changeChapter(chapter: WritingChapter) {
     const before = current.current;
+    const original = sourceRef.current?.bundles?.find(
+      (b) => b.id === chapter.bundleId,
+    );
+    const members = new Set(chapter.items.flatMap((i) => i.noteIds));
+    const noteIds = original
+      ? [
+          ...original.note_ids.filter((id) => members.has(id)),
+          ...[...members].filter((id) => !original.note_ids.includes(id)),
+        ]
+      : [...members];
+    const changedShared =
+      original &&
+      (chapter.title !== original.title ||
+        chapter.text !== original.description ||
+        JSON.stringify(noteIds) !== JSON.stringify(original.note_ids));
+    if (
+      original &&
+      (chapter.title !== original.title ||
+        chapter.text !== original.description ||
+        JSON.stringify(noteIds) !== JSON.stringify(original.note_ids))
+    )
+      shared.patch(original.id, {
+        title: chapter.title,
+        description: chapter.text,
+        noteIds,
+      });
     update(
       {
         ...before,
@@ -626,6 +680,56 @@ export function WhiteboardPanel({
       },
       before,
     );
+    if (changedShared)
+      setUndo({
+        board: before,
+        shared: [
+          {
+            id: original.id,
+            title: original.title,
+            description: original.description,
+            noteIds: original.note_ids,
+          },
+        ],
+      });
+  }
+  function commitMaterialBoard(next: Board, before: Board) {
+    const inverse: {
+      id: string;
+      title: string;
+      description: string;
+      noteIds: string[];
+    }[] = [];
+    for (const c of next.writing?.chapters ?? []) {
+      const original = sourceRef.current?.bundles?.find(
+        (b) => b.id === c.bundleId,
+      );
+      if (!original) continue;
+      const members = new Set(c.items.flatMap((i) => i.noteIds));
+      const noteIds = [
+        ...original.note_ids.filter((id) => members.has(id)),
+        ...[...members].filter((id) => !original.note_ids.includes(id)),
+      ];
+      if (
+        JSON.stringify(noteIds) !== JSON.stringify(original.note_ids) ||
+        c.title !== original.title ||
+        c.text !== original.description
+      ) {
+        inverse.push({
+          id: original.id,
+          title: original.title,
+          description: original.description,
+          noteIds: original.note_ids,
+        });
+        shared.patch(original.id, {
+          title: c.title,
+          description: c.text,
+          noteIds,
+        });
+      }
+    }
+    update(next, before);
+    if (inverse.length) setUndo({ board: before, shared: inverse });
   }
   function selectedNoteIds() {
     return selectedNote
@@ -650,6 +754,7 @@ export function WhiteboardPanel({
         ...old,
         relation: p.relation,
         reason: p.reason,
+        ...(Object.hasOwn(p, "title") ? { title: (p as any).title } : {}),
         status: p.status,
         version: result.version,
       });
@@ -742,7 +847,7 @@ export function WhiteboardPanel({
     target: ReturnType<typeof dropTarget>,
     groupOrigin?: Point,
   ) {
-    const before = current.current,
+    const before = projectSharedBoxes(current.current, sourceRef.current!),
       moved = moveNote(before, node, p);
     const chapter = chapterAt(before, p.x + 110, p.y + 83);
     if (chapter && sourceRef.current) {
@@ -751,7 +856,7 @@ export function WhiteboardPanel({
           update(moved, before);
         return;
       }
-      update(
+      commitMaterialBoard(
         putBoxNotes(
           node.chapterId ? before : moved,
           chapter.id,
@@ -858,7 +963,7 @@ export function WhiteboardPanel({
     near: string | null,
   ) {
     if (linkBusy) return;
-    const before = current.current;
+    const before = projectSharedBoxes(current.current, sourceRef.current!);
     let next = moveGroup(before, group, dx, dy);
     const chapter = chapterAt(
       before,
@@ -866,7 +971,7 @@ export function WhiteboardPanel({
       group.y + dy + 60,
     );
     if (chapter && sourceRef.current) {
-      update(
+      commitMaterialBoard(
         putBoxNotes(
           next,
           chapter.id,
@@ -948,6 +1053,8 @@ export function WhiteboardPanel({
     if (!undo || linkBusy) return;
     setLinkBusy(true);
     try {
+      if (undo.shared)
+        for (const value of undo.shared) shared.patch(value.id, value);
       if (undo.bundle) {
         await send(undo.bundle.type, undo.bundle.payload);
         resource.reload();
@@ -1207,11 +1314,40 @@ export function WhiteboardPanel({
         <button
           type="button"
           disabled={linkBusy}
-          onClick={() => {
-            const before = current.current;
-            update(addThoughtBox(before, crypto.randomUUID()), before);
-            setConnectionView(null);
-            setSearchRevision((n) => n + 1);
+          onClick={async () => {
+            if (linkBusy) return;
+            setLinkBusy(true);
+            try {
+              const title = "생각묶음 " + (boxes.length + 1);
+              const result = await send("saveMemoBundle", {
+                title,
+                description: "",
+                noteIds: [],
+                expectedVersion: 0,
+              });
+              const bundle = {
+                id: result.id,
+                title,
+                description: "",
+                note_ids: [],
+                version: result.version,
+                archived_at: null,
+              };
+              shared.accept(bundle);
+              const before = current.current;
+              update(
+                referenceThoughtBox(before, bundle, sourceRef.current!),
+                before,
+              );
+              setConnectionView(null);
+              setSearchRevision((n) => n + 1);
+              boxesResource.reload();
+              resource.reload();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setLinkBusy(false);
+            }
           }}
         >
           상자 추가
@@ -1338,17 +1474,50 @@ export function WhiteboardPanel({
                 : message}
         </small>
       </div>
-      {(error || resource.error) && (
+      <LegacyThoughtReview
+        state={boxesResource.data}
+        busy={linkBusy || saving}
+        onMerge={(token) => {
+          setLinkBusy(true);
+          void send("promoteThoughtBoxes", { legacyToken: token })
+            .catch((e) => setError(e.message))
+            .finally(() => {
+              setLinkBusy(false);
+              resource.reload();
+              boxesResource.reload();
+            });
+        }}
+      />
+      {(error || resource.error || shared.error) && (
         <p className="error wb-error" role="alert">
-          {error || resource.error}{" "}
+          {error || resource.error || shared.error}{" "}
           <button
             type="button"
             disabled={linkBusy}
-            onClick={() => void runSave.current()}
+            onClick={() => {
+              void shared
+                .flush()
+                .then(() => runSave.current())
+                .catch(() => {});
+            }}
           >
             다시 저장
           </button>
         </p>
+      )}
+      {!!shared.conflicts.length && (
+        <div className="notice">
+          {shared.conflicts.map((b) => (
+            <details key={b.id}>
+              <summary>최신 원본: {b.title}</summary>
+              <p className="preserve-text">{b.description}</p>
+              <p>{b.note_ids.length}개 메모</p>
+            </details>
+          ))}
+          <button type="button" onClick={shared.rebase}>
+            최신 원본을 확인하고 내 입력 저장
+          </button>
+        </div>
       )}
       {conflict && (
         <div className="notice">
@@ -1420,13 +1589,16 @@ export function WhiteboardPanel({
         <WhiteboardCanvas
           source={displaySource!}
           board={displayBoard}
-          saving={saving}
+          saving={saving || shared.busy}
           onSave={
             writingTitle
               ? () => {
                   if (timer.current) clearTimeout(timer.current);
                   pending.current = current.current;
-                  void runSave.current();
+                  void shared
+                    .flush()
+                    .then(() => runSave.current())
+                    .catch(() => {});
                 }
               : undefined
           }
@@ -1452,14 +1624,21 @@ export function WhiteboardPanel({
           onChapterAddSelected={(id) => {
             const ids = selectedNoteIds();
             if (ids.length)
-              void updateRevealing(
-                putBoxNotes(current.current, id, ids, sourceRef.current!),
+              commitMaterialBoard(
+                putBoxNotes(
+                  projectSharedBoxes(current.current, sourceRef.current!),
+                  id,
+                  ids,
+                  sourceRef.current!,
+                ),
+                current.current,
               );
           }}
           onNoteOrder={(chapterId, itemId, order) => {
-            const chapter = current.current.writing?.chapters.find(
-              (c) => c.id === chapterId,
-            );
+            const chapter = projectSharedBoxes(
+              current.current,
+              sourceRef.current!,
+            ).writing?.chapters.find((c) => c.id === chapterId);
             if (!chapter) return;
             const flat = flattenBox(chapter, sourceRef.current!);
             changeChapter({
@@ -1469,10 +1648,34 @@ export function WhiteboardPanel({
               ),
             });
           }}
+          onRemoveLooseNote={
+            writingTitle
+              ? (id) => {
+                  const before = current.current;
+                  update(
+                    {
+                      ...before,
+                      writing: {
+                        chapters: before.writing?.chapters ?? [],
+                        ...before.writing,
+                        excludedNoteIds: [
+                          ...new Set([
+                            ...(before.writing?.excludedNoteIds ?? []),
+                            id,
+                          ]),
+                        ],
+                      },
+                    },
+                    before,
+                  );
+                }
+              : undefined
+          }
           onChapterRemoveNote={(chapterId, itemId) => {
-            const chapter = current.current.writing?.chapters.find(
-              (c) => c.id === chapterId,
-            );
+            const chapter = projectSharedBoxes(
+              current.current,
+              sourceRef.current!,
+            ).writing?.chapters.find((c) => c.id === chapterId);
             if (!chapter) return;
             const flat = flattenBox(chapter, sourceRef.current!);
             changeChapter({
@@ -1502,7 +1705,7 @@ export function WhiteboardPanel({
             onOpen(
               "note",
               id,
-              anchor ? { ...anchor, whiteboardId: boardId } : undefined,
+              anchor ? { ...anchor, whiteboardId: WHITEBOARD_ID } : undefined,
             )
           }
           onSelectNote={selectNote}
@@ -1526,7 +1729,7 @@ export function WhiteboardPanel({
           onArrange={() => {
             if (linkBusy) return;
             const before = current.current;
-            update(arrangeSearchResults(source, before), before);
+            update(arrangeThoughtBoard(before, source), before);
             setSearchRevision((n) => n + 1);
           }}
         />
@@ -1616,7 +1819,8 @@ export function WhiteboardPanel({
               onClick={() => showConnection(c)}
               aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 보드에서 보기`}
             >
-              {labels.get(c.source_id)} ↔ {labels.get(c.target_id)}{" "}
+              {c.title?.trim() ||
+                `${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)}`}{" "}
               <small>{relationNames[c.relation as Relation] ?? "관련"}</small>
             </button>
             <button
@@ -1672,23 +1876,25 @@ export function WhiteboardPanel({
       {writingTitle && (
         <WritingAssist
           library={library}
-          board={board}
+          board={projectSharedBoxes(board, source)}
           source={source}
           boardId={boardId}
           title={writingTitle}
           ownerId={ownerId}
           onOpen={onOpen}
-          onChange={(next) => void updateRevealing(next)}
+          onChange={(next) => commitMaterialBoard(next, current.current)}
         />
       )}
-      <HiddenWhiteboardNotes
-        notes={source.notes.filter((n) =>
-          (board.hiddenNoteIds ?? []).includes(n.id),
-        )}
-        busy={linkBusy}
-        onOpen={(id) => onOpen("note", id)}
-        onShow={showHiddenNotes}
-      />
+      {!writingTitle && (
+        <HiddenWhiteboardNotes
+          notes={source.notes.filter((n) =>
+            (board.hiddenNoteIds ?? []).includes(n.id),
+          )}
+          busy={linkBusy}
+          onOpen={(id) => onOpen("note", id)}
+          onShow={showHiddenNotes}
+        />
+      )}
     </section>
   );
 }

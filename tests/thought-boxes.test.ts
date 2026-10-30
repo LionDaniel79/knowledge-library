@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import {
   emptyBoard,
-  WHITEBOARD_ID,
   buildScene,
   type WhiteboardSnapshot,
 } from "../src/lib/whiteboard";
@@ -10,10 +9,8 @@ import {
   addThoughtBox,
   putBoxNotes,
   thoughtView,
-  copyThoughtBox,
   flattenBox,
   boxNodeId,
-  listThoughtBoxes,
 } from "../src/lib/thought-boxes";
 import { exportWritingBoard } from "../src/lib/writing-board";
 const make = () => {
@@ -93,50 +90,6 @@ it("adds selected connection views outside existing boxes without losing or movi
     before.positions[original.id],
   );
 });
-it("imports a saved box once with new geometry but the same original memo references", () => {
-  const { ids, source } = make(),
-    id = randomUUID();
-  const origin = putBoxNotes(
-    addThoughtBox(emptyBoard(), id),
-    id,
-    ids.slice(0, 2),
-    source,
-  );
-  const selected = origin.writing!.chapters[0];
-  selected.width = 920;
-  selected.height = 700;
-  const oldKey = boxNodeId(selected.id, selected.items[0].id, ids[0]);
-  origin.positions[oldKey] = { x: selected.x + 330, y: selected.y + 400 };
-  const inventorySource = {
-    ...source,
-    board: { id: WHITEBOARD_ID, data: origin, version: 1 },
-  };
-  let dest = addThoughtBox(emptyBoard(), randomUUID());
-  const before = structuredClone(dest.writing!.chapters[0]);
-  dest = copyThoughtBox(dest, WHITEBOARD_ID, selected, inventorySource);
-  expect(dest.writing!.chapters[0]).toEqual(before);
-  expect(dest.writing!.chapters).toHaveLength(2);
-  const copy = dest.writing!.chapters[1];
-  expect(copy.width).toBe(920);
-  expect(copy.height).toBe(700);
-  expect(dest.positions[boxNodeId(copy.id, copy.items[0].id, ids[0])]).toEqual({
-    x: copy.x + 330,
-    y: copy.y + 400,
-  });
-  expect(copy.x).toBeGreaterThanOrEqual(before.x + before.width);
-  expect(copy.items.flatMap((i) => i.noteIds)).toEqual(ids.slice(0, 2));
-  expect(
-    copyThoughtBox(dest, WHITEBOARD_ID, selected, source).writing!.chapters,
-  ).toHaveLength(2);
-  expect(flattenBox(selected, source).items).toHaveLength(2);
-  const listed = listThoughtBoxes(
-    [{ id: WHITEBOARD_ID, data: dest, version: 2 }],
-    [],
-  );
-  expect(listed).toHaveLength(2);
-  expect(listed[0]).not.toHaveProperty("content");
-});
-
 it("preserves legacy grouped material order when flattening into numbered individual memos", () => {
   const { ids, source } = make();
   const id = randomUUID();

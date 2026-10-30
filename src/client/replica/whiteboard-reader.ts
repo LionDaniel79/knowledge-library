@@ -65,9 +65,7 @@ export function createWhiteboardReader(
         cached = {
           token,
           value: {
-            bundles: (await reader.all("library_memo_bundles")).filter(
-              (b) => !b.archived_at,
-            ) as any,
+            bundles: (await reader.all("library_memo_bundles")) as any,
             bundleLinks: (await reader.all("library_bundle_links")) as any,
             notes,
             books: (await reader.all("library_books"))

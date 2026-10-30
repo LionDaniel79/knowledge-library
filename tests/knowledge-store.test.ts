@@ -30,6 +30,7 @@ beforeAll(async () => {
     "017_note_trash",
     "025_book_exclusions",
     "026_device_sync",
+    "032_connection_titles",
   ])
     await pg.exec(await readFile(`db/${file}.sql`, "utf8"));
   db = {

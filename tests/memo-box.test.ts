@@ -50,6 +50,54 @@ it("lists one title group per accepted connected component, including cycles but
   ]);
   expect(groups[0].connections).toHaveLength(3);
 });
+it("uses distinct explicit connection titles for a group and leaves untitled groups available for note-title fallback", () => {
+  const notes = ["a", "b", "c", "d", "e"].map((id) => ({
+    id,
+    title: id + " 원본 제목",
+  }));
+  const edge = (id: string, a: string, b: string, title?: string) => ({
+    id,
+    source_kind: "note",
+    target_kind: "note",
+    source_id: a,
+    target_id: b,
+    status: "accepted",
+    title,
+  });
+  const connections = [
+    edge("1", "a", "b", "공감의 범위"),
+    edge("2", "b", "c", " 공감의 범위 "),
+    edge("3", "a", "c", "경계의 필요"),
+    { ...edge("4", "c", "d", "해제된 이름"), status: "rejected" },
+    edge("5", "d", "e", "  "),
+  ];
+  const groups = connectedMemoGroups({
+    notes,
+    connections,
+  } as WhiteboardSnapshot);
+  expect(groups.map((g) => g.title)).toEqual(["공감의 범위 · 경계의 필요", ""]);
+  expect(groups[0].notes.map((n) => n.title)).toEqual([
+    "a 원본 제목",
+    "b 원본 제목",
+    "c 원본 제목",
+  ]);
+  expect(
+    connectedMemoGroups({
+      notes,
+      connections: [
+        edge("1", "a", "b", "공감의 범위"),
+        edge("2", "b", "c", "경계의 필요"),
+        edge("3", "a", "c", "새로운 관점"),
+      ],
+    } as WhiteboardSnapshot)[0].title,
+  ).toBe("공감의 범위 · 경계의 필요 외 1개");
+  expect(
+    connectedMemoGroups({
+      notes,
+      connections: [edge("old", "d", "e")],
+    } as WhiteboardSnapshot)[0].title,
+  ).toBe("");
+});
 describe("memo box", () => {
   it("uses accepted active note edges and respects a direct rejection of an inherited book topic", () => {
     const s = {

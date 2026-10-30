@@ -20,6 +20,8 @@ import {
 import { noteVisibilitySchema } from "../lib/whiteboard-visibility";
 import { deleteResearchSchema } from "../lib/research";
 import { mutateThoughtBundle } from "./thought-bundles";
+import { promoteThoughtBoxes } from "./promote-thought-boxes";
+import { mergeWritingProjects } from "./merge-writing-projects";
 
 const uuid = z.string().uuid(),
   kind = z.enum(["book", "note"]),
@@ -45,6 +47,8 @@ const command = z.object({
     "saveMemoBundle",
     "archiveMemoBundle",
     "saveBundleLink",
+    "promoteThoughtBoxes",
+    "mergeWritingProjects",
   ]),
   payload: z.unknown(),
 });
@@ -201,6 +205,10 @@ export function createKnowledgeStore(db: Database) {
           c.payload,
           c.entityId,
         );
+      } else if (c.type === "promoteThoughtBoxes") {
+        result = await promoteThoughtBoxes(tx, owner, c.payload);
+      } else if (c.type === "mergeWritingProjects") {
+        result = await mergeWritingProjects(tx, owner, c.payload, c.entityId);
       } else if (c.type === "saveWhiteboard") {
         result = await saveWhiteboard(tx, owner, c.payload);
       } else if (c.type === "setWhiteboardNoteVisibility") {
@@ -323,6 +331,7 @@ export function createKnowledgeStore(db: Database) {
           .object({
             id: uuid,
             expectedVersion: z.number().int().positive(),
+            title: z.string().trim().max(300).optional(),
             status: z.enum(["suggested", "accepted", "rejected"]),
             relation,
             reason,
@@ -344,8 +353,8 @@ export function createKnowledgeStore(db: Database) {
           );
         const after = (
           await tx.query(
-            "UPDATE library_connections SET relation=$3,status=$4,reason=$5,version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
-            [owner, p.id, p.relation, p.status, p.reason],
+            "UPDATE library_connections SET relation=$3,status=$4,reason=$5,title=coalesce($6,title),version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
+            [owner, p.id, p.relation, p.status, p.reason, p.title ?? null],
           )
         ).rows[0];
         await revise(p.id, "editConnection", before, after);

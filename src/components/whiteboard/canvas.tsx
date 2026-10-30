@@ -64,6 +64,7 @@ export function WhiteboardCanvas({
   canAddSelected = false,
   onNoteOrder,
   onChapterRemoveNote,
+  onRemoveLooseNote,
   onViewChange,
   onSave,
   saving = false,
@@ -103,6 +104,7 @@ export function WhiteboardCanvas({
   canAddSelected?: boolean;
   onNoteOrder?: (chapterId: string, itemId: string, order: number) => void;
   onChapterRemoveNote?: (chapterId: string, itemId: string) => void;
+  onRemoveLooseNote?: (noteId: string) => void;
   onViewChange?: (view: { x: number; y: number; zoom: number }) => void;
   onSave?: () => void;
   saving?: boolean;
@@ -729,6 +731,15 @@ export function WhiteboardCanvas({
                     {source.books.find((b) => b.id === n.note.bookId)?.title ??
                       "나의 생각"}
                   </small>
+                  {!n.chapterId && onRemoveLooseNote && (
+                    <button
+                      type="button"
+                      aria-label={`${n.note.title || "메모"} 글감 보드에서 빼기`}
+                      onClick={() => onRemoveLooseNote(n.noteId)}
+                    >
+                      빼기
+                    </button>
+                  )}
                   {n.chapterId && n.itemId && onChapterRemoveNote && (
                     <button
                       type="button"

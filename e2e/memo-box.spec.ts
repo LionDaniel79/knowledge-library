@@ -335,7 +335,7 @@ test("classification topics and memo connections do not expose global bundle rel
     page.getByRole("button", { name: "새 묶음 연결", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByText("보드에서 메모를 담은 상자를 만들면 여기에 표시됩니다.", {
+    page.getByText("보드에서 상자를 만들면 여기에 표시됩니다.", {
       exact: true,
     }),
   ).toBeVisible();
@@ -374,7 +374,7 @@ test("a topic edit keeps the original version when newer metadata arrives while 
   expect(saved.expectedVersion).toBe(1);
   expect(saved.description).toBe("내 설명 초안");
 });
-test("refresh keeps an unfinished connection reason and its original version", async ({
+test("refresh keeps an unfinished connection title, reason and original version", async ({
   page,
 }) => {
   const f = await mount(page);
@@ -382,8 +382,12 @@ test("refresh keeps an unfinished connection reason and its original version", a
   await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
   await page.locator(".memo-box-list > button").first().click();
   const detail = page.locator(".memo-box-detail");
+  await detail
+    .getByLabel("연결 제목", { exact: true })
+    .fill("내 연결 제목 초안");
   await detail.getByLabel("연결 이유").fill("연결에 관한 내 초안");
   f.source.connections[0].version = 2;
+  f.source.connections[0].title = "다른 곳의 연결 제목";
   f.source.connections[0].reason = "다른 곳의 연결 이유";
   f.source.notes[1].title = "갱신된 도착 메모";
   await page.evaluate(() => (window as any).refreshFixture());
@@ -393,6 +397,9 @@ test("refresh keeps an unfinished connection reason and its original version", a
   await expect(detail.getByLabel("연결 이유")).toHaveValue(
     "연결에 관한 내 초안",
   );
+  await expect(detail.getByLabel("연결 제목", { exact: true })).toHaveValue(
+    "내 연결 제목 초안",
+  );
   await detail.getByRole("button", { name: "연결 수정 저장" }).click();
   await expect
     .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
@@ -400,4 +407,94 @@ test("refresh keeps an unfinished connection reason and its original version", a
   expect(
     f.commands.find((c) => c.type === "editConnection").payload.expectedVersion,
   ).toBe(1);
+  expect(
+    f.commands.find((c) => c.type === "editConnection").payload.title,
+  ).toBe("내 연결 제목 초안");
+});
+test("connection names appear in the connected-note list, can be searched, saved and cleared without renaming notes", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  f.source.connections[0].title = "공감과 경계의 관계";
+  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
+  const list = page.locator(".memo-box-list");
+  await expect(
+    list.getByRole("button", { name: "공감과 경계의 관계", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("searchbox", { name: "메모 찾기" }).fill("공감과 경계");
+  await list
+    .getByRole("button", { name: "공감과 경계의 관계", exact: true })
+    .click();
+  const detail = page.locator(".memo-box-detail");
+  await expect(
+    detail.getByRole("heading", { name: "처음 생각", exact: true }),
+  ).toBeVisible();
+  await expect(detail.locator(".memo-box-edge h4")).toHaveText(
+    "공감과 경계의 관계",
+  );
+  await detail
+    .getByLabel("연결 제목", { exact: true })
+    .fill("경계를 지키는 공감");
+  await detail.getByRole("button", { name: "연결 수정 저장" }).click();
+  await expect
+    .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
+    .toBe(1);
+  await page.getByRole("searchbox", { name: "메모 찾기" }).fill("");
+  await expect(list).toContainText("경계를 지키는 공감");
+  expect(f.notes.map((n) => n.title)).toEqual([
+    "처음 생각",
+    "지금 생각",
+    "새 결론",
+  ]);
+  await detail.getByLabel("연결 제목", { exact: true }).fill("");
+  await detail.getByRole("button", { name: "연결 수정 저장" }).click();
+  await expect
+    .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
+    .toBe(2);
+  expect(
+    f.commands.filter((c) => c.type === "editConnection").at(-1).payload,
+  ).toMatchObject({ title: "", expectedVersion: 2 });
+  await expect(list).toContainText("처음 생각");
+  await expect(list).toContainText("지금 생각");
+});
+test("a failed connection-title save keeps the draft and its original version for retry", async ({
+  page,
+}) => {
+  const f = await mount(page);
+  const failed: any[] = [];
+  await page.route("https://library.test/api/knowledge", (route) => {
+    if (route.request().method() !== "POST" || failed.length)
+      return route.fallback();
+    failed.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 409,
+      json: { error: "연결이 변경되었습니다." },
+    });
+  });
+  await page.getByRole("button", { name: "메모 상자", exact: true }).click();
+  await page.getByRole("button", { name: "연결된 메모", exact: true }).click();
+  await page.locator(".memo-box-list > button").first().click();
+  const detail = page.locator(".memo-box-detail");
+  await detail
+    .getByLabel("연결 제목", { exact: true })
+    .fill("저장할 연결 이름");
+  await detail.getByRole("button", { name: "연결 수정 저장" }).click();
+  await expect(page.getByRole("alert")).toContainText("연결이 변경되었습니다.");
+  f.source.connections[0].version = 2;
+  f.source.connections[0].title = "서버의 연결 이름";
+  await page.evaluate(() => (window as any).refreshFixture());
+  await expect(
+    detail.getByText("다른 곳에서 연결이 변경됐습니다. 내 입력은 유지됩니다."),
+  ).toBeVisible();
+  await expect(detail.getByLabel("연결 제목", { exact: true })).toHaveValue(
+    "저장할 연결 이름",
+  );
+  await detail.getByRole("button", { name: "연결 수정 저장" }).click();
+  await expect
+    .poll(() => f.commands.filter((c) => c.type === "editConnection").length)
+    .toBe(1);
+  expect(
+    f.commands.find((c) => c.type === "editConnection").payload,
+  ).toMatchObject({ title: "저장할 연결 이름", expectedVersion: 1 });
 });

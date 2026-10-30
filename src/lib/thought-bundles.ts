@@ -13,7 +13,7 @@ export const memoBundleInput = z
   .object({
     id: uuid.optional(),
     expectedVersion: z.number().int().nonnegative(),
-    title: z.string().trim().min(1).max(80),
+    title: z.string().trim().min(1).max(300),
     description: z.string().max(20000),
     noteIds: z
       .array(uuid)

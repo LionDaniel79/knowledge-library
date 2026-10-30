@@ -45,6 +45,10 @@ try {
   await client.query(await readFile("db/029_scoped_whiteboards.sql", "utf8"));
   await client.query(await readFile("db/030_delete_research.sql", "utf8"));
   await client.query(await readFile("db/031_thought_bundles.sql", "utf8"));
+  await client.query(await readFile("db/032_connection_titles.sql", "utf8"));
+  await client.query(
+    await readFile("db/033_shared_thought_titles.sql", "utf8"),
+  );
   if (role) {
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_memo_bundles,library_bundle_links TO "' +

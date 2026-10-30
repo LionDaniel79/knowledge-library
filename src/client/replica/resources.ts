@@ -16,7 +16,10 @@ import { ReplicaQueryError } from "./queries";
 import type { LocalIndex } from "./queries";
 import { createWhiteboardReader } from "./whiteboard-reader";
 import { WHITEBOARD_ID, boardSaveSchema } from "../../lib/whiteboard";
-import { listThoughtBoxes } from "../../lib/thought-boxes";
+import {
+  planThoughtBoxPromotion,
+  sharedBoxSummaries,
+} from "../../lib/shared-thought-boxes";
 import {
   noteVisibilitySchema,
   whiteboardNoteVisible,
@@ -465,11 +468,24 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     ): Promise<{ handled: true; value: unknown } | { handled: false }> {
       let value: unknown;
       if (path === "/api/thought-boxes") {
-        value = {
-          items: listThoughtBoxes(
-            (await all("library_whiteboards")) as any,
-            (await all("library_research")) as any,
+        const projects = await all("library_research"),
+          boards = (await all("library_whiteboards")).filter(
+            (b) =>
+              b.id === WHITEBOARD_ID || projects.some((p) => p.id === b.id),
           ),
+          bundles = await all("library_memo_bundles");
+        const pendingLegacy = boards.some((b) =>
+          b.data.writing?.chapters.some((c: any) => !c.bundleId),
+        );
+        const plan = pendingLegacy
+          ? planThoughtBoxPromotion(boards as any, bundles as any)
+          : null;
+        value = {
+          pendingLegacy,
+          items: sharedBoxSummaries((plan?.bundles ?? bundles) as any),
+          ...(plan
+            ? { legacyConflicts: plan.conflicts, legacyToken: plan.legacyToken }
+            : {}),
         };
       } else if (path === "/api/whiteboard") {
         const boardId =

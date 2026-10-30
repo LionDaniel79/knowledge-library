@@ -463,11 +463,6 @@ export function LibraryForm({
             <>
               {editor.note && (
                 <NoteWhiteboardVisibility
-                  boardId={
-                    editor.kind === "note"
-                      ? editor.anchor?.whiteboardId
-                      : undefined
-                  }
                   noteId={editor.note.id}
                   disabled={busy}
                   preview={preview}

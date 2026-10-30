@@ -12,6 +12,7 @@ export function ConnectionEditor({
   onSave: (p: unknown) => Promise<{ version?: number } | null>;
 }) {
   const [base, setBase] = useState(c),
+    [title, setTitle] = useState(c.title ?? ""),
     [relation, setRelation] = useState(c.relation),
     [reason, setReason] = useState(c.reason),
     [dirty, setDirty] = useState(false),
@@ -19,6 +20,7 @@ export function ConnectionEditor({
   useEffect(() => {
     if (!dirty && c.version >= waiting) {
       setBase(c);
+      setTitle(c.title ?? "");
       setRelation(c.relation);
       setReason(c.reason);
       setWaiting(0);
@@ -35,6 +37,7 @@ export function ConnectionEditor({
         const result = await onSave({
           id: c.id,
           expectedVersion: base.version,
+          title,
           relation,
           reason,
           status: "accepted",
@@ -46,6 +49,19 @@ export function ConnectionEditor({
       }}
     >
       <fieldset disabled={busy} className="placement-fields">
+        <label>
+          연결 제목
+          <input
+            name="title"
+            value={title}
+            onChange={(e) => {
+              edit();
+              setTitle(e.target.value);
+            }}
+            maxLength={300}
+            placeholder="연결을 나타내는 이름"
+          />
+        </label>
         <label>
           관계
           <select
@@ -80,6 +96,7 @@ export function ConnectionEditor({
             <p>다른 곳에서 연결이 변경됐습니다. 내 입력은 유지됩니다.</p>
             <details>
               <summary>최근 연결 정보</summary>
+              {c.title && <p>{c.title}</p>}
               <p>
                 {relationNames[c.relation as Relation]} ·{" "}
                 {c.status === "accepted" ? "연결됨" : "해제됨"}

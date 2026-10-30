@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Library, Note } from "@/lib/domain";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import type { ResearchItem, ResearchPlacement } from "@/lib/research";
@@ -20,6 +20,12 @@ type State = {
   research: Project[];
   items: ResearchItem[];
   placements: ResearchPlacement[];
+};
+type MergeSource = {
+  id: string;
+  expectedTitle: string;
+  expectedQuestion: string;
+  expectedBoardVersion: number;
 };
 export function WritingBoardPanel({
   library,
@@ -43,6 +49,22 @@ export function WritingBoardPanel({
       (Project & { expectedBoardVersion?: number; loadError?: string }) | null
     >(null),
     [removedIds, setRemovedIds] = useState<string[]>([]);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [pendingRename, setPendingRename] = useState<Project | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [pendingMerge, setPendingMerge] = useState<{
+    projects: Project[];
+    sources?: MergeSource[];
+    loadError?: string;
+  } | null>(null);
+  const [mergeTitle, setMergeTitle] = useState("");
+  const boardFlush = useRef<(() => Promise<void>) | null>(null);
+  const registerBoardFlush = useCallback(
+    (flush: (() => Promise<void>) | null) => {
+      boardFlush.current = flush;
+    },
+    [],
+  );
   const key = "library:writing-project:" + ownerId;
   useEffect(() => {
     try {
@@ -52,6 +74,7 @@ export function WritingBoardPanel({
   const projects = (resource.data?.research ?? []).filter(
     (p) => !removedIds.includes(p.id),
   );
+  const checkedProjects = projects.filter((p) => checkedIds.includes(p.id));
   const project = projects.find((p) => p.id === selected) ?? projects[0];
   const items = useMemo(
     () =>
@@ -96,6 +119,68 @@ export function WritingBoardPanel({
       localStorage.setItem(key, id);
     } catch {}
   }
+  async function prepareMerge(selectedProjects?: Project[]) {
+    const selected = selectedProjects ?? checkedProjects;
+    if (selected.length < 2 || selected.length > 50) return;
+    setPendingMerge({ projects: selected });
+    try {
+      if (selected.some((p) => p.id === project?.id))
+        await boardFlush.current?.();
+      const sources = await Promise.all(
+        selected.map(async (p): Promise<MergeSource> => {
+          const response = await libraryRequest(
+            `/api/whiteboard?view=summary&boardId=${p.id}`,
+            {
+              cache: "no-store",
+              signal: AbortSignal.timeout(15000),
+            },
+          );
+          const summary = await response.json();
+          if (!response.ok)
+            throw Error(summary.error || "글감 정보를 확인하지 못했습니다.");
+          if (!Number.isInteger(summary.version) || summary.version < 0)
+            throw Error("글감 정보를 다시 확인해 주세요.");
+          return {
+            id: p.id,
+            expectedTitle: p.title,
+            expectedQuestion: p.question,
+            expectedBoardVersion: summary.version,
+          };
+        }),
+      );
+      setPendingMerge((old) =>
+        old?.projects === selected ? { ...old, sources } : old,
+      );
+    } catch (error) {
+      setPendingMerge((old) =>
+        old?.projects === selected
+          ? { ...old, loadError: (error as Error).message }
+          : old,
+      );
+    }
+  }
+  async function mergeProjects() {
+    if (!pendingMerge?.sources || !mergeTitle.trim() || command.busy) return;
+    const result = await command.send("mergeWritingProjects", {
+      title: mergeTitle.trim(),
+      sources: pendingMerge.sources,
+    });
+    if (!result?.id) return;
+    choose(result.id);
+    setPendingMerge(null);
+    setMergeTitle("");
+  }
+  async function renameProject() {
+    if (!pendingRename || !renameTitle.trim() || command.busy) return;
+    const result = await command.send("updateResearch", {
+      id: pendingRename.id,
+      title: renameTitle.trim(),
+      question: pendingRename.question,
+      expectedTitle: pendingRename.title,
+      expectedQuestion: pendingRename.question,
+    });
+    if (result) setPendingRename(null);
+  }
   async function removeProject() {
     const p = pendingDelete;
     if (!p || command.busy || p.expectedBoardVersion === undefined) return;
@@ -107,6 +192,7 @@ export function WritingBoardPanel({
     });
     if (!result) return;
     setRemovedIds((old) => [...old, p.id]);
+    setCheckedIds((ids) => ids.filter((id) => id !== p.id));
     if (project?.id === p.id)
       choose(projects.find((project) => project.id !== p.id)?.id ?? "");
     try {
@@ -157,6 +243,7 @@ export function WritingBoardPanel({
           initialBoard={initial}
           legacyNotes={legacyNotes}
           suspended={pendingDelete?.id === project.id}
+          onRegisterFlush={registerBoardFlush}
         />
       ) : (
         <p role="status">
@@ -195,8 +282,39 @@ export function WritingBoardPanel({
           <button disabled={command.busy || !title.trim()}>글감 만들기</button>
           {project && <strong>{project.title}</strong>}
         </form>
+        <div className="writing-project-merge">
+          <span>{checkedProjects.length}개 선택</span>{" "}
+          <button
+            type="button"
+            disabled={
+              command.busy ||
+              checkedProjects.length < 2 ||
+              checkedProjects.length > 50
+            }
+            onClick={() => {
+              setMergeTitle("");
+              void prepareMerge();
+            }}
+          >
+            선택 글감 합치기
+          </button>
+          <small>두 개 이상 선택하면 새 글감으로 합칩니다.</small>
+        </div>
         {projects.map((p) => (
           <div key={p.id} className="writing-project-row">
+            <input
+              type="checkbox"
+              aria-label={`${p.title} 합치기 선택`}
+              checked={checkedIds.includes(p.id)}
+              disabled={command.busy}
+              onChange={(e) =>
+                setCheckedIds((ids) =>
+                  e.target.checked
+                    ? [...ids, p.id]
+                    : ids.filter((id) => id !== p.id),
+                )
+              }
+            />
             <button
               type="button"
               aria-pressed={project?.id === p.id}
@@ -204,6 +322,17 @@ export function WritingBoardPanel({
               onClick={() => choose(p.id)}
             >
               {p.title}
+            </button>
+            <button
+              type="button"
+              aria-label={`${p.title} 제목 변경`}
+              disabled={command.busy}
+              onClick={() => {
+                setPendingRename(p);
+                setRenameTitle(p.title);
+              }}
+            >
+              제목 변경
             </button>
             <button
               type="button"
@@ -216,6 +345,103 @@ export function WritingBoardPanel({
           </div>
         ))}
       </section>
+      {pendingRename && (
+        <Modal
+          title="글감 제목 변경"
+          canClose={!command.busy}
+          onClose={() => setPendingRename(null)}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void renameProject();
+            }}
+          >
+            <label>
+              변경할 글감 제목
+              <input
+                aria-label="변경할 글감 제목"
+                value={renameTitle}
+                maxLength={300}
+                onChange={(e) => setRenameTitle(e.target.value)}
+              />
+            </label>
+            {command.error && <p role="alert">{command.error}</p>}
+            <div className="form-footer">
+              <button disabled={command.busy || !renameTitle.trim()}>
+                {command.busy ? "변경 중…" : "변경"}
+              </button>
+              <button
+                type="button"
+                disabled={command.busy}
+                onClick={() => setPendingRename(null)}
+              >
+                취소
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {pendingMerge && (
+        <Modal
+          title="글감 합치기"
+          canClose={!command.busy}
+          onClose={() => setPendingMerge(null)}
+        >
+          <p>
+            선택한 {pendingMerge.projects.length}개 글감을 새 글감으로 합칩니다.
+            원본 글감은 그대로 유지됩니다.
+          </p>
+          <ul>
+            {pendingMerge.projects.map((p) => (
+              <li key={p.id}>{p.title}</li>
+            ))}
+          </ul>
+          <label>
+            합친 글감 제목
+            <input
+              aria-label="합친 글감 제목"
+              value={mergeTitle}
+              maxLength={300}
+              onChange={(e) => setMergeTitle(e.target.value)}
+            />
+          </label>
+          {command.error && <p role="alert">{command.error}</p>}
+          {pendingMerge.loadError ? (
+            <p role="alert">
+              {pendingMerge.loadError}{" "}
+              <button
+                type="button"
+                onClick={() => void prepareMerge(pendingMerge.projects)}
+              >
+                다시 확인
+              </button>
+            </p>
+          ) : (
+            !pendingMerge.sources && (
+              <p role="status">선택한 글감 정보를 확인하는 중…</p>
+            )
+          )}
+          <div className="form-footer">
+            <button
+              type="button"
+              disabled={
+                command.busy || !pendingMerge.sources || !mergeTitle.trim()
+              }
+              onClick={() => void mergeProjects()}
+            >
+              {command.busy ? "합치는 중…" : "새 글감으로 합치기"}
+            </button>
+            <button
+              type="button"
+              disabled={command.busy}
+              onClick={() => setPendingMerge(null)}
+            >
+              취소
+            </button>
+          </div>
+        </Modal>
+      )}
       {pendingDelete && (
         <Modal
           title="글감 삭제"

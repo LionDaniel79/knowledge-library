@@ -24,6 +24,7 @@ export function connectedMemoGroups(
   const visited = new Set<string>(),
     groups: {
       id: string;
+      title: string;
       notes: WhiteboardSnapshot["notes"];
       connections: WhiteboardSnapshot["connections"];
     }[] = [];
@@ -39,12 +40,19 @@ export function connectedMemoGroups(
           ids.add(next);
           queue.push(next);
         }
-    groups.push({
-      id: [...ids].sort()[0],
-      notes: source.notes.filter((note) => ids.has(note.id)),
-      connections: edges.filter(
+    const connections = edges.filter(
         (e) => ids.has(e.source_id) && ids.has(e.target_id),
       ),
+      titles = [
+        ...new Set(connections.map((c) => c.title?.trim()).filter(Boolean)),
+      ];
+    groups.push({
+      id: [...ids].sort()[0],
+      title:
+        titles.slice(0, 2).join(" · ") +
+        (titles.length > 2 ? ` 외 ${titles.length - 2}개` : ""),
+      notes: source.notes.filter((note) => ids.has(note.id)),
+      connections,
     });
   }
   return groups;
