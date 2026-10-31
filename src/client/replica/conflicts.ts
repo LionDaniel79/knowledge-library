@@ -588,6 +588,7 @@ async function replayReviewedChanges(
         row = await reviewedRow(repository, entity, old);
       body.requestId = requestId;
       body.entityId = old.entityId;
+      if (c.path === "/api/book-exclusions") delete body.entityId;
       delete body.editBase;
       if (body.payload && Object.hasOwn(body.payload, "expectedVersion"))
         body.payload.expectedVersion = row?.version ?? 0;

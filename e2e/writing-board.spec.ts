@@ -192,7 +192,7 @@ for (const width of [390, 1280])
       await p.addScriptTag({ content: bundle });
     }
     await mount(page);
-    await page.getByRole("button", { name: "글감엮기", exact: true }).click();
+    await page.getByRole("button", { name: "글감묶음", exact: true }).click();
     await page
       .getByRole("textbox", { name: "새 글감 제목" })
       .fill("생각의 변화");

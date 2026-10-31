@@ -54,9 +54,9 @@ export function KnowledgePanel({
     <section className="knowledge-panel">
       <div className="knowledge-tabs">
         {[
-          ["whiteboard", "화이트보드"],
           ["memo-box", "메모 상자"],
-          ["writing", "글감엮기"],
+          ["whiteboard", "화이트보드"],
+          ["writing", "글감묶음"],
         ].map(([id, name]) => (
           <button
             key={id}

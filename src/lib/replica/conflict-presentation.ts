@@ -113,7 +113,9 @@ function operation(entry: Pick<OutboxEntry, "command">) {
     : command.path === "/api/note-tags"
       ? "태그 삭제"
       : command.path === "/api/book-exclusions"
-        ? "제외 자료 복원"
+        ? body.action === "delete"
+          ? "소장 도서 삭제"
+          : "제외 자료 복원"
         : (operations[body.type] ?? "자료 변경");
 }
 function titleOf(r: Row, context: ConflictContext) {

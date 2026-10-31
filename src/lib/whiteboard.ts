@@ -256,12 +256,46 @@ export function noteTopics(source: WhiteboardSnapshot, n: Note) {
     ),
   ];
 }
-export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
+function assignedTopics(source: WhiteboardSnapshot) {
+  const valid = new Set(source.topics.map((t) => t.id)),
+    byNote = new Map<string, Set<string>>(),
+    byBook = new Map<string, Set<string>>();
+  for (const m of source.memberships) {
+    if (m.status !== "accepted" || !valid.has(m.topicId)) continue;
+    const map =
+      m.sourceKind === "note"
+        ? byNote
+        : m.sourceKind === "book"
+          ? byBook
+          : null;
+    if (!map) continue;
+    const ids = map.get(m.sourceId) ?? new Set<string>();
+    ids.add(m.topicId);
+    map.set(m.sourceId, ids);
+  }
+  return new Map(
+    source.notes.map((n) => [
+      n.id,
+      [
+        ...new Set([
+          ...(byNote.get(n.id) ?? []),
+          ...(n.bookId ? (byBook.get(n.bookId) ?? []) : []),
+        ]),
+      ],
+    ]),
+  );
+}
+export function filterNotes(
+  source: WhiteboardSnapshot,
+  f: BoardFilter,
+  assigned?: Map<string, string[]>,
+) {
+  assigned ??= f.topics.length ? assignedTopics(source) : undefined;
   const books = new Map(source.books.map((b) => [b.id, b]));
   return source.notes.filter((n) => {
     const book = n.bookId ? books.get(n.bookId) : undefined,
       text = normalized(n.title + "\n" + n.content),
-      topics = f.topics.length ? noteTopics(source, n) : [];
+      topics = f.topics.length ? (assigned!.get(n.id) ?? []) : [];
     return (
       (!f.topics.length ||
         (!topics.length && f.topics.includes("unclassified")) ||
@@ -274,7 +308,11 @@ export function filterNotes(source: WhiteboardSnapshot, f: BoardFilter) {
     );
   });
 }
-export function buildScene(source: WhiteboardSnapshot, b: Board) {
+export function buildScene(
+  source: WhiteboardSnapshot,
+  b: Board,
+  options: { plain?: boolean } = {},
+) {
   b = projectSharedBoxes(b, source);
   const chapterItems =
     b.writing?.chapters.flatMap((c) => boxNotes(c, source)) ?? [];
@@ -287,16 +325,16 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
   const chapterGrouped = new Set(
     chapterItems.filter((i) => i.groupIds.length).flatMap((i) => i.noteIds),
   );
+  const assigned = assignedTopics(source);
   const visible = new Set(
       [
-        ...filterNotes(source, b.filter),
+        ...filterNotes(source, b.filter, assigned),
         ...source.notes.filter((n) => chapterNotes.has(n.id)),
       ]
         .filter((n) => !hidden.has(n.id))
         .map((n) => n.id),
     ),
     notes = new Map(source.notes.map((n) => [n.id, n])),
-    assigned = new Map(source.notes.map((n) => [n.id, noteTopics(source, n)])),
     manual = new Set([
       ...b.groups.flatMap((g) => g.noteIds),
       ...(source.bundles ?? [])
@@ -322,7 +360,7 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
     !b.filter.topics.length ||
     (b.filter.topics.includes("unclassified") &&
       source.topics.every((t) => b.filter.topics.includes(t.id)));
-  if (allTopics || chapterGroupIds.size) {
+  if (!options.plain && (allTopics || chapterGroupIds.size)) {
     for (const t of source.topics)
       if (allTopics || chapterGroupIds.has(`topic:${t.id}`))
         definitions.push({
@@ -422,14 +460,16 @@ export function buildScene(source: WhiteboardSnapshot, b: Board) {
         note = notes.get(noteId);
       if (!note || !visible.has(noteId)) continue;
       const id = boxNodeId(chapter.id, item.id, noteId);
-      const legacy = Object.entries(b.positions).find(
-        ([key, p]) =>
-          key.endsWith("::" + noteId) &&
-          p.x >= chapter.x &&
-          p.x < chapter.x + chapter.width &&
-          p.y >= chapter.y + 120 &&
-          p.y < chapter.y + chapter.height,
-      )?.[1];
+      const legacy = b.positions[id]
+        ? undefined
+        : Object.entries(b.positions).find(
+            ([key, p]) =>
+              key.endsWith("::" + noteId) &&
+              p.x >= chapter.x &&
+              p.x < chapter.x + chapter.width &&
+              p.y >= chapter.y + 120 &&
+              p.y < chapter.y + chapter.height,
+          )?.[1];
       nodes.push({
         id,
         noteId,

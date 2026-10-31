@@ -13,10 +13,12 @@ import { HiddenWhiteboardNotes } from "./hidden-notes";
 import { connectedMemoGroups } from "@/lib/memo-box";
 import { connectionGroupsForView } from "@/lib/whiteboard-workflows";
 import { MemoGroupDetail } from "../memo-box/group-detail";
-import { bundleBoard } from "@/lib/thought-bundle-board";
+import {
+  boardDisplaySelection,
+  arrangePlainMemos,
+} from "@/lib/whiteboard-display";
 import {
   putBoxNotes,
-  thoughtView,
   flattenBox,
   type ThoughtBoxSummary,
 } from "@/lib/thought-boxes";
@@ -126,6 +128,8 @@ export function WhiteboardPanel({
       null,
     ),
     [overviewOnFit, setOverviewOnFit] = useState(false),
+    [boxVisibility, setBoxVisibility] = useState<Record<string, boolean>>({}),
+    [plainBoard, setPlainBoard] = useState(false),
     [checkedConnections, setCheckedConnections] = useState<string[]>([]),
     [checkedBoxes, setCheckedBoxes] = useState<string[]>([]),
     [linkSource, setLinkSource] = useState<{
@@ -253,8 +257,12 @@ export function WhiteboardPanel({
       );
     }
   }
-  async function send(type: string, payload: unknown) {
-    const body = { requestId: crypto.randomUUID(), type, payload };
+  async function send(
+    type: string,
+    payload: unknown,
+    requestId = crypto.randomUUID(),
+  ) {
+    const body = { requestId, type, payload };
     if (runtime) {
       if (runtime.owner !== ownerId || !runtime.getSnapshot().ready)
         throw Error("기기 자료를 먼저 준비해 주세요. 현재 배치는 유지됩니다.");
@@ -552,71 +560,93 @@ export function WhiteboardPanel({
         : [],
     [source, connectionView],
   );
-  const focusNotes = useMemo(
-    () => focusGroups.flatMap((g) => g.notes),
-    [focusGroups],
-  );
   const hasFocus = connectionView !== null;
-  const focused = useMemo(
+  const connectionComponents = useMemo(
     () =>
-      source && connectionView !== null
-        ? thoughtView(source, projectSharedBoxes(board, source), connectionView)
-        : null,
-    [source, board, connectionView],
+      new Map(
+        memoGroups.flatMap((g) => g.notes.map((n) => [n.id, g.id] as const)),
+      ),
+    [memoGroups],
   );
-  const displaySource = focused?.source ?? source;
-  const displayBoard = useMemo(
+  const display = useMemo(
     () =>
-      displaySource
-        ? projectSharedBoxes(
-            bundleBoard(displaySource, focused?.board ?? board),
-            displaySource,
+      source
+        ? boardDisplaySelection(
+            source,
+            board,
+            {
+              connections: connectionView,
+              boxes: boxVisibility,
+              plain: plainBoard,
+            },
+            !!writingTitle,
+            { components: connectionComponents, groups: focusGroups },
           )
-        : board,
-    [displaySource, focused, board],
+        : null,
+    [
+      source,
+      board,
+      connectionView,
+      boxVisibility,
+      plainBoard,
+      writingTitle,
+      connectionComponents,
+      focusGroups,
+    ],
   );
+  const displaySource = display?.source ?? source;
+  const displayBoard = display?.board ?? board;
   const boxes = sharedBoxSummaries(source?.bundles ?? []);
   function showConnection(c: BoardConnection) {
-    const group = memoGroups.find((g) =>
-      g.connections.some((edge) => edge.id === c.id),
+    const ids =
+      connectionView === "all"
+        ? availableConnections.map((c) => c.id)
+        : (connectionView ?? []);
+    showConnections(
+      ids.includes(c.id) ? ids.filter((id) => id !== c.id) : [...ids, c.id],
+      false,
+      checkedBoxes,
     );
-    if (group) void showConnections(group.connections.map((edge) => edge.id));
   }
-  async function showConnections(
+  function toggleBox(id: string) {
+    const next = checkedBoxes.includes(id)
+      ? checkedBoxes.filter((value) => value !== id)
+      : [...checkedBoxes, id];
+    showConnections(connectionView ?? [], false, next);
+  }
+  function showConnections(
     ids: string[] | "all",
     overview = false,
     boxIds: string[] = [],
   ) {
-    const s = sourceRef.current;
-    if (!s || linkBusy) return;
-    setError("");
-    setLinkBusy(true);
-    try {
-      const before = current.current;
-      let next = projectSharedBoxes(before, s);
-      for (const id of boxIds) {
-        if (boxesResource.data?.legacyConflicts?.some((c) => c.id === id))
-          continue;
-        const bundle = s.bundles?.find((b) => b.id === id && !b.archived_at);
-        if (bundle) next = referenceThoughtBox(next, bundle, s);
-      }
-      if (boxIds.length === 0) next = before;
-      if (next !== before) update(next, before);
-      setSelectedGroup(null);
-      setSelectedNote(null);
-      setLinkSource(null);
-      setConnectionView(ids);
-      setOverviewOnFit(overview);
-      setSearchRevision((n) => n + 1);
+    const valid = boxIds.filter(
+      (id) => !boxesResource.data?.legacyConflicts?.some((c) => c.id === id),
+    );
+    setBoxVisibility((old) => ({
+      ...old,
+      ...Object.fromEntries(
+        checkedBoxes
+          .filter((id) => !valid.includes(id))
+          .map((id) => [id, false]),
+      ),
+      ...Object.fromEntries(valid.map((id) => [id, true])),
+    }));
+    setCheckedBoxes(valid);
+    setCheckedConnections(
+      ids === "all" ? availableConnections.map((c) => c.id) : ids,
+    );
+    setPlainBoard(false);
+    setSelectedGroup(null);
+    setSelectedNote(null);
+    setLinkSource(null);
+    setConnectionView(ids);
+    setOverviewOnFit(overview);
+    setSearchRevision((n) => n + 1);
+    if (overview)
       canvasHost.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
+        behavior: "auto",
+        block: "nearest",
       });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLinkBusy(false);
-    }
   }
   function download(format: "md" | "txt") {
     const content = exportWritingBoard(
@@ -640,8 +670,22 @@ export function WhiteboardPanel({
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  function withVisibleChapter(value: Board, id: string) {
+    if (value.writing?.chapters.some((c) => c.id === id)) return value;
+    const chapter = displayBoard.writing?.chapters.find((c) => c.id === id);
+    return chapter
+      ? {
+          ...value,
+          writing: {
+            ...value.writing,
+            chapters: [...(value.writing?.chapters ?? []), chapter],
+          },
+        }
+      : value;
+  }
   function changeChapter(chapter: WritingChapter) {
     const before = current.current;
+    const base = withVisibleChapter(before, chapter.id);
     const original = sourceRef.current?.bundles?.find(
       (b) => b.id === chapter.bundleId,
     );
@@ -672,8 +716,8 @@ export function WhiteboardPanel({
       {
         ...before,
         writing: {
-          ...before.writing!,
-          chapters: before.writing!.chapters.map((c) =>
+          ...base.writing!,
+          chapters: base.writing!.chapters.map((c) =>
             c.id === chapter.id ? chapter : c,
           ),
         },
@@ -847,9 +891,12 @@ export function WhiteboardPanel({
     target: ReturnType<typeof dropTarget>,
     groupOrigin?: Point,
   ) {
-    const before = projectSharedBoxes(current.current, sourceRef.current!),
+    const before = withVisibleChapter(
+        projectSharedBoxes(current.current, sourceRef.current!),
+        node.chapterId ?? "",
+      ),
       moved = moveNote(before, node, p);
-    const chapter = chapterAt(before, p.x + 110, p.y + 83);
+    const chapter = chapterAt(displayBoard, p.x + 110, p.y + 83);
     if (chapter && sourceRef.current) {
       if (chapter.items.some((item) => item.noteIds.includes(node.noteId))) {
         if (!node.chapterId || node.chapterId === chapter.id)
@@ -858,7 +905,7 @@ export function WhiteboardPanel({
       }
       commitMaterialBoard(
         putBoxNotes(
-          node.chapterId ? before : moved,
+          withVisibleChapter(node.chapterId ? before : moved, chapter.id),
           chapter.id,
           [node.noteId],
           sourceRef.current,
@@ -966,14 +1013,14 @@ export function WhiteboardPanel({
     const before = projectSharedBoxes(current.current, sourceRef.current!);
     let next = moveGroup(before, group, dx, dy);
     const chapter = chapterAt(
-      before,
+      displayBoard,
       group.x + dx + group.width / 2,
       group.y + dy + 60,
     );
     if (chapter && sourceRef.current) {
       commitMaterialBoard(
         putBoxNotes(
-          next,
+          withVisibleChapter(next, chapter.id),
           chapter.id,
           group.allNodes.map((n) => n.noteId),
           sourceRef.current,
@@ -1202,12 +1249,12 @@ export function WhiteboardPanel({
   const derived = useMemo(() => {
     if (!source || !displaySource) return null;
     return {
-      scene: buildScene(displaySource, displayBoard),
+      scene: buildScene(displaySource, displayBoard, { plain: display?.plain }),
       labels: new Map(
         source.notes.map((n) => [n.id, n.title || n.content.slice(0, 30)]),
       ),
     };
-  }, [source, displaySource, displayBoard, board]);
+  }, [source, displaySource, displayBoard, display?.plain]);
   const facets = useMemo(
     () =>
       source
@@ -1250,7 +1297,7 @@ export function WhiteboardPanel({
     <section
       className="whiteboard-panel"
       aria-label={
-        writingTitle ? "글감엮기 화이트보드" : "사유의 지도 화이트보드"
+        writingTitle ? "글감묶음 화이트보드" : "사유의 지도 화이트보드"
       }
     >
       <form
@@ -1335,6 +1382,19 @@ export function WhiteboardPanel({
               };
               shared.accept(bundle);
               const before = current.current;
+              if (plainBoard) {
+                setBoxVisibility({
+                  ...Object.fromEntries(
+                    (before.writing?.chapters ?? []).map((c) => [
+                      c.bundleId ?? c.id,
+                      false,
+                    ]),
+                  ),
+                  [bundle.id]: true,
+                });
+                setCheckedBoxes([bundle.id]);
+              }
+              setPlainBoard(false);
               update(
                 referenceThoughtBox(before, bundle, sourceRef.current!),
                 before,
@@ -1567,12 +1627,16 @@ export function WhiteboardPanel({
         <div className="wb-focus-toolbar">
           <strong>
             {connectionView === "all" ? "전체 연결" : "선택한 연결"} ·{" "}
-            {focusNotes.length}개 메모
+            {new Set(scene.nodes.map((n) => n.noteId)).size}개 메모
           </strong>
           <button
             type="button"
             onClick={() => {
               setConnectionView(null);
+              setBoxVisibility({});
+              setCheckedBoxes([]);
+              setCheckedConnections([]);
+              setPlainBoard(true);
               setOverviewOnFit(false);
               setSearchRevision((n) => n + 1);
             }}
@@ -1589,6 +1653,7 @@ export function WhiteboardPanel({
         <WhiteboardCanvas
           source={displaySource!}
           board={displayBoard}
+          suppliedScene={scene}
           saving={saving || shared.busy}
           onSave={
             writingTitle
@@ -1605,10 +1670,20 @@ export function WhiteboardPanel({
           numbered={!!writingTitle}
           onChapterChange={changeChapter}
           onChapterMove={(id, dx, dy) =>
-            update(moveChapter(current.current, id, dx, dy), current.current)
+            update(
+              moveChapter(withVisibleChapter(current.current, id), id, dx, dy),
+              current.current,
+            )
           }
           onChapterRemove={(id) => {
             const before = current.current;
+            const chapter = displayBoard.writing?.chapters.find(
+              (c) => c.id === id,
+            );
+            const bundleId = chapter?.bundleId ?? id;
+            setBoxVisibility((old) => ({ ...old, [bundleId]: false }));
+            setCheckedBoxes((old) => old.filter((value) => value !== bundleId));
+            if (!before.writing?.chapters.some((c) => c.id === id)) return;
             update(
               {
                 ...before,
@@ -1626,7 +1701,10 @@ export function WhiteboardPanel({
             if (ids.length)
               commitMaterialBoard(
                 putBoxNotes(
-                  projectSharedBoxes(current.current, sourceRef.current!),
+                  withVisibleChapter(
+                    projectSharedBoxes(current.current, sourceRef.current!),
+                    id,
+                  ),
                   id,
                   ids,
                   sourceRef.current!,
@@ -1635,10 +1713,9 @@ export function WhiteboardPanel({
               );
           }}
           onNoteOrder={(chapterId, itemId, order) => {
-            const chapter = projectSharedBoxes(
-              current.current,
-              sourceRef.current!,
-            ).writing?.chapters.find((c) => c.id === chapterId);
+            const chapter = displayBoard.writing?.chapters.find(
+              (c) => c.id === chapterId,
+            );
             if (!chapter) return;
             const flat = flattenBox(chapter, sourceRef.current!);
             changeChapter({
@@ -1672,10 +1749,9 @@ export function WhiteboardPanel({
               : undefined
           }
           onChapterRemoveNote={(chapterId, itemId) => {
-            const chapter = projectSharedBoxes(
-              current.current,
-              sourceRef.current!,
-            ).writing?.chapters.find((c) => c.id === chapterId);
+            const chapter = displayBoard.writing?.chapters.find(
+              (c) => c.id === chapterId,
+            );
             if (!chapter) return;
             const flat = flattenBox(chapter, sourceRef.current!);
             changeChapter({
@@ -1729,7 +1805,40 @@ export function WhiteboardPanel({
           onArrange={() => {
             if (linkBusy) return;
             const before = current.current;
-            update(arrangeThoughtBoard(before, source), before);
+            if (display?.plain)
+              update(
+                arrangePlainMemos(displaySource!, displayBoard, before),
+                before,
+              );
+            else {
+              const arranged = arrangeThoughtBoard(
+                displayBoard,
+                displaySource!,
+              );
+              const displayed = new Set(
+                displayBoard.writing?.chapters.map((c) => c.id) ?? [],
+              );
+              update(
+                {
+                  ...before,
+                  positions: { ...before.positions, ...arranged.positions },
+                  groupPositions: {
+                    ...before.groupPositions,
+                    ...arranged.groupPositions,
+                  },
+                  writing: {
+                    ...before.writing,
+                    chapters: [
+                      ...(before.writing?.chapters.filter(
+                        (c) => !displayed.has(c.id),
+                      ) ?? []),
+                      ...(arranged.writing?.chapters ?? []),
+                    ],
+                  },
+                },
+                before,
+              );
+            }
             setSearchRevision((n) => n + 1);
           }}
         />
@@ -1800,13 +1909,7 @@ export function WhiteboardPanel({
                 type="checkbox"
                 aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 선택`}
                 checked={checkedConnections.includes(c.id)}
-                onChange={(e) =>
-                  setCheckedConnections((old) =>
-                    e.target.checked
-                      ? [...old, c.id]
-                      : old.filter((id) => id !== c.id),
-                  )
-                }
+                onChange={() => showConnection(c)}
               />
             </label>
             <span className="wb-entry-badge" aria-label="연결된 메모">
@@ -1816,6 +1919,7 @@ export function WhiteboardPanel({
               className="wb-connection-select"
               type="button"
               disabled={linkBusy}
+              aria-pressed={checkedConnections.includes(c.id)}
               onClick={() => showConnection(c)}
               aria-label={`${labels.get(c.source_id)} ↔ ${labels.get(c.target_id)} 보드에서 보기`}
             >
@@ -1839,13 +1943,7 @@ export function WhiteboardPanel({
                 type="checkbox"
                 aria-label={`${box.title} 생각 묶음 선택`}
                 checked={checkedBoxes.includes(box.id)}
-                onChange={(e) =>
-                  setCheckedBoxes((old) =>
-                    e.target.checked
-                      ? [...old, box.id]
-                      : old.filter((id) => id !== box.id),
-                  )
-                }
+                onChange={() => toggleBox(box.id)}
               />
             </label>
             <span className="wb-entry-badge" aria-label="생각 묶음">
@@ -1855,7 +1953,8 @@ export function WhiteboardPanel({
               type="button"
               className="wb-connection-select"
               disabled={linkBusy}
-              onClick={() => void showConnections([], true, [box.id])}
+              onClick={() => toggleBox(box.id)}
+              aria-pressed={checkedBoxes.includes(box.id)}
             >
               {box.title || "제목 없는 상자"}{" "}
               <small>

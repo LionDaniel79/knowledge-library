@@ -49,6 +49,7 @@ try {
   await client.query(
     await readFile("db/033_shared_thought_titles.sql", "utf8"),
   );
+  await client.query(await readFile("db/034_book_deletion.sql", "utf8"));
   if (role) {
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_memo_bundles,library_bundle_links TO "' +

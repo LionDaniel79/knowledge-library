@@ -3,6 +3,7 @@ import { withSyncWrite } from "./sync/write";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LibraryError, type Database, type Executor } from "./library-store";
+import { bookDeletionInput } from "../lib/book-deletion";
 const selection = z
   .object({
     id: z.string().uuid(),
@@ -29,7 +30,7 @@ export interface BookExclusionPage {
     id: string;
     title: string;
     author: string;
-    kind: "paper" | "periodical";
+    kind: "book" | "paper" | "periodical";
     reason: string;
     relativePath: string;
     excludedAt: string;
@@ -193,6 +194,68 @@ export function createBookExclusionStore(db: Database) {
         },
       );
     },
+    async remove(owner: string, raw: unknown) {
+      const p = bookDeletionInput.parse(raw);
+      return operation(
+        db,
+        owner,
+        p.requestId,
+        "deleteBook",
+        {
+          id: p.id,
+          expectedVersion: p.expectedVersion,
+        },
+        async (tx) => {
+          const book = (
+            await tx.query(
+              "SELECT id,version FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+              [owner, p.id],
+            )
+          ).rows[0];
+          if (!book) throw new LibraryError(404, "도서를 찾을 수 없습니다.");
+          const before = (
+            await tx.query(
+              "SELECT * FROM library_book_exclusions WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+              [owner, p.id],
+            )
+          ).rows[0];
+          if (
+            book.version !== p.expectedVersion ||
+            before?.state === "excluded"
+          )
+            throw new LibraryError(
+              409,
+              "도서가 변경되었거나 이미 삭제되었습니다. 최신 목록을 확인해 주세요.",
+            );
+          const after = (
+            await tx.query(
+              `INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id)
+           VALUES($1,$2,'book','소장 도서에서 삭제',$3)
+           ON CONFLICT(owner_id,id) DO UPDATE SET state='excluded',kind='book',reason=excluded.reason,batch_id=excluded.batch_id,version=library_book_exclusions.version+1,updated_at=now()
+           RETURNING *`,
+              [p.id, owner, p.requestId],
+            )
+          ).rows[0];
+          const updated = (
+            await tx.query(
+              "UPDATE library_books SET version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING version",
+              [owner, p.id],
+            )
+          ).rows[0];
+          await tx.query(
+            "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'deleteBook',$4,$5)",
+            [
+              randomUUID(),
+              owner,
+              p.id,
+              JSON.stringify(before ?? null),
+              JSON.stringify(after),
+            ],
+          );
+          return { id: p.id, version: updated.version, deleted: true };
+        },
+      );
+    },
     async restore(owner: string, raw: unknown) {
       const p = restoreInput.parse(raw);
       return operation(
@@ -224,6 +287,12 @@ export function createBookExclusionStore(db: Database) {
               [owner, p.id],
             )
           ).rows[0];
+          // A confirmation opened before deletion/restoration must not delete
+          // the newly restored book without another version check.
+          await tx.query(
+            "UPDATE library_books SET version=version+1 WHERE owner_id=$1 AND id=$2",
+            [owner, p.id],
+          );
           await tx.query(
             "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'restoreBook',$4,$5)",
             [

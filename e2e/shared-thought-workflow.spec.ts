@@ -125,6 +125,13 @@ async function setup(
       const c = route.request().postDataJSON(),
         p = c.payload;
       calls.push(c);
+      if (c.type === "editConnection") {
+        const old = source.connections.find((value: any) => value.id === p.id);
+        if (!old || old.version !== p.expectedVersion)
+          return route.fulfill({ status: 409, json: { error: "연결 변경" } });
+        Object.assign(old, p, { version: old.version + 1 });
+        return route.fulfill({ json: { id: old.id, version: old.version } });
+      }
       if (c.type === "promoteThoughtBoxes") {
         const plan = planThoughtBoxPromotion(
           [...boards.values()],
@@ -423,3 +430,193 @@ for (const width of [390, 1280])
       fullPage: false,
     });
   });
+
+test("ordinary board thought selections toggle without saving, and returning to All shows only memos", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  const before = structuredClone(f.boards.get(WHITEBOARD_ID));
+  await page.locator(".wb-connection-list summary").click();
+  const row = page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "둘째 생각묶음" });
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(1);
+  await expect(row).toHaveAttribute("aria-pressed", "true");
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await row.click();
+  await page
+    .getByRole("button", { name: "전체 보드 보기", exact: true })
+    .click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await expect(page.locator(".wb-group")).toHaveCount(0);
+  await expect(page.locator(".wb-note")).toHaveCount(2); // ordinary hidden memo stays hidden
+  expect(f.boards.get(WHITEBOARD_ID)).toEqual(before);
+  expect(
+    f.calls.filter(
+      (c) => c.type === "saveWhiteboard" || c.type === "saveMemoBundle",
+    ),
+  ).toHaveLength(0);
+});
+test("writing display selections can be hidden again without removing project originals", async ({
+  page,
+}) => {
+  const f = await setup(page);
+  const original = structuredClone(f.boards.get(f.projectId));
+  await page.locator(".wb-connection-list summary").click();
+  const row = page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "둘째 생각묶음" });
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(2);
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(1);
+  expect(f.boards.get(f.projectId)).toEqual(original);
+  expect(f.source.bundles).toHaveLength(2);
+});
+test("an obsolete saved connection frame disappears after unlink and viewing does not wait for a pending save", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard"),
+    extra = { ...f.source.notes[2], id: randomUUID(), title: "메모4" },
+    manual = "manual:" + randomUUID();
+  f.source.notes.push(extra);
+  f.source.connections.push({
+    id: randomUUID(),
+    source_kind: "note",
+    target_kind: "note",
+    source_id: f.ids[2],
+    target_id: extra.id,
+    status: "accepted",
+    relation: "related",
+    reason: "연결 이유",
+    version: 1,
+  });
+  f.boards.get(WHITEBOARD_ID).data.groups = [
+    { id: manual, title: "연결된 메모", noteIds: [f.ids[2], extra.id] },
+  ];
+  await page.evaluate(() => {
+    (window as any).fixture.notes = [...(window as any).fixture.notes];
+    (window as any).mount("whiteboard");
+  });
+  await page.locator(".wb-connection-list summary").click();
+  const row = page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "메모3 ↔ 메모4" });
+  await row.click();
+  await expect(page.locator(".wb-group")).toHaveCount(1);
+  await row.click();
+  await expect(page.locator(".wb-group")).toHaveCount(0);
+  await row.click();
+  await page
+    .locator(".wb-connection-list")
+    .getByRole("button", { name: "연결 해제", exact: true })
+    .click();
+  await expect(page.locator(".wb-group")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "전체 보드 보기", exact: true })
+    .click();
+  await expect(page.locator(".wb-group")).toHaveCount(0);
+  await expect(page.locator(".wb-note")).toHaveCount(3);
+});
+test("displaying another box responds while a canonical save is still waiting", async ({
+  page,
+}) => {
+  const f = await setup(page);
+  f.delayNext();
+  await page.getByLabel("목차 제목").fill("느린 저장 검수");
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveMemoBundle").length)
+    .toBe(1);
+  await page.locator(".wb-connection-list summary").click();
+  await page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "둘째 생각묶음" })
+    .click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(2);
+  expect(f.source.bundles[0].version).toBe(1);
+  f.release();
+  await expect.poll(() => f.source.bundles[0].title).toBe("느린 저장 검수");
+});
+test("a display-only box on an empty saved board can be removed and moved without losing its original", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  f.boards.get(WHITEBOARD_ID).data = emptyBoard();
+  await page.evaluate(() => {
+    (window as any).fixture.notes = [...(window as any).fixture.notes];
+    (window as any).mount("whiteboard");
+  });
+  await page.locator(".wb-connection-list summary").click();
+  const row = page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "둘째 생각묶음" });
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "상자 삭제", exact: true }).click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  expect(f.source.bundles).toHaveLength(2);
+  expect(f.boards.get(WHITEBOARD_ID).data.writing).toBeUndefined();
+  await row.click();
+  const note = page.locator(".wb-note[data-chapter-note-id]").first();
+  const rect = await note.boundingBox();
+  if (!rect) throw Error("missing memo");
+  const before = await note.getAttribute("style");
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    rect.x + rect.width / 2 + 30,
+    rect.y + rect.height / 2 + 30,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect(note).not.toHaveAttribute("style", before!);
+  await expect
+    .poll(() => f.boards.get(WHITEBOARD_ID).data.writing?.chapters.length)
+    .toBe(1);
+});
+test("a new box is visible after returning to the plain ordinary board", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  await page.locator(".wb-connection-list summary").click();
+  await page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "둘째 생각묶음" })
+    .click();
+  await page
+    .getByRole("button", { name: "전체 보드 보기", exact: true })
+    .click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await page.getByRole("button", { name: "상자 추가", exact: true }).click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(1);
+  await expect.poll(() => f.source.bundles.length).toBe(3);
+});
+test("hiding a saved project box only changes display and keeps its text in exports", async ({
+  page,
+}) => {
+  const f = await setup(page);
+  await page.locator(".wb-connection-list summary").click();
+  const row = page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "첫 생각묶음" });
+  await row.click();
+  await row.click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await page.evaluate(() => {
+    const original = URL.createObjectURL;
+    URL.createObjectURL = (blob) => {
+      (window as any).exported = blob;
+      return original(blob);
+    };
+  });
+  await page.getByRole("button", { name: "MD 내보내기", exact: true }).click();
+  const text = await page.evaluate(
+    async () => await (window as any).exported.text(),
+  );
+  expect(text).toContain(f.source.notes[0].content);
+  expect(text).toContain(f.source.notes[1].content);
+  expect(f.boards.get(f.projectId).data.writing.chapters).toHaveLength(1);
+});

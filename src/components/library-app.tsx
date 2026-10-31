@@ -58,6 +58,7 @@ import {
 
 import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
+import { BookDelete } from "./book-delete";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
@@ -1027,7 +1028,7 @@ export function LibraryApp({
                           className="secondary"
                           onClick={() => setExclusionsOpen(true)}
                         >
-                          제외한 자료
+                          삭제·제외한 자료
                         </button>
                       )}
                     </div>
@@ -1562,6 +1563,40 @@ export function LibraryApp({
             >
               수정
             </button>
+            {!preview && (
+              <BookDelete
+                key={detailBook.id + ":delete"}
+                book={detailBook}
+                disabled={remote && !detailState?.complete}
+                onConflict={() => {
+                  void refresh().catch(() => {});
+                }}
+                onDeleted={(queued) => {
+                  saveRevision.current++;
+                  setDetail(null);
+                  setMessage(
+                    queued
+                      ? "이 기기에 도서 삭제를 저장했습니다. 연결되면 동기화됩니다."
+                      : "소장 도서에서 삭제했습니다. 삭제·제외한 자료에서 복원할 수 있습니다.",
+                  );
+                  setFailure("");
+                  setData((current) => ({
+                    ...current,
+                    books: current.books.filter(
+                      (book) => book.id !== detailBook.id,
+                    ),
+                    cycles: current.cycles.filter(
+                      (cycle) => cycle.bookId !== detailBook.id,
+                    ),
+                  }));
+                  void refresh().catch(() =>
+                    setFailure(
+                      "삭제했습니다. 서재를 새로고침하면 목록에 반영됩니다.",
+                    ),
+                  );
+                }}
+              />
+            )}
           </div>
           <BookShelves
             key={detailBook.id}

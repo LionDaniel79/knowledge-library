@@ -91,3 +91,40 @@ it("requires a session and a same-origin versioned restore, and never accepts an
     ).total,
   ).toBe(0);
 });
+it("accepts an explicit reversible book deletion only for the authenticated owner and current version", async () => {
+  owner = "route-owner";
+  const created = await createLibraryStore(f.db).mutate(owner, {
+    type: "addBook",
+    requestId: randomUUID(),
+    payload: { title: "삭제 경로 검증", formats: ["paper"] },
+  });
+  const command = {
+    action: "delete",
+    id: created.id,
+    expectedVersion: 1,
+    requestId: randomUUID(),
+  };
+  expect((await POST(request(command, "https://other.test"))).status).toBe(403);
+  expect((await POST(request({ ...command, ownerId: "another" }))).status).toBe(
+    400,
+  );
+  expect(
+    (await POST(request({ ...command, expectedVersion: 99 }))).status,
+  ).toBe(409);
+  owner = "another";
+  expect((await POST(request(command))).status).toBe(404);
+  owner = "route-owner";
+  const response = await POST(request(command));
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result).toMatchObject({ id: created.id, deleted: true, version: 2 });
+  expect(await (await POST(request(command))).json()).toEqual(result);
+  expect(
+    (
+      await f.db.query(
+        "SELECT id FROM library_books WHERE owner_id=$1 AND id=$2",
+        [owner, created.id],
+      )
+    ).rows,
+  ).toHaveLength(1);
+});

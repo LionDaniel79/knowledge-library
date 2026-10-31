@@ -75,12 +75,12 @@ export function BookExclusions({
     }
   }
   return (
-    <Modal title="제외한 자료" onClose={onClose} canClose={!busy}>
+    <Modal title="삭제·제외한 자료" onClose={onClose} canClose={!busy}>
       <section className="book-exclusions" aria-busy={busy}>
         <label>
-          제외한 자료 검색
+          삭제·제외한 자료 검색
           <input
-            aria-label="제외한 자료 검색"
+            aria-label="삭제·제외한 자료 검색"
             type="search"
             maxLength={200}
             placeholder="제목·저자·ISBN"
@@ -89,8 +89,15 @@ export function BookExclusions({
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <p className="form-hint">원본 PDF는 그대로 보관됩니다.</p>
-        <PageSizeSelect label="제외한 자료" paging={paging} disabled={busy} />
+        <p className="form-hint">
+          원본 PDF와 메모·독서 이력은 그대로 보관되며, 소장 도서로 복원할 수
+          있습니다.
+        </p>
+        <PageSizeSelect
+          label="삭제·제외한 자료"
+          paging={paging}
+          disabled={busy}
+        />
         {(error || resource.error) && (
           <p role="alert">{error || resource.error}</p>
         )}
@@ -107,8 +114,13 @@ export function BookExclusions({
               <h3>{item.title}</h3>
               <p>
                 {item.author || "저자 미입력"} ·{" "}
-                {item.kind === "paper" ? "논문" : "간행물"}
+                {item.kind === "book"
+                  ? "소장 도서"
+                  : item.kind === "paper"
+                    ? "논문"
+                    : "간행물"}
               </p>
+              <p>{item.reason}</p>
               <small>{item.relativePath}</small>
             </div>
             <button
@@ -121,10 +133,10 @@ export function BookExclusions({
           </article>
         ))}
         {resource.data?.total === 0 && !resource.loading && (
-          <p>조건에 맞는 제외 자료가 없습니다.</p>
+          <p>조건에 맞는 삭제·제외 자료가 없습니다.</p>
         )}
         <PageNavigation
-          label="제외한 자료"
+          label="삭제·제외한 자료"
           paging={paging}
           total={resource.data?.total ?? 0}
           busy={busy || resource.loading || !!resource.error}

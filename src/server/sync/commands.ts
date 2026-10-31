@@ -145,9 +145,13 @@ export async function executeSyncCommand(
       result = await createKnowledgeStore(nested).mutate(owner, body);
     else if (p.family === "thought-map")
       result = await createThoughtMapStore(nested).mutate(owner, body);
-    else if (p.family === "exclusions")
-      result = await createBookExclusionStore(nested).restore(owner, body);
-    else if (p.path === "/api/catalog-review")
+    else if (p.family === "exclusions") {
+      const store = createBookExclusionStore(nested);
+      result =
+        body.action === "delete"
+          ? await store.remove(owner, body)
+          : await store.restore(owner, body);
+    } else if (p.path === "/api/catalog-review")
       result = await decideCatalogReview(nested, owner, body);
     else if (p.path === "/api/book-introduction")
       result = await saveBookIntroduction(nested, owner, body);

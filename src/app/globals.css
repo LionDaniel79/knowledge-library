@@ -5857,9 +5857,9 @@ textarea {
   min-width: 0;
   flex: 1;
 }
-.wb-note-order {
-  width: 50px;
-  flex: 0 0 50px;
+.wb-note-heading .wb-note-order {
+  width: 64px;
+  flex: 0 0 64px;
   color: #183c31;
   -webkit-text-fill-color: #183c31;
   background: #fff;
@@ -5869,7 +5869,16 @@ textarea {
   min-height: 28px;
   padding: 2px 4px;
   font-size: 13px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
   border-radius: 4px;
+  appearance: textfield;
+}
+.wb-note-order::-webkit-inner-spin-button,
+.wb-note-order::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .wb-entry-badge {
@@ -6029,7 +6038,7 @@ textarea {
 }
 .thought-box-editor .thought-box-note {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 .thought-box-note > p {
   grid-column: 1 / -1;

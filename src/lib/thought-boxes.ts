@@ -198,12 +198,14 @@ export function thoughtView(
   source: WhiteboardSnapshot,
   board: Board,
   selected: "all" | readonly string[],
+  selectedGroups?: ReturnType<typeof connectedMemoGroups>,
 ) {
   const edges =
     selected === "all"
       ? source.connections
       : source.connections.filter((c) => selected.includes(c.id));
-  const groups = connectedMemoGroups({ ...source, connections: edges });
+  const groups =
+    selectedGroups ?? connectedMemoGroups({ ...source, connections: edges });
   const pinned = new Set(
     (board.writing?.chapters ?? []).flatMap((c) =>
       boxNotes(c, source).flatMap((i) => i.noteIds),

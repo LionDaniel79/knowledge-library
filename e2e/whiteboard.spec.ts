@@ -856,15 +856,16 @@ for (const width of [390, 1280])
     });
     await expect(selected).toBeDisabled();
     await first.check();
-    await expect(page.getByText("5개 메모", { exact: true })).toBeVisible();
+    await expect(page.locator(".wb-note")).toHaveCount(2);
     await manager
       .getByRole("button", {
         name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
         exact: true,
       })
       .click();
-    await expect(page.locator(".wb-note")).toHaveCount(2);
-    await expect(first).toBeChecked();
+    await expect(page.locator(".wb-note")).toHaveCount(0);
+    await expect(first).not.toBeChecked();
+    await first.check();
     await second.check();
     await selected.click();
     await expect(page.locator(".wb-note")).toHaveCount(4);
@@ -906,7 +907,7 @@ for (const width of [390, 1280])
       .click();
     await expect(page.locator(".wb-note")).toHaveCount(2);
     await expect(first).toBeChecked();
-    await expect(second).toBeChecked();
+    await expect(second).not.toBeChecked();
     await all.click();
     await expect(page.locator(".wb-note")).toHaveCount(4);
     await first.uncheck();

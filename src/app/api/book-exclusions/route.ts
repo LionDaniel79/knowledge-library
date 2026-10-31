@@ -25,8 +25,12 @@ export async function POST(request: Request) {
       body = await request.text();
     if (body.length > 2000)
       throw new LibraryError(413, "요청 크기가 너무 큽니다.");
+    const input = JSON.parse(body),
+      store = createBookExclusionStore(database);
     return Response.json(
-      await createBookExclusionStore(database).restore(owner, JSON.parse(body)),
+      input?.action === "delete"
+        ? await store.remove(owner, input)
+        : await store.restore(owner, input),
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

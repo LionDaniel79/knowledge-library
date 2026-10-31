@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { noteContextId } from "../../lib/note-context";
+import { bookDeletionInput } from "../../lib/book-deletion";
 import { introductionSchema } from "../../lib/book-introduction";
 import { reviewDecisionSchema } from "../../lib/catalog-review";
 import {
@@ -1136,9 +1137,48 @@ export async function prepareOptimistic(
     });
     result = { id: entityId, version: (old?.version ?? 0) + 1 };
   } else if (path === "/api/book-exclusions") {
-    const old = await own("library_book_exclusions", body.id);
-    check(old, body.expectedVersion);
-    edit("library_book_exclusions", old, { state: "restored", updated_at: at });
+    const book = await own("library_books", body.id),
+      old = await repository.raw("library_book_exclusions", body.id);
+    if (body.action === "delete") {
+      bookDeletionInput.parse(body);
+      check(book, body.expectedVersion);
+      if (old?.state === "excluded")
+        throw new ReplicaQueryError(409, "이미 삭제되거나 제외한 도서입니다.");
+      // Use the book as the primary entity so conflict review compares the
+      // same version the confirmation displayed, even on first deletion.
+      edit("library_books", book, {});
+      put("library_book_exclusions", {
+        ...old,
+        id: book.id,
+        kind: "book",
+        reason: "소장 도서에서 삭제",
+        batch_id: body.requestId,
+        state: "excluded",
+        version: (old?.version ?? 0) + 1,
+        created_at: old?.created_at ?? at,
+        updated_at: at,
+      });
+      result = { ...result, deleted: true };
+    } else {
+      z.object({
+        requestId: z.string().uuid(),
+        id: z.string().uuid(),
+        expectedVersion: z.number().int().positive(),
+      })
+        .strict()
+        .parse(body);
+      if (!old)
+        throw new ReplicaQueryError(404, "제외한 자료를 찾을 수 없습니다.");
+      check(old, body.expectedVersion);
+      if (old.state !== "excluded")
+        throw new ReplicaQueryError(409, "이미 복원된 도서입니다.");
+      edit("library_book_exclusions", old, {
+        state: "restored",
+        updated_at: at,
+      });
+      put("library_books", { ...book, version: book.version + 1 });
+      result = { ...result, restored: true };
+    }
   } else if (path === "/api/note-tags") {
     const tag = z.string().trim().min(1).max(40).parse(body.tag),
       all = await repository.all("library_notes");

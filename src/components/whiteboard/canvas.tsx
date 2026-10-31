@@ -40,6 +40,7 @@ type Drag = {
 };
 export function WhiteboardCanvas({
   source,
+  suppliedScene,
   board,
   onDrop,
   onGroupDrop,
@@ -70,6 +71,7 @@ export function WhiteboardCanvas({
   saving = false,
 }: {
   source: WhiteboardSnapshot;
+  suppliedScene?: ReturnType<typeof buildScene>;
   board: Board;
   onDrop: (
     node: BoardNode,
@@ -135,7 +137,23 @@ export function WhiteboardCanvas({
     const timer = setTimeout(() => viewCallback.current?.(view), 600);
     return () => clearTimeout(timer);
   }, [view]);
-  const scene = useMemo(() => buildScene(source, board), [source, board]);
+  const scene = useMemo(
+    () => suppliedScene ?? buildScene(source, board),
+    [suppliedScene, source, board],
+  );
+  const { nodeById, nodeByNoteId, groupById } = useMemo(() => {
+    const nodeById = new Map<string, BoardNode>(),
+      nodeByNoteId = new Map<string, BoardNode>(),
+      groupById = new Map<string, BoardGroup>();
+    for (const node of scene.nodes) {
+      if (!nodeById.has(node.id)) nodeById.set(node.id, node);
+      // A shared note can appear in several boxes. Keep its first scene endpoint.
+      if (!nodeByNoteId.has(node.noteId)) nodeByNoteId.set(node.noteId, node);
+    }
+    for (const group of scene.groups)
+      if (!groupById.has(group.id)) groupById.set(group.id, group);
+    return { nodeById, nodeByNoteId, groupById };
+  }, [scene]);
   const noteLabels = useMemo(
     () =>
       new Map(
@@ -166,10 +184,7 @@ export function WhiteboardCanvas({
     const d = delta("", g.id);
     return { x: g.x + d.x, y: g.y + d.y };
   };
-  const moving =
-    drag?.kind === "note"
-      ? scene.nodes.find((n) => n.id === drag.id)
-      : undefined;
+  const moving = drag?.kind === "note" ? nodeById.get(drag.id) : undefined;
   const near =
     moving && drag?.moved ? dropTarget(visible, moving, pointOf(moving)) : null;
   function fit(overview = true) {
@@ -301,7 +316,7 @@ export function WhiteboardCanvas({
       return;
     }
     if (d.kind === "note") {
-      const n = scene.nodes.find((n) => n.id === d.id);
+      const n = nodeById.get(d.id);
       if (!n) return;
       if (!d.moved) {
         onSelectNote(n.noteId);
@@ -322,7 +337,7 @@ export function WhiteboardCanvas({
     } else if (d.kind === "chapter") {
       if (d.moved) onChapterMove?.(d.id, d.dx, d.dy);
     } else {
-      const g = scene.groups.find((g) => g.id === d.id);
+      const g = groupById.get(d.id);
       if (!g) return;
       if (!d.moved) {
         onSelectGroup(g.id);
@@ -343,9 +358,9 @@ export function WhiteboardCanvas({
     }
   }
   const endpoint = (noteId: string) => {
-    const n = scene.nodes.find((n) => n.noteId === noteId);
+    const n = nodeByNoteId.get(noteId);
     if (!n) return null;
-    const g = n.groupId ? scene.groups.find((g) => g.id === n.groupId) : null;
+    const g = n.groupId ? groupById.get(n.groupId) : null;
     if (g?.collapsed) {
       const p = groupPoint(g);
       return { ...p, x: p.x + g.width / 2, y: p.y + 60, key: g.id };
@@ -354,7 +369,7 @@ export function WhiteboardCanvas({
     return { x: p.x + NOTE_WIDTH / 2, y: p.y + NOTE_HEIGHT / 2, key: n.id };
   };
   const lines = buildConnectionLines(source, board, endpoint, (id) => {
-    const g = scene.groups.find((group) => group.id === id);
+    const g = groupById.get(id);
     if (!g) return null;
     const p = groupPoint(g);
     return { x: p.x + g.width / 2, y: p.y + 24 };
@@ -447,11 +462,8 @@ export function WhiteboardCanvas({
           ) : (
             <div className="wb-edge-action-row">
               <span>
-                {scene.groups.find((g) => g.id === selectedLine.link.source)
-                  ?.title ?? "묶음"}{" "}
-                ↔{" "}
-                {scene.groups.find((g) => g.id === selectedLine.link.target)
-                  ?.title ?? "묶음"}
+                {groupById.get(selectedLine.link.source)?.title ?? "묶음"} ↔{" "}
+                {groupById.get(selectedLine.link.target)?.title ?? "묶음"}
               </span>
               <button
                 type="button"
