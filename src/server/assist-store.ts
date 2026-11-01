@@ -246,9 +246,10 @@ async function buildTask(
 async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
   if (task.phase !== "runtime") return false;
   try {
-    return (
-      hash(
-        await buildTask(
+    // Check that original notes and topics are unchanged. Proposal target
+    // versions are checked separately at adoption: accepting one title must
+    // not invalidate unrelated suggestions from the same completed request.
+    const latest = await buildTask(
           tx,
           owner,
           {
@@ -257,7 +258,6 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
             ...(task.payload.purpose === "synthesis"
               ? {
                   focus: task.payload.focus,
-                  ...(task.payload.existingConnections ? { useCurrentRelations: true } : {}),
                   topicIds: task.payload.topics.map((t) => t.id),
                   ...(task.payload.writingContext
                     ? { writingContext: task.payload.writingContext }
@@ -270,9 +270,18 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
             })),
           },
           true,
-        ),
-      ) === hash(task)
-    );
+        );
+    const checked = task.payload.purpose === "synthesis"
+      ? {
+          ...task,
+          payload: {
+            ...task.payload,
+            existingConnections: undefined,
+            existingBundles: undefined,
+          },
+        }
+      : task;
+    return hash(latest) === hash(checked);
   } catch (e) {
     if (e instanceof LibraryError) return false;
     throw e;
