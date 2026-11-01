@@ -119,6 +119,7 @@ export function LibraryApp({
   ownerId = "",
   initialView = "home",
   initialOperationsOpen = false,
+  onLibraryView,
 }: {
   initial: Library;
   today: string;
@@ -126,6 +127,7 @@ export function LibraryApp({
   ownerId?: string;
   initialView?: "home" | "pdf";
   initialOperationsOpen?: boolean;
+  onLibraryView?: () => void;
 }) {
   const replica = useReplicaDataOptional();
   const [draftRevision, setDraftRevision] = useState(0);
@@ -365,6 +367,7 @@ export function LibraryApp({
 
   const matchedCount = remote ? catalog.total : matchedBooks.length;
   const navigate = (next: View | "notes") => {
+    if (next !== "pdf") onLibraryView?.();
     setView(next === "notes" ? "knowledge" : next);
     setMenuOpen(false);
     setCategory("all");

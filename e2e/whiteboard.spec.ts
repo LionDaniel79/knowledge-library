@@ -842,7 +842,7 @@ for (const width of [390, 1280])
     const manager = page.locator(".wb-connection-list");
     await manager.locator(".wb-connection-counts").click();
     const selected = manager.getByRole("button", {
-      name: "선택보기",
+      name: "전체선택",
       exact: true,
     });
     const all = manager.getByRole("button", { name: "전체보기", exact: true });
@@ -854,7 +854,7 @@ for (const width of [390, 1280])
       name: "셋째 생각 ↔ 신학 기록 선택",
       exact: true,
     });
-    await expect(selected).toBeDisabled();
+    await expect(selected).toBeEnabled();
     await first.check();
     await expect(page.locator(".wb-note")).toHaveCount(2);
     await manager
@@ -867,6 +867,11 @@ for (const width of [390, 1280])
     await expect(first).not.toBeChecked();
     await first.check();
     await second.check();
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await selected.click();
+    await expect(page.locator(".wb-note")).toHaveCount(0);
+    await expect(first).not.toBeChecked();
+    await expect(second).not.toBeChecked();
     await selected.click();
     await expect(page.locator(".wb-note")).toHaveCount(4);
     await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(2);
@@ -911,7 +916,6 @@ for (const width of [390, 1280])
     await all.click();
     await expect(page.locator(".wb-note")).toHaveCount(4);
     await first.uncheck();
-    await selected.click();
     await expect(page.locator(".wb-note")).toHaveCount(2);
     expect(
       await page

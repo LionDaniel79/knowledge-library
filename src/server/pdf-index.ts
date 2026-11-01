@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { LibraryError } from "./library-store";
 import { pdfWorkerStatus } from "./pdf-job-status";
 import { searchPdfRows } from "../local/pdf-search.mjs";
+import { validatePdfSearchQuery } from "./pdf-search";
 export function withPdfIndex<T>(fn: (db: DatabaseSync) => T): T {
   const path = process.env.LIBRARY_PDF_INDEX;
   if (!path || !existsSync(path))
@@ -117,9 +118,7 @@ export function pdfIndexSummary(excludedDocumentIds: string[] = []) {
   });
 }
 export function searchPdfPages(query: string, documentId?: string) {
-  const terms = query.trim().split(/\s+/).filter(Boolean).slice(0, 8);
-  if (!terms.length || query.length > 200 || terms.some((t) => t.length < 2))
-    throw new LibraryError(400, "검색어를 두 글자 이상 입력해 주세요.");
+  validatePdfSearchQuery(query);
   return withPdfIndex((db) => searchPdfRows(db, query, documentId));
 }
 export function readPdfPage(id: string, page: number) {

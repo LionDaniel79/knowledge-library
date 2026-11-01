@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   libraryRequest,
   registerLibraryRuntime,
@@ -6,6 +6,7 @@ import {
 import { resourceFixture } from "./helpers/replica-resources";
 import { syncKey } from "../src/lib/replica/entities";
 import { sha256Bytes } from "../src/lib/replica/codec";
+afterEach(() => vi.useRealTimers());
 it("provides full note bodies to the map instead of relying on overview previews", async () => {
   const f = await resourceFixture();
   try {
@@ -78,6 +79,9 @@ it("loads the thought map in table pages without reading thousands of excluded b
   }
 });
 it("reads saved review originals, curation, sources, introductions, map, research and AI results without the network", async () => {
+  // The fixture's usage belongs to October; the current real month is unrelated.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T00:00:00Z"));
   const f = await resourceFixture(),
     read = (path: string) => f.repo.read(path) as Promise<any>;
   expect((await read("/api/catalog-review?groupBy=book")).total).toBe(1);

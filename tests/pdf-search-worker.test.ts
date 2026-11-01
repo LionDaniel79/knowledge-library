@@ -34,3 +34,23 @@ it("kills overlong searches with actionable feedback, releases its slot and neve
     await searchPdfPagesInWorker("은혜", undefined, { indexPath }),
   ).toHaveLength(1);
 });
+it.each(['"상담 관계"', "“상담 관계”", "”상담 관계”"])(
+  "runs an intact phrase in the isolated worker for %s",
+  async (query) => {
+    expect(
+      await searchPdfPagesInWorker(query, "book", { indexPath }),
+    ).toMatchObject([
+      { documentId: "book", pageNumber: 7, quote: "상담 관계와 은혜" },
+    ]);
+  },
+);
+it("returns a query syntax error before checking the local index", async () => {
+  await expect(
+    searchPdfPagesInWorker('"상담 관계', undefined, {
+      indexPath: "missing-index",
+    }),
+  ).rejects.toMatchObject({
+    status: 400,
+    message: expect.stringContaining("따옴표"),
+  });
+});

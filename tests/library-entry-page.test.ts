@@ -1,4 +1,4 @@
-import { beforeEach, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, it, expect, vi } from "vitest";
 import { LibraryError } from "../src/server/library-store";
 const state = vi.hoisted(() => ({ authenticated: true, reads: 0 }));
 vi.mock("@/server/auth", () => ({
@@ -23,6 +23,7 @@ beforeEach(() => {
   state.authenticated = true;
   state.reads = 0;
 });
+afterEach(() => vi.unstubAllEnvs());
 const open = (query: Record<string, string | string[] | undefined>) =>
   Page({ searchParams: Promise.resolve(query) });
 it("opens PDF search and its processing panel from a direct link rather than the home view", async () => {
@@ -38,4 +39,16 @@ it("keeps the PDF destination when sign-in is needed without reading private boo
   const page = await open({ view: "pdf", panel: "operations" });
   expect(page.props.returnPath).toBe("/?view=pdf&panel=operations");
   expect(state.reads).toBe(0);
+});
+it("defers automatic device sync only for a confirmed private PC PDF entry", async () => {
+  vi.stubEnv("LIBRARY_PC_ORIGIN", "https://library.example.ts.net");
+  vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "true");
+  vi.stubEnv("APP_ORIGIN", "https://library.example.ts.net");
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(true);
+  expect((await open({})).props.deferPdfAutoSync).toBe(false);
+  vi.stubEnv("APP_ORIGIN", "https://public-library.test");
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(false);
+  vi.stubEnv("APP_ORIGIN", "https://library.example.ts.net");
+  vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "false");
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(false);
 });

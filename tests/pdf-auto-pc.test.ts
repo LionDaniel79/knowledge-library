@@ -69,3 +69,19 @@ it("does not route a private server back to itself when its reverse proxy uses a
       .status,
   ).toBeGreaterThanOrEqual(400);
 });
+it.each(['"상담 관계', "상담 ".repeat(70)])(
+  "rejects invalid or overlong fulltext input without truncating or redirecting it: %s",
+  async (query) => {
+    vi.stubEnv("LIBRARY_PDF_INDEX", "");
+    vi.stubEnv("LIBRARY_PC_ORIGIN", "https://library.example.ts.net");
+    vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "true");
+    const response = await GET(
+      new Request(
+        "https://library.test/api/pdf?mode=search&q=" +
+          encodeURIComponent(query),
+      ),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.any(String) });
+  },
+);

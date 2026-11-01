@@ -581,7 +581,7 @@ export async function prepareOptimistic(
         old = v.id ? await own("library_memo_bundles", v.id) : null;
       check(old ?? undefined, v.expectedVersion);
       if (old?.archived_at)
-        throw new ReplicaQueryError(409, "보관해제된 생각 묶음입니다.");
+        throw new ReplicaQueryError(409, "삭제된 생각 묶음입니다.");
       for (const n of v.noteIds)
         if (!(old?.note_ids ?? []).includes(n)) await note(n);
       entityId = old?.id ?? id;
@@ -602,13 +602,24 @@ export async function prepareOptimistic(
         old = await own("library_memo_bundles", v.id);
       check(old, v.expectedVersion);
       edit("library_memo_bundles", old, { archived_at: at, updated_at: at });
+      for (const link of await repository.all("library_bundle_links"))
+        if (
+          link.status === "accepted" &&
+          (link.source_id === v.id || link.target_id === v.id)
+        )
+          put("library_bundle_links", {
+            ...link,
+            status: "rejected",
+            version: link.version + 1,
+            updated_at: at,
+          });
     } else if (body.type === "saveBundleLink") {
       const v = bundleLinkInput.parse(p),
         [a, b] = [v.sourceId, v.targetId].sort();
       for (const key of [a, b]) {
         const bundle = await own("library_memo_bundles", key);
         if (bundle.archived_at)
-          throw new ReplicaQueryError(409, "보관해제된 생각 묶음입니다.");
+          throw new ReplicaQueryError(409, "삭제된 생각 묶음입니다.");
       }
       const old = v.id
         ? await own("library_bundle_links", v.id)

@@ -189,6 +189,17 @@ async function setup(
         source.bundles.push(next);
         return route.fulfill({ json: { id: next.id, version: 1 } });
       }
+      if (c.type === "archiveMemoBundle") {
+        const b = source.bundles.find((b: any) => b.id === p.id);
+        if (!b || b.version !== p.expectedVersion)
+          return route.fulfill({
+            status: 409,
+            json: { error: "원본이 변경되었습니다" },
+          });
+        b.archived_at = new Date().toISOString();
+        b.version++;
+        return route.fulfill({ json: { id: b.id, version: b.version } });
+      }
       return route.fulfill({
         status: 400,
         json: { error: "Unexpected command " + c.type },
@@ -231,14 +242,19 @@ test("selection displays a shared original once and editing it propagates while 
     "생각 묶음 2",
   );
   await page.getByLabel("둘째 생각묶음 생각 묶음 선택").check();
-  await page.getByRole("button", { name: "선택보기", exact: true }).click();
+  await page.getByRole("button", { name: "전체보기", exact: true }).click();
   await expect(page.locator(".writing-chapter")).toHaveCount(2);
-  await page.getByRole("button", { name: "선택보기", exact: true }).click();
+  await page.getByRole("button", { name: "전체보기", exact: true }).click();
   await expect(page.locator(".writing-chapter")).toHaveCount(2);
   expect(f.source.bundles).toHaveLength(2);
   await page.getByLabel("목차 제목").first().fill("함께 바뀐 원본");
   await expect.poll(() => f.source.bundles[0].title).toBe("함께 바뀐 원본");
   await page.evaluate(() => (window as any).mount("whiteboard"));
+  await page.locator(".wb-connection-list summary").click();
+  await page
+    .locator(".wb-connection-select")
+    .filter({ hasText: "함께 바뀐 원본" })
+    .click();
   await expect(page.getByLabel("상자 제목").first()).toHaveValue(
     "함께 바뀐 원본",
   );
@@ -459,6 +475,118 @@ test("ordinary board thought selections toggle without saving, and returning to 
     ),
   ).toHaveLength(0);
 });
+
+test("ordinary board starts without thought boxes and select all toggles every connection and thought checkbox without a write", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  const before = structuredClone(f.boards.get(WHITEBOARD_ID));
+  await expect(page.locator(".wb-connection-counts")).toContainText(
+    "생각 묶음 2",
+  );
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  f.source.connections.push({
+    id: randomUUID(),
+    source_kind: "note",
+    target_kind: "note",
+    source_id: f.ids[1],
+    target_id: f.ids[2],
+    status: "accepted",
+    relation: "related",
+    reason: "",
+    version: 1,
+  });
+  await page.evaluate(() => {
+    (window as any).fixture.notes = [...(window as any).fixture.notes];
+    (window as any).mount("whiteboard");
+  });
+  const manager = page.locator(".wb-connection-list");
+  await manager.locator("summary").click();
+  await expect(manager.getByRole("checkbox")).toHaveCount(3);
+  await manager.getByLabel("둘째 생각묶음 생각 묶음 선택").check();
+  const all = manager.getByRole("button", { name: "전체선택", exact: true });
+  await expect(all).toBeEnabled();
+  await all.click();
+  await expect(manager.getByRole("checkbox")).toHaveCount(3);
+  for (const input of await manager.getByRole("checkbox").all())
+    await expect(input).toBeChecked();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await all.click();
+  for (const input of await manager.getByRole("checkbox").all())
+    await expect(input).not.toBeChecked();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  expect(f.calls).toHaveLength(0);
+  expect(f.boards.get(WHITEBOARD_ID)).toEqual(before);
+});
+
+test("ordinary box removal deletes its canonical original after flushing a pending edit and keeps every memo", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  const manager = page.locator(".wb-connection-list");
+  await manager.locator("summary").click();
+  await manager
+    .locator(".wb-connection-select")
+    .filter({ hasText: "첫 생각묶음" })
+    .click();
+  f.delayNext();
+  await page.getByLabel("상자 제목").fill("삭제 직전 수정");
+  await expect
+    .poll(() => f.calls.filter((c) => c.type === "saveMemoBundle").length)
+    .toBe(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "상자 삭제", exact: true }).click();
+  expect(f.calls.filter((c) => c.type === "archiveMemoBundle")).toHaveLength(0);
+  f.release();
+  await expect.poll(() => f.source.bundles[0].archived_at).not.toBeNull();
+  expect(
+    f.calls.find((c) => c.type === "archiveMemoBundle").payload.expectedVersion,
+  ).toBe(2);
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await expect(
+    manager
+      .locator(".wb-connection-select")
+      .filter({ hasText: "삭제 직전 수정" }),
+  ).toHaveCount(0);
+  expect(f.source.notes).toHaveLength(3);
+  await page.evaluate(() => (window as any).mount("menu"));
+  await expect(
+    page.getByRole("button", { name: /둘째 생각묶음/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /삭제 직전 수정/ }),
+  ).toHaveCount(0);
+});
+
+test("thought row Delete cancels safely then removes the original from both boards and memo menu", async ({
+  page,
+}) => {
+  const f = await setup(page, "whiteboard");
+  const manager = page.locator(".wb-connection-list");
+  await manager.locator("summary").click();
+  const row = manager
+    .locator("div")
+    .filter({
+      has: page.locator(".wb-connection-select", { hasText: "둘째 생각묶음" }),
+    })
+    .filter({ has: page.getByRole("button", { name: "삭제", exact: true }) })
+    .first();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await row.getByRole("button", { name: "삭제", exact: true }).click();
+  expect(f.source.bundles[1].archived_at).toBeNull();
+  page.once("dialog", (dialog) => dialog.accept());
+  await row.getByRole("button", { name: "삭제", exact: true }).click();
+  await expect.poll(() => f.source.bundles[1].archived_at).not.toBeNull();
+  await expect(manager.locator(".wb-connection-counts")).toContainText(
+    "생각 묶음 1",
+  );
+  expect(f.source.notes).toHaveLength(3);
+  await page.evaluate(() => (window as any).mount("writing"));
+  await expect(page.locator(".writing-chapter")).toHaveCount(1);
+  await expect(page.locator(".wb-connection-counts")).toContainText(
+    "생각 묶음 1",
+  );
+});
 test("writing display selections can be hidden again without removing project originals", async ({
   page,
 }) => {
@@ -539,7 +667,7 @@ test("displaying another box responds while a canonical save is still waiting", 
   f.release();
   await expect.poll(() => f.source.bundles[0].title).toBe("느린 저장 검수");
 });
-test("a display-only box on an empty saved board can be removed and moved without losing its original", async ({
+test("a display-only box can be moved and then deleted canonically without deleting its memos", async ({
   page,
 }) => {
   const f = await setup(page, "whiteboard");
@@ -554,12 +682,6 @@ test("a display-only box on an empty saved board can be removed and moved withou
     .filter({ hasText: "둘째 생각묶음" });
   await row.click();
   await expect(page.locator(".writing-chapter")).toHaveCount(1);
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "상자 삭제", exact: true }).click();
-  await expect(page.locator(".writing-chapter")).toHaveCount(0);
-  expect(f.source.bundles).toHaveLength(2);
-  expect(f.boards.get(WHITEBOARD_ID).data.writing).toBeUndefined();
-  await row.click();
   const note = page.locator(".wb-note[data-chapter-note-id]").first();
   const rect = await note.boundingBox();
   if (!rect) throw Error("missing memo");
@@ -576,6 +698,13 @@ test("a display-only box on an empty saved board can be removed and moved withou
   await expect
     .poll(() => f.boards.get(WHITEBOARD_ID).data.writing?.chapters.length)
     .toBe(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "상자 삭제", exact: true }).click();
+  await expect(page.locator(".writing-chapter")).toHaveCount(0);
+  await expect.poll(() => f.source.bundles[1].archived_at).not.toBeNull();
+  expect(f.source.bundles).toHaveLength(2);
+  expect(f.source.notes).toHaveLength(3);
+  await expect(row).toHaveCount(0);
 });
 test("a new box is visible after returning to the plain ordinary board", async ({
   page,

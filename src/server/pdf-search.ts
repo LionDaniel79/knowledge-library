@@ -5,6 +5,16 @@ import { LibraryError } from "./library-store";
 import { pdfSearchTerms, searchPdfRows } from "../local/pdf-search.mjs";
 let active = 0;
 type SearchHit = ReturnType<typeof searchPdfRows>[number];
+export function validatePdfSearchQuery(query: string) {
+  try {
+    return pdfSearchTerms(query);
+  } catch (error) {
+    throw new LibraryError(
+      400,
+      error instanceof Error ? error.message : "검색어를 확인해 주세요.",
+    );
+  }
+}
 export async function searchPdfPagesInWorker(
   query: string,
   documentId?: string,
@@ -14,11 +24,7 @@ export async function searchPdfPagesInWorker(
     signal?: AbortSignal;
   } = {},
 ): Promise<SearchHit[]> {
-  try {
-    pdfSearchTerms(query);
-  } catch {
-    throw new LibraryError(400, "검색어를 두 글자 이상 입력해 주세요.");
-  }
+  validatePdfSearchQuery(query);
   const indexPath = options.indexPath ?? process.env.LIBRARY_PDF_INDEX;
   if (!indexPath || !existsSync(indexPath))
     throw new LibraryError(503, "이 컴퓨터의 PDF 색인이 연결되지 않았습니다.");

@@ -54,7 +54,7 @@ const states: Record<string, string> = {
 };
 const operations: Record<string, string> = {
   saveMemoBundle: "생각 묶음 저장",
-  archiveMemoBundle: "생각 묶음 보관해제",
+  archiveMemoBundle: "생각 묶음 삭제",
   saveBundleLink: "묶음 연결 저장",
   addNote: "메모 추가",
   editNote: "메모 수정",
@@ -218,7 +218,7 @@ export function presentConflict(review: ReviewInput) {
               .join(", ")
           : "없음",
       );
-      add("archived_at", "보관 상태", r.archived_at ? "보관해제" : "사용 중");
+      add("archived_at", "삭제 상태", r.archived_at ? "삭제됨" : "사용 중");
     } else if (entity === "library_bundle_links") {
       add(
         "source_id",

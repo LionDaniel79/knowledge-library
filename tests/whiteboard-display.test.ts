@@ -53,6 +53,32 @@ const make = () => {
   board.positions[manual + "::" + ids[0]] = { x: -100, y: 200 };
   return { ids, source: source as WhiteboardSnapshot, board, manual };
 };
+it("ordinary board hides saved and legacy thought boxes until explicitly selected, without changing the saved board", () => {
+  const f = make(),
+    a = f.source.bundles![0],
+    b = { ...a, id: randomUUID(), note_ids: [f.ids[2]] };
+  f.source.bundles!.push(b);
+  f.board.groupPositions["bundle:" + b.id] = { x: 900, y: 0 };
+  const saved = structuredClone(f.board);
+  const initial = boardDisplaySelection(
+    f.source,
+    f.board,
+    { connections: null, boxes: {}, plain: false },
+    false,
+  );
+  expect(initial.board.writing!.chapters).toHaveLength(0);
+  expect(
+    buildScene(initial.source, initial.board).groups.map((g) => g.id),
+  ).not.toContain("bundle:" + b.id);
+  const chosen = boardDisplaySelection(
+    f.source,
+    f.board,
+    { connections: [], boxes: { [a.id]: true }, plain: false },
+    false,
+  );
+  expect(chosen.board.writing!.chapters.map((c) => c.bundleId)).toEqual([a.id]);
+  expect(f.board).toEqual(saved);
+});
 it("selection is a pure display and returning to the ordinary board shows individual memos without removing originals", () => {
   const f = make(),
     before = structuredClone(f.board),
@@ -194,7 +220,7 @@ it("retains accepted legacy bundle links while keeping plain display free of bun
   const view = boardDisplaySelection(
     f.source,
     f.board,
-    { connections: null, boxes: {}, plain: false },
+    { connections: null, boxes: { [a.id]: true, [b.id]: true }, plain: false },
     false,
   );
   expect(view.board.links).toContainEqual({
