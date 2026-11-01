@@ -295,28 +295,39 @@ export function filterNotes(
 ) {
   assigned ??= f.topics.length ? assignedTopics(source) : undefined;
   const books = new Map(source.books.map((b) => [b.id, b]));
+  // "내 기록" searches all non-rejected memberships, including suggestions.
+  // Index them once: searching thousands of notes must not repeatedly scan
+  // the full topic-membership table for every individual memo.
+  const valid = new Set(source.topics.map((t) => t.id));
+  const linked = new Map<string, Set<string>>();
+  const directRejected = new Map<string, Set<string>>();
+  if (f.topics.length)
+    for (const m of source.memberships) {
+      if (!valid.has(m.topicId)) continue;
+      const key = m.sourceKind + ":" + m.sourceId;
+      const map =
+        m.status === "rejected" && m.sourceKind === "note"
+          ? directRejected
+          : m.status !== "rejected"
+            ? linked
+            : null;
+      if (!map) continue;
+      const ids = map.get(key) ?? new Set<string>();
+      ids.add(m.topicId);
+      map.set(key, ids);
+    }
+  const query = normalized(f.q);
   return source.notes.filter((n) => {
-    const book = n.bookId ? books.get(n.bookId) : undefined,
-      text = normalized(n.title + "\n" + n.content),
-      topics = f.topics.length
-        ? (() => {
-            // Match the "내 기록" topic filter, which includes suggested
-            // memberships, while a note-level rejection overrides inherited
-            // book memberships. Only accepted topics form permanent frames.
-            const rejected = new Set(source.memberships
-              .filter((m) => m.sourceKind === "note" && m.sourceId === n.id && m.status === "rejected")
-              .map((m) => m.topicId));
-            const valid = new Set(source.topics.map((t) => t.id));
-            return [...new Set([
-              ...(assigned!.get(n.id) ?? []),
-              ...source.memberships.filter((m) =>
-                m.status !== "rejected" &&
-                ((m.sourceKind === "note" && m.sourceId === n.id) ||
-                  (m.sourceKind === "book" && !!n.bookId && m.sourceId === n.bookId)))
-                .map((m) => m.topicId),
-            ])].filter((id) => valid.has(id) && !rejected.has(id));
-          })()
-        : [];
+    const book = n.bookId ? books.get(n.bookId) : undefined;
+    const topics = f.topics.length
+      ? [...new Set([
+          ...(assigned?.get(n.id) ?? []),
+          ...(linked.get("note:" + n.id) ?? []),
+          ...(n.bookId ? (linked.get("book:" + n.bookId) ?? []) : []),
+        ])].filter((id) =>
+          valid.has(id) && !directRejected.get("note:" + n.id)?.has(id),
+        )
+      : [];
     return (
       (!f.topics.length ||
         (!topics.length && f.topics.includes("unclassified")) ||
@@ -325,7 +336,7 @@ export function filterNotes(
       (!f.books.length || (!!n.bookId && f.books.includes(n.bookId))) &&
       (!f.categories.length ||
         f.categories.includes(book?.category || "unclassified")) &&
-      containsSearchField(text, normalized(f.q))
+      containsSearchField(normalized(n.title + "\n" + n.content), query)
     );
   });
 }
