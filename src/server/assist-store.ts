@@ -279,7 +279,9 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
         ...(task.payload.purpose === "synthesis"
           ? {
               focus: task.payload.focus,
-              ...(task.payload.existingConnections ? { useCurrentRelations: true } : {}),
+              ...(task.payload.existingConnections
+                ? { useCurrentRelations: true }
+                : {}),
               topicIds: task.payload.topics.map((t) => t.id),
               ...(task.payload.writingContext
                 ? { writingContext: task.payload.writingContext }
