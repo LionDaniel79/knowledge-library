@@ -5479,7 +5479,9 @@ textarea {
   width: fit-content;
 }
 .assist-results-toggle > summary h4 {
-  margin: 8px 0;
+  display: inline;
+  margin: 0;
+  vertical-align: middle;
 }
 .assist-results-actions {
   display: flex;
