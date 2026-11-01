@@ -20,13 +20,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx prettier --write src/lib/whiteboard.ts src/components/whiteboard/panel.tsx src/components/whiteboard/chapter-box.tsx src/lib/book-lookup.ts src/server/book-lookup.ts src/components/library-forms.tsx src/server/assist-store.ts src/components/assist-panel.tsx src/components/use-paged-resource.ts src/lib/assist-adoption-overlay.ts tests/whiteboard.test.ts tests/assist-adoption-overlay.test.ts tests/book-lookup.test.ts tests/assist-synthesis-store.test.ts e2e/whiteboard.spec.ts
+      - run: npx prettier --write src/lib/whiteboard.ts src/components/whiteboard/panel.tsx src/components/whiteboard/chapter-box.tsx src/lib/book-lookup.ts src/server/book-lookup.ts src/components/library-forms.tsx src/server/assist-store.ts src/components/assist-panel.tsx src/components/use-paged-resource.ts src/lib/assist-adoption-overlay.ts tests/whiteboard.test.ts tests/assist-adoption-overlay.test.ts tests/book-lookup.test.ts tests/assist-synthesis-store.test.ts e2e/whiteboard.spec.ts e2e/thought-bundle-delete.spec.ts
       - name: Commit formatting to this feature branch
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/lib/whiteboard.ts src/components/whiteboard/panel.tsx src/components/whiteboard/chapter-box.tsx src/lib/book-lookup.ts src/server/book-lookup.ts src/components/library-forms.tsx src/server/assist-store.ts src/components/assist-panel.tsx src/components/use-paged-resource.ts src/lib/assist-adoption-overlay.ts tests/whiteboard.test.ts tests/assist-adoption-overlay.test.ts tests/book-lookup.test.ts tests/assist-synthesis-store.test.ts e2e/whiteboard.spec.ts
+            git add src/lib/whiteboard.ts src/components/whiteboard/panel.tsx src/components/whiteboard/chapter-box.tsx src/lib/book-lookup.ts src/server/book-lookup.ts src/components/library-forms.tsx src/server/assist-store.ts src/components/assist-panel.tsx src/components/use-paged-resource.ts src/lib/assist-adoption-overlay.ts tests/whiteboard.test.ts tests/assist-adoption-overlay.test.ts tests/book-lookup.test.ts tests/assist-synthesis-store.test.ts e2e/whiteboard.spec.ts e2e/thought-bundle-delete.spec.ts
             git commit -m "style: format four-fix sources and tests"
             git push origin HEAD:refs/heads/fix/whiteboard-search-bundles-ai-catalog-20261101
           fi
