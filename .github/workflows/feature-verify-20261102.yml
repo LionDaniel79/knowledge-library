@@ -1,0 +1,54 @@
+name: Verify November 2 fixes
+on:
+  push:
+    branches: [fix/board-assist-sync-layout-20261102]
+    paths:
+      - .github/workflows/feature-verify-20261102.yml
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --write src/lib/whiteboard.ts src/lib/thought-boxes.ts src/components/assist-panel.tsx src/components/assist-request-card.tsx src/components/whiteboard/writing-assist.tsx src/app/globals.css tests/whiteboard-display.test.ts e2e/writing-assist-apply.spec.ts
+      - name: Commit source formatting
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/lib/whiteboard.ts src/lib/thought-boxes.ts src/components/assist-panel.tsx src/components/assist-request-card.tsx src/components/whiteboard/writing-assist.tsx src/app/globals.css tests/whiteboard-display.test.ts e2e/writing-assist-apply.spec.ts
+            git commit -m "style: format November 2 fixes"
+            git push origin HEAD:refs/heads/fix/board-assist-sync-layout-20261102
+          fi
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/whiteboard-display.test.ts tests/whiteboard.test.ts tests/assist-synthesis-store.test.ts tests/writing-assist.test.ts --maxWorkers=2
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Verify AI writing suggestion applies on click
+        run: npx playwright test e2e/writing-assist-apply.spec.ts
+        env:
+          PLAYWRIGHT_PRODUCTION: "1"
