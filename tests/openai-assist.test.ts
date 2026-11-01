@@ -184,9 +184,7 @@ it("reserves different output budgets for Sol's short requests versus reasoning-
 
   // Luna's existing general-work cap remains unchanged.
   expect(prepareAiTask(task).max_output_tokens).toBe(2000);
-  expect(tagBudget.maxCostUsd).not.toBe(
-    estimateAiTask(synthesis).maxCostUsd,
-  );
+  expect(tagBudget.maxCostUsd).not.toBe(estimateAiTask(synthesis).maxCostUsd);
 });
 it("does not send without key, price version, or sufficient reservation and never retries an unknown send", async () => {
   const fetcher = vi.fn(async () => {
