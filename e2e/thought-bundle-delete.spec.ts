@@ -221,6 +221,7 @@ test("writing-board box delete archives the canonical bundle and removes it from
     books: [],
     cycles: [],
   });
+  await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: js, type: "module" });
   await expect(
     page.getByRole("button", { name: "상자 삭제" }).first(),
