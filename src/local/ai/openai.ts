@@ -163,12 +163,19 @@ export function prepareAiTask(input: AiTask) {
           ? "medium"
           : "none",
     },
+    // Reasoning tokens share this limit with visible JSON output. Keep headroom
+    // for Sol's medium reasoning while avoiding an 8,192-token reservation
+    // for short tags and excerpt explanations.
     max_output_tokens:
-      task.phase === "runtime" && task.payload.purpose === "synthesis"
-        ? 8192
-        : task.phase === "runtime" && task.model === "gpt-6.1-sol"
+      task.phase !== "runtime"
+        ? 2000
+        : task.payload.purpose === "synthesis"
           ? 8192
-          : 2000,
+          : task.model === "gpt-6.1-sol"
+            ? task.payload.purpose === "compare_notes"
+              ? 6144
+              : 4096
+            : 2000,
     tools: [],
     input: [
       {
