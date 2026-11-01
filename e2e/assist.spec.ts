@@ -255,6 +255,15 @@ test("request list is compact, details are loaded on demand and current record f
 }) => {
   const f = await mount(page);
   await expect(page.locator(".assist-settings")).toHaveCount(0);
+  expect(
+    await page.getByRole("combobox", { name: "도움 방향" }).locator("option").allTextContents(),
+  ).toEqual([
+    "종합검토",
+    "메모 연결 제안",
+    "연결메모 제목 제안",
+    "생각묶음 제안",
+    "생각묶음 제목 제안",
+  ]);
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toHaveCount(0);
