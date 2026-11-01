@@ -334,9 +334,9 @@ export function buildScene(
         ...(b.searchNoteIds === undefined
           ? filterNotes(source, b.filter, assigned)
           : source.notes.filter((n) => b.searchNoteIds!.includes(n.id))),
-        ...(b.searchNoteIds?.length === 0
-          ? []
-          : source.notes.filter((n) => chapterNotes.has(n.id))),
+        // Search clearing affects loose search results, never notes already
+        // placed inside a visible thought box or a writing chapter.
+        ...source.notes.filter((n) => chapterNotes.has(n.id)),
       ]
         .filter((n) => !hidden.has(n.id))
         .map((n) => n.id),
