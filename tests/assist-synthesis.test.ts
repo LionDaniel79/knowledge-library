@@ -168,3 +168,49 @@ it("keeps independently verified ideas when another suggestion has invented evid
   expect((checked.output as any).suggestions).toHaveLength(1);
   expect((checked.output as any).suggestions[0].title).toBe("공감과 경계");
 });
+
+it("accepts only grounded note links and thought boxes for the new five-direction AI help", () => {
+  const links = [{
+    id: "00000000-0000-4000-8000-000000000010",
+    version: 1,
+    sourceIndices: [0, 1],
+    title: "기존 연결",
+    reason: "",
+  }];
+  const bundles = [{
+    id: "00000000-0000-4000-8000-000000000020",
+    version: 1,
+    title: "기존 묶음",
+    description: "",
+    noteIndices: [0, 1],
+  }];
+  const task = aiTaskSchema.parse({
+    ...raw,
+    payload: { ...raw.payload, existingConnections: links, existingBundles: bundles },
+  });
+  const changed = {
+    ...suggestion,
+    bundleId: null,
+  };
+  for (const s of [
+    { ...changed, kind: "connection_title" },
+    { ...changed, kind: "thought_bundle", title: "새 묶음" },
+    { ...changed, kind: "thought_bundle_title", bundleId: bundles[0].id },
+  ]) {
+    expect(validateAiTaskResult(task, { suggestions: [s] }).valid).toBe(true);
+  }
+  for (const s of [
+    { ...changed, kind: "note_connection" }, // already accepted
+    { ...changed, kind: "topic_connection", topicIds: [a, b] },
+    { ...changed, kind: "new_topic" },
+    { ...changed, kind: "thought_bundle_title", bundleId: a },
+    { ...changed, kind: "connection_title", sourceIndices: [0] },
+  ]) {
+    expect(validateAiTaskResult(task, { suggestions: [s] }).valid).toBe(false);
+  }
+  const request = prepareAiTask(task);
+  const schema = request.text.format.schema as any;
+  expect(schema.properties.suggestions.items.required).toContain("bundleId");
+  expect(request.input[0].content).toContain("thought_bundle_title");
+  expect(request.input[0].content).toContain("Never propose topic_connection");
+});
