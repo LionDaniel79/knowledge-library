@@ -60,18 +60,10 @@ export function ChapterBox({
         />
         <button
           type="button"
-          title={
-            numbered
-              ? "이 글감에서 상자 삭제"
-              : "생각묶음 삭제, 메모 원문은 유지"
-          }
+          title="생각묶음 삭제, 메모 원문은 유지"
           onClick={() => {
             if (
-              window.confirm(
-                numbered
-                  ? "이 글감에서 상자를 삭제할까요? 생각묶음과 메모 원문은 유지됩니다."
-                  : "이 생각묶음을 삭제할까요? 모든 생각묶음 목록에서 삭제되며 메모 원문은 유지됩니다.",
-              )
+              window.confirm("이 생각묶음을 삭제할까요? 모든 생각묶음 목록에서 삭제되며 메모 원문은 유지됩니다.")
             )
               onRemove();
           }}
