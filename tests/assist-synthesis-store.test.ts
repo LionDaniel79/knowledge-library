@@ -286,6 +286,26 @@ it("can rename both accepted connections and thought bundles from one analysis w
     whiteboard.bundles.find((b: any) => b.id === s.existingBundleId)?.title,
   ).toBe("함께 성장하는 공감");
 });
+it("accepts only the chosen AI link and returns its canonical row for connection management", async () => {
+  const s = await setup();
+  await s.store.finish(s.d, s.job.id, s.job.leaseToken, s.result);
+  const adopted = await s.store.adopt(s.owner, s.request.id, 0);
+  expect(adopted).toMatchObject({
+    ok: true,
+    adoption: { index: 0, kind: "note_connection" },
+    connection: { status: "accepted", title: "공감과 경계" },
+  });
+  expect(adopted.bundle).toBeNull();
+  expect(await s.store.adopt(s.owner, s.request.id, 0)).toEqual(adopted);
+  const board = await readWhiteboard(f.db, s.owner);
+  expect(board.connections).toHaveLength(1);
+  expect(board.bundles.filter((v: any) => !v.archived_at)).toHaveLength(0);
+  expect((await f.db.query(
+    "SELECT * FROM library_topic_links WHERE owner_id=$1", [s.owner],
+  )).rows).toHaveLength(0);
+  const requests = await s.store.status(s.owner, { id: s.request.id });
+  expect(requests.requests[0].adoption.map((v: any) => v.index)).toEqual([0]);
+});
 it("only raises a per-request allowance after explicit confirmation and preserves the monthly ceiling", async () => {
   const owner = randomUUID(),
     store = createAssistStore(f.db);
