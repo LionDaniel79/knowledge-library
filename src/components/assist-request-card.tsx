@@ -58,12 +58,13 @@ export function AssistRequestCard({
   onWritingSuggestion?: (
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
-  ) => void;
+  ) => boolean | void;
 }) {
   const [open, setOpen] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [error, setError] = useState(""),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [appliedWriting, setAppliedWriting] = useState<number[]>([]);
   useEffect(() => {
     if (!open) return;
     const c = new AbortController();
@@ -165,11 +166,22 @@ export function AssistRequestCard({
                     </small>
                   ) : onWritingSuggestion && value.scope?.writingContext ? (
                     <button
-                      disabled={busy}
-                      onClick={() => onWritingSuggestion(s, value.scope)}
+                      type="button"
+                      disabled={busy || appliedWriting.includes(index)}
+                      onClick={() => {
+                        try {
+                          const success = onWritingSuggestion(s, value.scope);
+                          if (success !== false)
+                            setAppliedWriting((old) => [...new Set([...old, index])]);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "제안을 적용하지 못했습니다.");
+                        }
+                      }}
                     >
-                      {value.scope.writingContext.request === "materials"
-                        ? "추천 메모를 목차에 넣기"
+                      {appliedWriting.includes(index)
+                        ? "적용함"
+                        : value.scope.writingContext.request === "materials"
+                          ? "추천 메모를 목차에 넣기"
                         : value.scope.writingContext.request === "titles"
                           ? "목차 제목으로 사용"
                           : "목차로 추가"}
