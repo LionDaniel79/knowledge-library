@@ -23,12 +23,18 @@ const kindNames = {
   topic_connection: "주제 연결",
   new_topic: "새 주제",
   writing_idea: "글감 방향",
+  connection_title: "연결메모 제목 제안",
+  thought_bundle: "생각묶음 제안",
+  thought_bundle_title: "생각묶음 제목 제안",
 };
 const adoptNames = {
   note_connection: "연결 확정",
   topic_connection: "주제 연결 확정",
   new_topic: "주제로 저장",
   writing_idea: "글감 묶음으로 저장",
+  connection_title: "연결 제목 적용",
+  thought_bundle: "생각묶음 저장",
+  thought_bundle_title: "생각묶음 제목 적용",
 };
 const legacyNames: Record<string, string> = {
   organize_note: "기록 정리",
@@ -111,7 +117,7 @@ export function AssistRequestCard({
         <summary>
           <strong>
             {r.purpose === "synthesis"
-              ? "사고 보조"
+              ? "AI 도움"
               : (legacyNames[r.purpose] ?? "AI 도움")}
           </strong>
           <time>{new Date(r.created_at).toLocaleDateString("ko-KR")}</time>
