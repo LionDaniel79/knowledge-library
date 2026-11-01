@@ -62,6 +62,7 @@ export const assistSelectionSchema = z
     focus: synthesisFocusSchema.optional(),
     topicIds: z.array(z.string().uuid()).max(30).optional(),
     writingContext: writingContextSchema.optional(),
+    useCurrentRelations: z.boolean().optional(),
   })
   .strict();
 const requestSchema = assistSelectionSchema
@@ -200,6 +201,27 @@ async function buildTask(
             .sort((a: number, b: number) => a - b),
         }))
       : [];
+  // Read accepted relationships and shared thought boxes from the same
+  // owner-scoped snapshot as the selected notes. Legacy requests omit them.
+  const currentIds = sources.map((s) => s.source.id);
+  const existingConnections = input.useCurrentRelations && input.purpose === "synthesis"
+    ? (await tx.query(
+        "SELECT id,title,reason,version,source_id,target_id FROM library_connections WHERE owner_id=$1 AND status='accepted' AND source_kind='note' AND target_kind='note' AND source_id=ANY($2::uuid[]) AND target_id=ANY($2::uuid[]) ORDER BY id LIMIT 100",
+        [owner, currentIds],
+      )).rows.map((c) => ({
+        id: c.id, version: c.version, title: c.title, reason: c.reason,
+        sourceIndices: [currentIds.indexOf(c.source_id), currentIds.indexOf(c.target_id)] as [number, number],
+      }))
+    : undefined;
+  const existingBundles = input.useCurrentRelations && input.purpose === "synthesis"
+    ? (await tx.query(
+        "SELECT id,title,description,version,note_ids FROM library_memo_bundles WHERE owner_id=$1 AND archived_at IS NULL AND jsonb_array_length(note_ids)>=2 ORDER BY created_at,id LIMIT 40",
+        [owner],
+      )).rows.map((b) => ({
+        id: b.id, version: b.version, title: b.title, description: b.description.slice(0,2000),
+        noteIndices: (b.note_ids as string[]).map((id) => currentIds.indexOf(id)).filter((i) => i >= 0),
+      })).filter((b) => b.noteIndices.length >= 2)
+    : undefined;
   const task = {
     phase: "runtime" as const,
     ...(input.model ? { model: input.model } : {}),
@@ -210,6 +232,7 @@ async function buildTask(
         ? {
             focus: input.focus ?? "all",
             topics,
+            ...(existingConnections ? { existingConnections, existingBundles } : {}),
             ...(input.writingContext
               ? { writingContext: input.writingContext }
               : {}),
@@ -234,6 +257,7 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
             ...(task.payload.purpose === "synthesis"
               ? {
                   focus: task.payload.focus,
+                  ...(task.payload.existingConnections ? { useCurrentRelations: true } : {}),
                   topicIds: task.payload.topics.map((t) => t.id),
                   ...(task.payload.writingContext
                     ? { writingContext: task.payload.writingContext }
