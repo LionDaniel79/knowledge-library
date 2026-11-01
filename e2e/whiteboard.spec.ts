@@ -410,7 +410,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import{flushSync}from'react-dom';import{useState}from'react';import {WhiteboardPanel} from './src/components/whiteboard/panel';import{LibraryForm}from'./src/components/library-forms';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;function App(){const[editor,setEditor]=useState(null);const library={...window.fixture,notes:[...window.fixture.notes]};return <><WhiteboardPanel library={library} ownerId='whiteboard-fixture' onOpen={(k,id,anchor)=>{window.opened=id;if(window.fixtureEditor)setEditor({kind:'note',note:library.notes.find(n=>n.id===id),anchor});}}/>{editor&&<LibraryForm editor={editor} library={library} today='2026-10-27' preview={false} onClose={()=>setEditor(null)} onSave={async()=>{throw Error('검수 중 메모 본문 변경 금지')}}/>}</>}window.refreshBoard=()=>root.render(<App key={window.fixtureMount}/>);window.flushBoard=()=>flushSync(window.refreshBoard);window.refreshBoard();`,
+        contents: `import {createRoot} from 'react-dom/client';import{flushSync}from'react-dom';import{useState}from'react';import {WhiteboardPanel} from './src/components/whiteboard/panel';import{LibraryForm}from'./src/components/library-forms';const root=createRoot(document.getElementById('root'));window.fixtureMount=0;function App(){const[editor,setEditor]=useState(null);const library={...window.fixture,notes:[...window.fixture.notes]};return <><WhiteboardPanel library={library} writingTitle={window.fixture.writingTitle} ownerId='whiteboard-fixture' onOpen={(k,id,anchor)=>{window.opened=id;if(window.fixtureEditor)setEditor({kind:'note',note:library.notes.find(n=>n.id===id),anchor});}}/>{editor&&<LibraryForm editor={editor} library={library} today='2026-10-27' preview={false} onClose={()=>setEditor(null)} onSave={async()=>{throw Error('검수 중 메모 본문 변경 금지')}}/>}</>}window.refreshBoard=()=>root.render(<App key={window.fixtureMount}/>);window.flushBoard=()=>flushSync(window.refreshBoard);window.refreshBoard();`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -608,7 +608,7 @@ async function mount(page: Page, configure?: (state: any) => void) {
     if (u.pathname === "/")
       return r.fulfill({
         contentType: "text/html",
-        body: `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:16px"><div id="root"></div><script>window.fixture=${JSON.stringify({ books, notes, cycles: [] })}</script></body></html>`,
+        body: `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;padding:16px"><div id="root"></div><script>window.fixture=${JSON.stringify({ books, notes, cycles: [], writingTitle: state.writingTitle })}</script></body></html>`,
       });
     return r.abort();
   });
@@ -2012,6 +2012,9 @@ test("reloaded authoritative board replaces a clean layout at the same or earlie
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect.poll(() => f.state.board?.version).toBe(1);
   f.state.board.data.filter.topics = [f.state.topics[1].id];
+  // Explicit searches now persist their cumulative note IDs separately from
+  // the picker state. Replace both parts of this authoritative snapshot.
+  f.state.board.data.searchNoteIds = [f.state.notes[3].id];
   f.state.resolutionToken = "fixture-resolution-1";
   await page.evaluate(() => (window as any).refreshBoard());
   await expect(page.getByText("1개 메모", { exact: true })).toBeVisible();
@@ -2140,4 +2143,46 @@ test("a late save from a closed board cannot replace a newer draft awaiting choi
   await expect(
     page.getByRole("button", { name: "현재 배치로 저장", exact: true }),
   ).toBeVisible();
+});
+
+test("writing topic search restores explicitly searched removed notes while preserving other exclusions", async ({
+  page,
+}) => {
+  const f = await mount(page, (state) => {
+    state.writingTitle = "교회회복 글감";
+    state.topics[0].name = "교회회복";
+    state.memberships = [0, 1].map((i) => ({
+      topicId: state.topics[0].id,
+      sourceKind: "note",
+      sourceId: state.notes[i].id,
+      status: "accepted",
+    }));
+    state.board = {
+      id: "00000000-0000-4000-8000-000000000001",
+      version: 1,
+      data: {
+        ...emptyBoard(),
+        searchNoteIds: [],
+        writing: {
+          chapters: [],
+          excludedNoteIds: [
+            state.notes[0].id,
+            state.notes[1].id,
+            state.notes[4].id,
+          ],
+        },
+      },
+    };
+  });
+  await choose(page, "주제", "교회회복");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  for (const note of f.state.notes.slice(0, 2))
+    await expect(
+      page.locator(`.wb-note[data-note-id="${note.id}"]`),
+    ).toHaveCount(1);
+  await expect
+    .poll(() => f.state.board.data.writing.excludedNoteIds)
+    .toEqual([f.state.notes[4].id]);
+  expect(f.state.board.data.hiddenNoteIds).toEqual([]);
+  expect(f.state.notes).toHaveLength(5);
 });

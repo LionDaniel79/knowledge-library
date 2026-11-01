@@ -56,6 +56,16 @@ export function WritingAssist({
     const destination = board.writing?.chapters.find(
       (c) => c.id === scope.writingContext.targetChapterId,
     );
+    if (
+      kind === "titles" &&
+      scope.writingContext.targetChapterId &&
+      !destination
+    ) {
+      setError(
+        "제안 대상 목차가 없습니다. 목차를 선택하고 다시 요청해 주세요.",
+      );
+      return false;
+    }
     let next = board;
     if (kind === "titles" && destination) {
       next = {

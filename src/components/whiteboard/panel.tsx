@@ -1398,6 +1398,18 @@ export function WhiteboardPanel({
                 ...before,
                 filter,
                 searchNoteIds,
+                // "빼기" removes loose notes from this writing board, not
+                // from later explicit searches. Keep unrelated exclusions.
+                ...(writingTitle && before.writing
+                  ? {
+                      writing: {
+                        ...before.writing,
+                        excludedNoteIds: before.writing.excludedNoteIds?.filter(
+                          (id) => !found.includes(id),
+                        ),
+                      },
+                    }
+                  : {}),
               }),
             ),
             before,

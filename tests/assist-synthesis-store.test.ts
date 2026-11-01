@@ -1,5 +1,6 @@
 import { it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { createAssistStore } from "../src/server/assist-store";
@@ -371,5 +372,69 @@ it("new topic evidence retains the original note offsets when analysis used an e
     const e = m.evidence[0];
     expect(m.content.slice(e.start, e.end)).toBe(e.quote);
     expect(e.start).toBe(5);
+  }
+});
+
+it("applies every current synthesis action with production runtime privileges without locking the read-only view", async () => {
+  const fresh = await setup();
+  const renamed = await setup(false, true);
+  const base = fresh.result.output.suggestions[0];
+  await fresh.store.finish(fresh.d, fresh.job.id, fresh.job.leaseToken, {
+    ...fresh.result,
+    output: {
+      suggestions: [
+        { ...base, kind: "note_connection" },
+        { ...base, kind: "thought_bundle", title: "함께 읽는 생각" },
+      ],
+    },
+  });
+  await renamed.store.finish(
+    renamed.d,
+    renamed.job.id,
+    renamed.job.leaseToken,
+    renamed.result,
+  );
+  await f.pg.exec(
+    await readFile("db/operations/provision-web-runtime.sql", "utf8"),
+  );
+  await f.pg.exec("SET SESSION AUTHORIZATION library_web_runtime");
+  try {
+    expect(
+      (
+        await f.db.query(
+          "SELECT has_table_privilege(current_user,'library_active_notes','UPDATE') AS writable",
+        )
+      ).rows[0].writable,
+    ).toBe(false);
+    for (const s of [fresh, renamed]) {
+      for (const index of [0, 1]) {
+        const saved = await s.store.adopt(s.owner, s.request.id, index);
+        expect(saved.ok).toBe(true);
+        expect(await s.store.adopt(s.owner, s.request.id, index)).toEqual(
+          saved,
+        );
+      }
+      await expect(
+        s.store.adopt("other-owner", s.request.id, 0),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(
+        (
+          await f.db.query(
+            "SELECT version FROM library_notes WHERE owner_id=$1",
+            [s.owner],
+          )
+        ).rows.map((n) => n.version),
+      ).toEqual([1, 1]);
+    }
+    await fresh.l.mutate(fresh.owner, {
+      requestId: randomUUID(),
+      type: "deleteNote",
+      payload: { id: fresh.notes[0].id, expectedVersion: 1 },
+    });
+    await expect(
+      fresh.store.adopt(fresh.owner, fresh.request.id, 0),
+    ).rejects.toMatchObject({ status: 409 });
+  } finally {
+    await f.pg.exec("RESET SESSION AUTHORIZATION");
   }
 });

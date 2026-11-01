@@ -17,7 +17,9 @@ export async function adoptSynthesis(
   const ids = sources.map((v: any) => v.source.id);
   const rows = (
     await tx.query(
-      "SELECT * FROM library_active_notes WHERE owner_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+      // The runtime can read the active-note view but cannot lock it. Lock
+      // only owned base rows while preserving the view's trash exclusion.
+      "SELECT n.* FROM library_notes n WHERE n.owner_id=$1 AND n.id=ANY($2::uuid[]) AND NOT EXISTS (SELECT 1 FROM library_note_trash t WHERE t.owner_id=n.owner_id AND t.id=n.id AND t.restored_at IS NULL) ORDER BY n.id FOR UPDATE OF n",
       [owner, ids],
     )
   ).rows;

@@ -6,7 +6,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import{createRoot}from'react-dom/client';import{AssistPanel}from'./src/components/assist-panel';import{registerLibraryRuntime}from'./src/client/replica/request';const root=createRoot(document.getElementById('root'));let v=0;if(window.fixture.stale)registerLibraryRuntime({getSnapshot:()=>({ready:true}),sync:async()=>{},repository:{read:async()=>window.fixture.initialState}});window.remount=()=>root.render(<AssistPanel key={v++} library={window.fixture.library} scope={{kind:'note',category:'100',topic:'all',tag:'관계',bookId:'all',noteType:'thought',q:'공감'}}/>);window.remount();`,
+        contents: `import{createRoot}from'react-dom/client';import{AssistPanel}from'./src/components/assist-panel';import{registerLibraryRuntime}from'./src/client/replica/request';const root=createRoot(document.getElementById('root'));let v=0;if(window.fixture.stale)registerLibraryRuntime({getSnapshot:()=>({ready:true}),sync:async()=>{if(window.fixture.blockSync)await new Promise(()=>{});},repository:{read:async()=>window.fixture.initialState}});window.remount=()=>root.render(<AssistPanel key={v++} library={window.fixture.library} scope={{kind:'note',category:'100',topic:'all',tag:'관계',bookId:'all',noteType:'thought',q:'공감'}}/>);window.remount();`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -392,3 +392,45 @@ for (const purpose of [
       await expect(evidence.getByText("경계", { exact: true })).toBeVisible();
     }
   });
+
+test("adoption can retry a server failure and acknowledges a committed result without waiting for device synchronization", async ({
+  page,
+}) => {
+  await mount(page, true);
+  await page.evaluate(() => ((window as any).fixture.blockSync = true));
+  let attempts = 0;
+  await page.route("https://library.test/api/assist", async (route) => {
+    if (
+      route.request().method() !== "POST" ||
+      route.request().postDataJSON().action !== "adopt"
+    )
+      return route.fallback();
+    attempts++;
+    if (attempts === 1)
+      return route.fulfill({
+        status: 500,
+        json: { error: "검수용 저장 실패" },
+      });
+    return route.fulfill({
+      json: {
+        ok: true,
+        adoption: {
+          index: 0,
+          id: crypto.randomUUID(),
+          kind: "note_connection",
+        },
+      },
+    });
+  });
+  await page.locator(".assist-request-row summary").first().click();
+  const apply = page.getByRole("button", { name: "연결 확정", exact: true });
+  await apply.click();
+  await expect(page.getByRole("alert")).toHaveText("검수용 저장 실패");
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByRole("status")).toHaveText(
+    "선택한 제안을 저장했습니다.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(attempts).toBe(2);
+});
