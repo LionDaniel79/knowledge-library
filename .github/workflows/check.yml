@@ -21,7 +21,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_pdf_bulk.py
       - run: python -m unittest discover -s tests -p 'test_*ocr*.py'
       - run: npm run format:check
-      - run: npm test
+      - run: npm test -- --maxWorkers=2
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
