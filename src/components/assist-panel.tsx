@@ -158,11 +158,15 @@ export function AssistPanel({
     setError("");
     setMessage("");
     try {
-      const r = await libraryRequest("/api/assist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, payload }),
-        }, { awaitDeviceSync: action === "adopt" }),
+      const r = await libraryRequest(
+          "/api/assist",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, payload }),
+          },
+          { awaitDeviceSync: action === "adopt" },
+        ),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
       if (action === "hide") {

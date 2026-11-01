@@ -81,20 +81,30 @@ export const synthesisEvidenceSchema = z
     quote: z.string().min(1).max(2000),
   })
   .strict();
-export const synthesisConnectionSchema = z.object({
-  id: z.string().uuid(),
-  version: z.number().int().positive(),
-  sourceIndices: z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]),
-  title: z.string().max(300),
-  reason: z.string().max(2000),
-}).strict();
-export const synthesisBundleSchema = z.object({
-  id: z.string().uuid(),
-  version: z.number().int().positive(),
-  title: z.string().max(300),
-  description: z.string().max(2000),
-  noteIndices: z.array(z.number().int().nonnegative()).min(2).max(MAX_ANALYSIS_NOTES),
-}).strict();
+export const synthesisConnectionSchema = z
+  .object({
+    id: z.string().uuid(),
+    version: z.number().int().positive(),
+    sourceIndices: z.tuple([
+      z.number().int().nonnegative(),
+      z.number().int().nonnegative(),
+    ]),
+    title: z.string().max(300),
+    reason: z.string().max(2000),
+  })
+  .strict();
+export const synthesisBundleSchema = z
+  .object({
+    id: z.string().uuid(),
+    version: z.number().int().positive(),
+    title: z.string().max(300),
+    description: z.string().max(2000),
+    noteIndices: z
+      .array(z.number().int().nonnegative())
+      .min(2)
+      .max(MAX_ANALYSIS_NOTES),
+  })
+  .strict();
 export const synthesisResultSchema = z
   .object({
     suggestions: z
@@ -153,9 +163,16 @@ export function validSynthesis(
   const topics = new Map(payload.topics.map((t) => [t.id, t]));
   return output.suggestions.every((s) => {
     if (payload.focus !== "all" && payload.focus !== s.kind) return false;
-    if (payload.existingConnections && ![
-      "note_connection", "connection_title", "thought_bundle", "thought_bundle_title",
-    ].includes(s.kind)) return false;
+    if (
+      payload.existingConnections &&
+      ![
+        "note_connection",
+        "connection_title",
+        "thought_bundle",
+        "thought_bundle_title",
+      ].includes(s.kind)
+    )
+      return false;
     if (
       new Set(s.sourceIndices).size !== s.sourceIndices.length ||
       s.sourceIndices.some((i) => !payload.sources[i])
@@ -174,20 +191,43 @@ export function validSynthesis(
     if (s.sourceIndices.some((i) => !evidenceSources.has(i))) return false;
     if (s.kind === "note_connection")
       return (
-        s.sourceIndices.length === 2 && !s.topicIds.length && !s.outline.length && !s.bundleId &&
+        s.sourceIndices.length === 2 &&
+        !s.topicIds.length &&
+        !s.outline.length &&
+        !s.bundleId &&
         !(payload.existingConnections ?? []).some((c) =>
-          c.sourceIndices.every((i) => s.sourceIndices.includes(i)))
+          c.sourceIndices.every((i) => s.sourceIndices.includes(i)),
+        )
       );
     if (s.kind === "connection_title")
-      return s.sourceIndices.length === 2 && !s.topicIds.length && !s.outline.length && !s.bundleId &&
+      return (
+        s.sourceIndices.length === 2 &&
+        !s.topicIds.length &&
+        !s.outline.length &&
+        !s.bundleId &&
         (payload.existingConnections ?? []).some((c) =>
-          c.sourceIndices.every((i) => s.sourceIndices.includes(i)));
+          c.sourceIndices.every((i) => s.sourceIndices.includes(i)),
+        )
+      );
     if (s.kind === "thought_bundle")
-      return s.sourceIndices.length >= 2 && !s.topicIds.length && !s.outline.length && !s.bundleId;
+      return (
+        s.sourceIndices.length >= 2 &&
+        !s.topicIds.length &&
+        !s.outline.length &&
+        !s.bundleId
+      );
     if (s.kind === "thought_bundle_title")
-      return s.sourceIndices.length >= 2 && !s.topicIds.length && !s.outline.length &&
-        !!s.bundleId && (payload.existingBundles ?? []).some((b) => b.id === s.bundleId &&
-          s.sourceIndices.every((i) => b.noteIndices.includes(i)));
+      return (
+        s.sourceIndices.length >= 2 &&
+        !s.topicIds.length &&
+        !s.outline.length &&
+        !!s.bundleId &&
+        (payload.existingBundles ?? []).some(
+          (b) =>
+            b.id === s.bundleId &&
+            s.sourceIndices.every((i) => b.noteIndices.includes(i)),
+        )
+      );
     if (s.kind === "topic_connection")
       return (
         s.sourceIndices.length >= 2 &&

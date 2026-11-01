@@ -120,8 +120,18 @@ async function setup(partial = false, withExisting = false) {
   const output = {
     suggestions: withExisting
       ? [
-          { ...common, kind: "connection_title", title: "공감과 건강한 경계", bundleId: null },
-          { ...common, kind: "thought_bundle_title", title: "함께 성장하는 공감", bundleId: existingBundleId },
+          {
+            ...common,
+            kind: "connection_title",
+            title: "공감과 건강한 경계",
+            bundleId: null,
+          },
+          {
+            ...common,
+            kind: "thought_bundle_title",
+            title: "함께 성장하는 공감",
+            bundleId: existingBundleId,
+          },
         ]
       : [
           { ...common, kind: "note_connection" },
@@ -248,10 +258,13 @@ it("adopting a memo link and a shared thought bundle makes both visible in white
       note_ids: s.notes.map((n) => n.id),
     }),
   ]);
-  expect((await f.db.query(
-    "SELECT version FROM library_notes WHERE owner_id=$1",
-    [s.owner],
-  )).rows.map((n) => n.version)).toEqual([1, 1]);
+  expect(
+    (
+      await f.db.query("SELECT version FROM library_notes WHERE owner_id=$1", [
+        s.owner,
+      ])
+    ).rows.map((n) => n.version),
+  ).toEqual([1, 1]);
 });
 it("can rename both accepted connections and thought bundles from one analysis without losing either adoption", async () => {
   const s = await setup(false, true);
@@ -261,10 +274,12 @@ it("can rename both accepted connections and thought bundles from one analysis w
   await s.store.adopt(s.owner, s.request.id, 0);
   await s.store.adopt(s.owner, s.request.id, 1);
   const whiteboard = await readWhiteboard(f.db, s.owner);
-  expect(whiteboard.connections.find((c) => c.id === s.existingLinkId)?.title)
-    .toBe("공감과 건강한 경계");
-  expect(whiteboard.bundles.find((b: any) => b.id === s.existingBundleId)?.title)
-    .toBe("함께 성장하는 공감");
+  expect(
+    whiteboard.connections.find((c) => c.id === s.existingLinkId)?.title,
+  ).toBe("공감과 건강한 경계");
+  expect(
+    whiteboard.bundles.find((b: any) => b.id === s.existingBundleId)?.title,
+  ).toBe("함께 성장하는 공감");
 });
 it("only raises a per-request allowance after explicit confirmation and preserves the monthly ceiling", async () => {
   const owner = randomUUID(),

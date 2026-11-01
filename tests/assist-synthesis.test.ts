@@ -170,23 +170,31 @@ it("keeps independently verified ideas when another suggestion has invented evid
 });
 
 it("accepts only grounded note links and thought boxes for the new five-direction AI help", () => {
-  const links = [{
-    id: "00000000-0000-4000-8000-000000000010",
-    version: 1,
-    sourceIndices: [0, 1],
-    title: "기존 연결",
-    reason: "",
-  }];
-  const bundles = [{
-    id: "00000000-0000-4000-8000-000000000020",
-    version: 1,
-    title: "기존 묶음",
-    description: "",
-    noteIndices: [0, 1],
-  }];
+  const links = [
+    {
+      id: "00000000-0000-4000-8000-000000000010",
+      version: 1,
+      sourceIndices: [0, 1],
+      title: "기존 연결",
+      reason: "",
+    },
+  ];
+  const bundles = [
+    {
+      id: "00000000-0000-4000-8000-000000000020",
+      version: 1,
+      title: "기존 묶음",
+      description: "",
+      noteIndices: [0, 1],
+    },
+  ];
   const task = aiTaskSchema.parse({
     ...raw,
-    payload: { ...raw.payload, existingConnections: links, existingBundles: bundles },
+    payload: {
+      ...raw.payload,
+      existingConnections: links,
+      existingBundles: bundles,
+    },
   });
   const changed = {
     ...suggestion,

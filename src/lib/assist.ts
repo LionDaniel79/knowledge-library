@@ -64,7 +64,10 @@ export const assistInputSchema = z.discriminatedUnion("purpose", [
       focus: synthesisFocusSchema,
       sources: z.array(assistSourceSchema).min(2).max(MAX_ANALYSIS_NOTES),
       topics: z.array(synthesisTopicSchema).max(30),
-      existingConnections: z.array(synthesisConnectionSchema).max(100).optional(),
+      existingConnections: z
+        .array(synthesisConnectionSchema)
+        .max(100)
+        .optional(),
       existingBundles: z.array(synthesisBundleSchema).max(40).optional(),
       writingContext: writingContextSchema.optional(),
     })
