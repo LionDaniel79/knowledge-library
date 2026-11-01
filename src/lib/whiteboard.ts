@@ -298,7 +298,25 @@ export function filterNotes(
   return source.notes.filter((n) => {
     const book = n.bookId ? books.get(n.bookId) : undefined,
       text = normalized(n.title + "\n" + n.content),
-      topics = f.topics.length ? (assigned!.get(n.id) ?? []) : [];
+      topics = f.topics.length
+        ? (() => {
+            // Match the "내 기록" topic filter, which includes suggested
+            // memberships, while a note-level rejection overrides inherited
+            // book memberships. Only accepted topics form permanent frames.
+            const rejected = new Set(source.memberships
+              .filter((m) => m.sourceKind === "note" && m.sourceId === n.id && m.status === "rejected")
+              .map((m) => m.topicId));
+            const valid = new Set(source.topics.map((t) => t.id));
+            return [...new Set([
+              ...(assigned!.get(n.id) ?? []),
+              ...source.memberships.filter((m) =>
+                m.status !== "rejected" &&
+                ((m.sourceKind === "note" && m.sourceId === n.id) ||
+                  (m.sourceKind === "book" && !!n.bookId && m.sourceId === n.bookId)))
+                .map((m) => m.topicId),
+            ])].filter((id) => valid.has(id) && !rejected.has(id));
+          })()
+        : [];
     return (
       (!f.topics.length ||
         (!topics.length && f.topics.includes("unclassified")) ||
