@@ -314,6 +314,10 @@ export function AssistPanel({
         }),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "전송 내용을 확인하지 못했습니다.");
+      if (!analysis && focus === "connection_title" && !j.task.payload.existingConnections?.length)
+        throw Error("선택한 기록 사이에 제목을 제안할 기존 메모 연결이 없습니다.");
+      if (!analysis && focus === "thought_bundle_title" && !j.task.payload.existingBundles?.length)
+        throw Error("선택한 기록을 함께 포함하는 기존 생각묶음이 없습니다.");
       if (contextRef.current !== ticket) return;
       requestId.current = crypto.randomUUID();
       setPreview({
@@ -432,6 +436,19 @@ export function AssistPanel({
                 <blockquote>{s.text}</blockquote>
               </div>
             ))}
+            {!!(currentPreview.task.payload.existingConnections?.length ||
+              currentPreview.task.payload.existingBundles?.length) && (
+              <div className="notice">
+                <strong>함께 전송되는 기존 연결·생각묶음 정보</strong>
+                <p>제목 제안을 위해 아래의 기존 제목과 설명도 AI에 전송합니다.</p>
+                {currentPreview.task.payload.existingConnections?.map((c: any) => (
+                  <p key={c.id}>연결: {c.title || "제목 없음"} · {c.reason}</p>
+                ))}
+                {currentPreview.task.payload.existingBundles?.map((b: any) => (
+                  <p key={b.id}>생각묶음: {b.title} · {b.description}</p>
+                ))}
+              </div>
+            )}
             {maximum !== 0 && currentPreview.total > 200 && (
               <p>
                 최대 200개 후보에서 대표 기록을 골랐습니다. 범위를 좁히면 다른
