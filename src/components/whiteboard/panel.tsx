@@ -47,6 +47,7 @@ import {
   WHITEBOARD_ID,
   emptyBoard,
   buildScene,
+  filterNotes,
   moveNote,
   moveGroup,
   mergeNotes,
@@ -1192,6 +1193,23 @@ export function WhiteboardPanel({
         id,
         expectedVersion: latest.version,
       });
+      // Remove references on this board only after the canonical bundle is
+      // archived. Other boards hide the archived bundle via projection.
+      const before = current.current;
+      if (before.writing?.chapters.some((c) => (c.bundleId ?? c.id) === id)) {
+        update(
+          {
+            ...before,
+            writing: {
+              ...before.writing,
+              chapters: before.writing.chapters.filter(
+                (c) => (c.bundleId ?? c.id) !== id,
+              ),
+            },
+          },
+          before,
+        );
+      }
       shared.accept({
         ...latest,
         version: result.version,
@@ -1360,12 +1378,27 @@ export function WhiteboardPanel({
         onSubmit={(e) => {
           e.preventDefault();
           const before = current.current;
+          const previous =
+            before.searchNoteIds ??
+            (before.filter.q ||
+            before.filter.topics.length ||
+            before.filter.tags.length ||
+            before.filter.categories.length ||
+            before.filter.books.length
+              ? filterNotes(source, before.filter).map((n) => n.id)
+              : []);
+          const found = filterNotes(source, filter).map((n) => n.id);
+          const searchNoteIds = [...new Set([...previous, ...found])];
           criteriaEdited.current = false;
           setSearchRevision((n) => n + 1);
           update(
             arrangeSearchResults(
               source,
-              seedBoard(source, { ...before, filter }),
+              seedBoard(source, {
+                ...before,
+                filter,
+                searchNoteIds,
+              }),
             ),
             before,
           );
@@ -1410,6 +1443,30 @@ export function WhiteboardPanel({
         />
         <button className="primary" disabled={linkBusy}>
           검색
+        </button>
+        <button
+          type="button"
+          disabled={linkBusy}
+          onClick={() => {
+            const before = current.current;
+            const emptyFilter = emptyBoard().filter;
+            criteriaEdited.current = false;
+            setFilter(emptyFilter);
+            setSelectedGroup(null);
+            setSelectedNote(null);
+            setConnectionView(null);
+            setCheckedConnections([]);
+            setCheckedBoxes([]);
+            setBoxVisibility({});
+            setPlainBoard(true);
+            setSearchRevision((n) => n + 1);
+            update(
+              { ...before, filter: emptyFilter, searchNoteIds: [] },
+              before,
+            );
+          }}
+        >
+          지우기
         </button>
       </form>
       <div className="wb-actions">
@@ -1734,28 +1791,13 @@ export function WhiteboardPanel({
             )
           }
           onChapterRemove={(id) => {
-            const before = current.current;
             const chapter = displayBoard.writing?.chapters.find(
               (c) => c.id === id,
             );
             const bundleId = chapter?.bundleId ?? id;
-            if (!writingTitle) {
-              void removeThoughtBox(bundleId, true);
-              return;
-            }
-            setBoxVisibility((old) => ({ ...old, [bundleId]: false }));
-            setCheckedBoxes((old) => old.filter((value) => value !== bundleId));
-            if (!before.writing?.chapters.some((c) => c.id === id)) return;
-            update(
-              {
-                ...before,
-                writing: {
-                  ...before.writing!,
-                  chapters: before.writing!.chapters.filter((c) => c.id !== id),
-                },
-              },
-              before,
-            );
+            // "상자 삭제" means deleting the shared thought bundle,
+            // including when the box is opened from a writing board.
+            void removeThoughtBox(bundleId, true);
           }}
           canAddSelected={!!(selectedNote || selectedGroup)}
           onChapterAddSelected={(id) => {

@@ -1,6 +1,11 @@
 "use client";
 import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
 import { useEffect, useState } from "react";
+import {
+  mergeAdoptedRelationships,
+  confirmedRelationships,
+  type AdoptedRelationship,
+} from "@/lib/assist-adoption-overlay";
 import { useReplicaDataOptional } from "./replica/provider";
 
 export function usePagedResource<T>(
@@ -12,6 +17,8 @@ export function usePagedResource<T>(
   const keepPreviousData = options.keepPreviousData ?? false;
   const replica = useReplicaDataOptional();
   const [retry, setRetry] = useState(0);
+  const replicaOwner = replica?.runtime?.owner ?? "";
+  const confirmed = confirmedRelationships(replicaOwner);
   useEffect(() => {
     if (
       !enabled ||
@@ -21,11 +28,28 @@ export function usePagedResource<T>(
       )
     )
       return;
-    const refreshAfterAi = () => setRetry((n) => n + 1);
+    const refreshAfterAi = (event: Event) => {
+      const value = (event as CustomEvent<AdoptedRelationship>).detail;
+      if (value?.connection?.id)
+        confirmed?.connections.set(value.connection.id, value.connection);
+      if (value?.bundle?.id)
+        confirmed?.bundles.set(value.bundle.id, value.bundle);
+      setState((previous) =>
+        previous.path === path && previous.data
+          ? {
+              ...previous,
+              data: confirmed
+                ? mergeAdoptedRelationships(previous.data, confirmed)
+                : previous.data,
+            }
+          : previous,
+      );
+      setRetry((n) => n + 1);
+    };
     window.addEventListener("library:assist-adopted", refreshAfterAi);
     return () =>
       window.removeEventListener("library:assist-adopted", refreshAfterAi);
-  }, [enabled, path]);
+  }, [enabled, path, confirmed]);
   const [state, setState] = useState<{
     path: string;
     data: T | null;
@@ -54,7 +78,14 @@ export function usePagedResource<T>(
             const data = await r.json();
             if (!r.ok) throw Error(data.error ?? "목록을 불러오지 못했습니다.");
             if (!controller.signal.aborted)
-              setState({ path, data, loading: false, error: "" });
+              setState({
+                path,
+                data: confirmed
+                  ? mergeAdoptedRelationships(data, confirmed)
+                  : data,
+                loading: false,
+                error: "",
+              });
           })
           .catch((error) => {
             if (!controller.signal.aborted)
@@ -75,7 +106,15 @@ export function usePagedResource<T>(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [path, enabled, revision, retry, replica?.revision, keepPreviousData]);
+  }, [
+    path,
+    enabled,
+    revision,
+    retry,
+    replica?.revision,
+    keepPreviousData,
+    confirmed,
+  ]);
   return {
     ...(enabled && state.path === path
       ? state

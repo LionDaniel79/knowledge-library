@@ -67,6 +67,9 @@ export const boardSchema = z
   .object({
     schema: z.literal(1),
     filter: boardFilterSchema,
+    // Explicit search results accumulate until the user clears the board.
+    // undefined retains legacy filter-based rendering for saved boards.
+    searchNoteIds: z.array(z.string().uuid()).max(10000).optional(),
     positions: z
       .record(z.string().min(1).max(260), point)
       .refine((v) => Object.keys(v).length <= 10000),
@@ -328,8 +331,12 @@ export function buildScene(
   const assigned = assignedTopics(source);
   const visible = new Set(
       [
-        ...filterNotes(source, b.filter, assigned),
-        ...source.notes.filter((n) => chapterNotes.has(n.id)),
+        ...(b.searchNoteIds === undefined
+          ? filterNotes(source, b.filter, assigned)
+          : source.notes.filter((n) => b.searchNoteIds!.includes(n.id))),
+        ...(b.searchNoteIds?.length === 0
+          ? []
+          : source.notes.filter((n) => chapterNotes.has(n.id))),
       ]
         .filter((n) => !hidden.has(n.id))
         .map((n) => n.id),
@@ -645,8 +652,8 @@ export function seedBoard(source: WhiteboardSnapshot, b: Board): Board {
   };
 }
 
-// A search is a fresh view of the matching memos, not a window into the gaps
-// occupied by every other memo. Only matching placements are changed.
+// Arrange only currently shown memos, leaving off-screen placements intact.
+// The persisted explicit-search selection may be a union of several searches.
 export function arrangeSearchResults(
   source: WhiteboardSnapshot,
   b: Board,

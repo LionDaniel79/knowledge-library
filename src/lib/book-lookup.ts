@@ -10,6 +10,8 @@ export interface BookCandidate {
   sourceUrl: string;
   description: string;
   category?: string;
+  /** Provider-supplied subjects/keywords; the reader may edit them before saving. */
+  tags?: string[];
 }
 export const catalogProviderNames = {
   yes24: "예스24",

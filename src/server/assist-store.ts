@@ -805,9 +805,12 @@ export function createAssistStore(
         throw new LibraryError(409, "채택할 수 없는 결과입니다.");
       if (!(await stillCurrent(tx, owner, r.task)))
         throw new LibraryError(409, "원자료가 변경되었습니다.");
-      if (r.adoption.some((a: any) => a.index === index)) return { ok: true };
-      let adoptedId: string;
-      if (r.purpose === "synthesis") {
+      const existing = r.adoption.find((a: any) => a.index === index);
+      let adoptedId: string | undefined = existing?.id;
+      if (existing) {
+        // Idempotent return must still include the exact target for clients
+        // reconciling a previously accepted result on another device.
+      } else if (r.purpose === "synthesis") {
         if (!validateAiTaskResult(r.task, r.result.output).valid)
           throw new LibraryError(409, "제안의 근거를 확인할 수 없습니다.");
         adoptedId = await adoptSynthesis(tx, owner, r, index);
@@ -890,17 +893,48 @@ export function createAssistStore(
           });
         adoptedId = c.id;
       } else throw new LibraryError(400, "설명은 별도 보조 카드로 보관합니다.");
-      await tx.query(
-        "UPDATE library_assist_results SET adoption=adoption||$3::jsonb WHERE owner_id=$1 AND id=$2",
-        [
-          owner,
-          r.result_id,
-          JSON.stringify([
-            { index, id: adoptedId, at: new Date().toISOString() },
-          ]),
-        ],
-      );
-      return { ok: true };
+      if (!adoptedId)
+        throw new LibraryError(
+          409,
+          "확정된 제안의 저장 항목을 찾지 못했습니다.",
+        );
+      if (!existing)
+        await tx.query(
+          "UPDATE library_assist_results SET adoption=adoption||$3::jsonb WHERE owner_id=$1 AND id=$2",
+          [
+            owner,
+            r.result_id,
+            JSON.stringify([
+              { index, id: adoptedId, at: new Date().toISOString() },
+            ]),
+          ],
+        );
+      const kind =
+        r.purpose === "synthesis"
+          ? r.result.output.suggestions[index]?.kind
+          : null;
+      const connection = ["note_connection", "connection_title"].includes(kind)
+        ? (
+            await tx.query(
+              "SELECT id,source_kind,source_id,target_kind,target_id,title,relation,reason,status,version FROM library_connections WHERE owner_id=$1 AND id=$2",
+              [owner, adoptedId],
+            )
+          ).rows[0]
+        : null;
+      const bundle = ["thought_bundle", "thought_bundle_title"].includes(kind)
+        ? (
+            await tx.query(
+              "SELECT id,title,description,note_ids,version,archived_at FROM library_memo_bundles WHERE owner_id=$1 AND id=$2",
+              [owner, adoptedId],
+            )
+          ).rows[0]
+        : null;
+      return {
+        ok: true,
+        adoption: { index, id: adoptedId, kind },
+        connection,
+        bundle,
+      };
     });
   }
   async function hide(owner: string, id: string) {

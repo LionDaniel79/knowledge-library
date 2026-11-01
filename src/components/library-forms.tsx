@@ -282,6 +282,20 @@ export function LibraryForm({
                 setTitle(candidate.title);
                 if (candidate.coverUrl) setCoverUrl(candidate.coverUrl);
                 setSelectedCatalog(candidate);
+                // Preserve the reader's existing topics; append only subjects
+                // supplied by the selected bibliographic record.
+                if (candidate.tags?.length) {
+                  const field = formRef.current?.elements.namedItem("tags");
+                  if (field instanceof HTMLInputElement) {
+                    const previous = field.value
+                      .split(",")
+                      .map((v) => v.trim())
+                      .filter(Boolean);
+                    field.value = [...new Set([...previous, ...candidate.tags])]
+                      .slice(0, 20)
+                      .join(", ");
+                  }
+                }
                 for (const [name, value] of Object.entries({
                   title: candidate.title,
                   author: candidate.author,

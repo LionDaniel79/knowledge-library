@@ -1,4 +1,6 @@
-import { isbn13 } from "../lib/bibliography";
+import { isbn13, suggestCategory } from "../lib/bibliography";
+import { categoryName, categories } from "../lib/catalog";
+import { reserveCatalogRequest } from "../local/curation/api-quota";
 import { providerText } from "../lib/provider-text";
 import type { BookCandidate } from "../lib/book-lookup";
 import {
@@ -8,6 +10,14 @@ import {
 } from "./catalog-provider";
 import { LibraryError } from "./library-store";
 const text = (v: unknown, max = 300) => providerText(v).slice(0, max);
+function subjectTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.map((v) => text(v, 40).trim()).filter((v) => v.length > 1),
+    ),
+  ].slice(0, 12);
+}
 function candidate(v: BookCandidate): BookCandidate {
   return {
     ...v,
@@ -15,6 +25,10 @@ function candidate(v: BookCandidate): BookCandidate {
     author: text(v.author),
     publisher: text(v.publisher),
     description: text(v.description, 3000),
+    tags: subjectTags(v.tags),
+    category: categories.some(([code]) => code === v.category)
+      ? v.category
+      : "",
     coverUrl: secureImage(v.coverUrl),
     totalPages:
       v.totalPages &&
@@ -43,6 +57,11 @@ export function parseYes24Books(json: any, expectedIsbn = ""): BookCandidate[] {
         coverUrl: b.cover ?? "",
         totalPages: Number(b.pages) || null,
         description: b.contentDetail?.bookIntroduction ?? "",
+        tags: subjectTags([b.categoryName, b.category?.name].filter(Boolean)),
+        category: suggestCategory(
+          "",
+          subjectTags([b.categoryName, b.category?.name].filter(Boolean)),
+        ),
       }),
     )
     .filter((b: BookCandidate) => !expectedIsbn || b.isbn === expectedIsbn);
@@ -72,9 +91,43 @@ export function parseGoogleBooks(
         coverUrl: v.imageLinks?.thumbnail ?? "",
         totalPages: v.pageCount ?? null,
         description: v.description ?? "",
+        tags: subjectTags(v.categories),
+        category: suggestCategory("", subjectTags(v.categories)),
       });
     })
     .filter((b: BookCandidate) => !expectedIsbn || b.isbn === expectedIsbn);
+}
+/** ISBN-specific keyword data from the registered-IP library API. */
+export function parseLibraryKeywords(payload: any): string[] {
+  if (payload?.error || payload?.response?.error) return [];
+  const items = payload?.response?.items;
+  const list = Array.isArray(items) ? items : items?.item;
+  return subjectTags(
+    (Array.isArray(list) ? list : list ? [list] : []).map(
+      (v: any) => v.item?.word ?? v.word,
+    ),
+  );
+}
+async function lookupLibraryKeywords(
+  isbn: string,
+  key: string,
+  fetcher: typeof fetch,
+) {
+  const url = new URL("https://data4library.kr/api/keywordList");
+  url.search = new URLSearchParams({
+    authKey: key,
+    isbn13: isbn,
+    additionalYN: "Y",
+    format: "json",
+  }).toString();
+  reserveCatalogRequest("library", key);
+  const response = await fetcher(url, {
+    signal: AbortSignal.timeout(8000),
+    redirect: "error",
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+  return parseLibraryKeywords(await response.json());
 }
 type Options = {
   fetcher?: typeof fetch;
@@ -124,31 +177,80 @@ export async function searchBookMetadata(raw: string, options: Options = {}) {
       );
     }
   }
-  if (!items.length && library) {
+  // The source which first supplies a cover/title must not prevent verified
+  // KDC classification and subjects from filling the same edition.
+  if (library) {
     try {
       const results = isbn
         ? [await lookupLibrary(isbn, library)]
         : (await lookupLibraryTitle(q, library)).books;
       for (const b of results) {
-        if (b)
-          items.push(
-            candidate({
-              id: "library:" + b.isbn,
-              provider: "library",
-              title: b.title,
-              author: b.author,
-              publisher: b.publisher,
-              isbn: b.isbn,
-              coverUrl: b.coverUrl,
-              totalPages: null,
-              description: b.description,
-              category: b.category,
-              sourceUrl: "https://www.data4library.kr",
-            }),
-          );
+        if (!b) continue;
+        const fromLibrary = candidate({
+          id: "library:" + b.isbn,
+          provider: "library",
+          title: b.title,
+          author: b.author,
+          publisher: b.publisher,
+          isbn: b.isbn,
+          coverUrl: b.coverUrl,
+          totalPages: null,
+          description: b.description,
+          category: b.category,
+          tags: b.category ? [categoryName(b.category)] : [],
+          sourceUrl: "https://www.data4library.kr",
+        });
+        const i = items.findIndex((item) => item.isbn && item.isbn === b.isbn);
+        if (i >= 0) {
+          items[i] = candidate({
+            ...items[i],
+            category: fromLibrary.category || items[i].category,
+            tags: [...(items[i].tags ?? []), ...(fromLibrary.tags ?? [])],
+          });
+        } else if (!items.length || isbn) items.push(fromLibrary);
+      }
+      // Only an explicit ISBN lookup incurs a further keyword request;
+      // title searches can have many unrelated editions and must not spend
+      // one registered-IP quota unit per match.
+      if (isbn && items.length) {
+        const keywords = await lookupLibraryKeywords(isbn, library, fetcher);
+        for (let i = 0; i < items.length; i++)
+          if (items[i].isbn === isbn)
+            items[i] = candidate({
+              ...items[i],
+              tags: [...(items[i].tags ?? []), ...keywords],
+            });
       }
     } catch {
-      warnings.push("정보나루 조회를 완료하지 못했습니다.");
+      warnings.push("정보나루 분야·주제 보강을 완료하지 못했습니다.");
+    }
+  }
+  // A registered data4library key may be PC-only. Google Books exposes
+  // publisher-provided subjects as a graceful fallback in web deployments.
+  if (items.length && items.some((b) => !b.category || !b.tags?.length)) {
+    try {
+      const url = new URL("https://www.googleapis.com/books/v1/volumes");
+      url.search = new URLSearchParams({
+        q: isbn ? "isbn:" + isbn : q,
+        maxResults: "10",
+        printType: "books",
+      }).toString();
+      if (google) url.searchParams.set("key", google);
+      const candidates = parseGoogleBooks(await json(url), isbn);
+      for (const item of items) {
+        const match = candidates.find(
+          (b) => b.isbn && item.isbn && b.isbn === item.isbn,
+        );
+        if (match) {
+          item.category ||= match.category;
+          item.tags = subjectTags([
+            ...(item.tags ?? []),
+            ...(match.tags ?? []),
+          ]);
+        }
+      }
+    } catch {
+      // Metadata enrichment is optional; retain all original search results.
     }
   }
   if (!items.length) {
