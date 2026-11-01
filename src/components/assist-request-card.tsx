@@ -156,8 +156,13 @@ export function AssistRequestCard({
                     </ol>
                   )}
                   {!value.scope?.writingContext &&
-                  ["topic_connection", "new_topic", "writing_idea"].includes(s.kind) ? (
-                    <small>이전 분석에서 생성한 제안입니다. 현재 도움 방향으로 다시 분석해 주세요.</small>
+                  ["topic_connection", "new_topic", "writing_idea"].includes(
+                    s.kind,
+                  ) ? (
+                    <small>
+                      이전 분석에서 생성한 제안입니다. 현재 도움 방향으로 다시
+                      분석해 주세요.
+                    </small>
                   ) : onWritingSuggestion && value.scope?.writingContext ? (
                     <button
                       disabled={busy}
