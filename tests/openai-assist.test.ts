@@ -155,6 +155,39 @@ it("sends only explicit bounded input with no tools and counts token subsets onc
     task.payload.sources[0].text.length,
   );
 });
+it("reserves different output budgets for Sol's short requests versus reasoning-intensive work", () => {
+  const tags = structuredClone(task);
+  tags.model = "gpt-6.1-sol";
+  expect(prepareAiTask(tags).reasoning.effort).toBe("medium");
+  expect(prepareAiTask(tags).max_output_tokens).toBe(4096);
+  const tagBudget = estimateAiTask(tags);
+  expect(tagBudget.outputTokenUpperBound).toBe(4096);
+
+  const excerpt = structuredClone(tags);
+  excerpt.payload.purpose = "excerpt_explanation";
+  expect(prepareAiTask(excerpt).max_output_tokens).toBe(4096);
+
+  const comparison = structuredClone(tags);
+  comparison.payload.purpose = "compare_notes";
+  comparison.payload.sources.push({
+    ...comparison.payload.sources[0],
+    source: { ...comparison.payload.sources[0].source, id: randomUUID() },
+  });
+  expect(prepareAiTask(comparison).max_output_tokens).toBe(6144);
+
+  const synthesis = structuredClone(comparison);
+  synthesis.payload.purpose = "synthesis";
+  synthesis.payload.focus = "all";
+  synthesis.payload.topics = [];
+  expect(prepareAiTask(synthesis).max_output_tokens).toBe(8192);
+  expect(estimateAiTask(synthesis).outputTokenUpperBound).toBe(8192);
+
+  // Luna's existing general-work cap remains unchanged.
+  expect(prepareAiTask(task).max_output_tokens).toBe(2000);
+  expect(tagBudget.maxCostUsd).not.toBe(
+    estimateAiTask(synthesis).maxCostUsd,
+  );
+});
 it("does not send without key, price version, or sufficient reservation and never retries an unknown send", async () => {
   const fetcher = vi.fn(async () => {
     throw Error("network");
