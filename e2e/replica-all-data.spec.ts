@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 test("reopens review originals, source evidence, thought map, research snapshots and saved AI costs offline", async ({
   page,
 }) => {
+  // Usage is scoped to the fixture's month, not the machine's current month.
+  await page.clock.setFixedTime(new Date("2026-10-17T00:00:00Z"));
   let network = 0;
   await page.route("https://resource.test/**", (r) => {
     const path = new URL(r.request().url()).pathname;

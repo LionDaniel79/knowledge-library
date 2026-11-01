@@ -3,7 +3,11 @@ import { replicaServer } from "./helpers/replica-server";
 import { withSyncWrite } from "../src/server/sync/write";
 test("round-trips two independent browser stores, preserves conflicting originals and rebuilds an expired device", async ({
   browser,
+  browserName,
 }) => {
+  // Windows WebKit completes this two-store/bootstrap/conflict/rebuild scenario
+  // in ~36s. Each assertion stays unchanged; allow its measured fixture budget.
+  if (browserName === "webkit") test.setTimeout(60_000);
   const f = await replicaServer(),
     a = await browser.newContext(),
     b = await browser.newContext();

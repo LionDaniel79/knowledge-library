@@ -260,20 +260,20 @@ test("requires full book details before editing a sanitized cached cover", async
     f.book.coverUrl,
   );
 });
-test("loads book matches when searching from the home screen", async ({
+test("loads book matches in owned books after opening the saved home screen", async ({
   page,
 }) => {
   const f = await start(page);
-  let searches = 0;
+  const searches: string[] = [];
   await page.route("https://startup.test/api/books?*", (r) => {
-    searches++;
+    searches.push(new URL(r.request().url()).searchParams.get("q") ?? "");
     return r.fulfill({ json: { items: [f.book], total: 1, nextCursor: null } });
   });
   await f.session().fulfill({ json: { ownerId: "startup-owner" } });
-  await page
-    .getByPlaceholder("책, 저자, 내 생각을 검색하세요")
-    .fill("지금 읽는");
-  await expect.poll(() => searches).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page.getByRole("button", { name: /^소장 도서/ }).click();
+  await page.getByLabel("소장 도서 검색", { exact: true }).fill("지금 읽는");
+  await expect.poll(() => searches).toContain("지금 읽는");
   await expect(
     page.locator(".shelf-card").filter({ hasText: f.book.title }),
   ).toBeVisible();

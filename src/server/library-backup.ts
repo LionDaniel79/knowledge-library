@@ -93,6 +93,19 @@ async function schema(tx: Executor, included: readonly string[] = tables) {
     throw new LibraryError(503, "백업에 필요한 DB 구조가 준비되지 않았습니다.");
   return {
     hash: hash(rows.filter((r) => included.includes(r.table_name))),
+    requiredJsonColumns: Object.fromEntries(
+      tables.map((table) => [
+        table,
+        rows
+          .filter(
+            (r) =>
+              r.table_name === table &&
+              r.udt_name === "jsonb" &&
+              r.is_nullable === "NO",
+          )
+          .map((r) => String(r.column_name)),
+      ]),
+    ),
     columns: Object.fromEntries(
       tables.map((table) => [
         table,
@@ -395,8 +408,22 @@ export async function restoreLibraryBackup(
           ...row,
           owner_id: owner,
         }));
+        const columns = ["owner_id", ...current.columns[table]];
+        const requiredJson = new Set(current.requiredJsonColumns[table]);
+        const quote = (column: string) =>
+          '"' + column.replaceAll('"', '""') + '"';
+        // jsonb_populate_recordset maps JSON null to SQL NULL. Required JSONB
+        // fields (notably deletion revision.after_data) can contain JSON null
+        // in the source DB, so reconstruct that value using schema metadata.
+        const projection = columns
+          .map((column) =>
+            requiredJson.has(column)
+              ? `coalesce(r.${quote(column)},'null'::jsonb)`
+              : `r.${quote(column)}`,
+          )
+          .join(",");
         await tx.query(
-          `INSERT INTO ${table} SELECT * FROM jsonb_populate_recordset(NULL::${table},$1::jsonb)`,
+          `INSERT INTO ${table} (${columns.map(quote).join(",")}) SELECT ${projection} FROM jsonb_populate_recordset(NULL::${table},$1::jsonb) r`,
           [JSON.stringify(rows)],
         );
       }

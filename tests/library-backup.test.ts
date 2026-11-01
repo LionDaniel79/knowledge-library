@@ -34,6 +34,24 @@ function seal(v: any) {
     .digest("hex");
   return v;
 }
+it("restores deletion history's required JSON null as JSON null rather than SQL NULL", async () => {
+  const id = randomUUID();
+  await source.db.query(
+    "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,'json-null-source',$2,'purgeNote','{}'::jsonb,'null'::jsonb)",
+    [id, randomUUID()],
+  );
+  const saved = await createLibraryBackup(source.db, "json-null-source");
+  expect(saved.tables.library_revisions[0].after_data).toBeNull();
+  await restoreLibraryBackup(target.db, "json-null-restored", saved);
+  expect(
+    (
+      await target.db.query(
+        "SELECT after_data IS NULL AS sql_null,after_data='null'::jsonb AS json_null FROM library_revisions WHERE owner_id='json-null-restored' AND id=$1",
+        [id],
+      )
+    ).rows[0],
+  ).toEqual({ sql_null: false, json_null: true });
+});
 it("round trips edition relationships and keeps older backups compatible", async () => {
   const origin = await testDatabase(),
     dest = await testDatabase();

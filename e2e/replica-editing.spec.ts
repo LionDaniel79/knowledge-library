@@ -2,7 +2,9 @@ import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 let bundle: string, worker: string;
 test.beforeAll(async () => {
-  const code = `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';import {ReplicaProvider} from './src/components/replica/provider';import {createLibraryRuntime} from './src/client/replica/runtime';import {openReplica} from './src/client/replica/indexed-db';import {resourceFixture} from './tests/helpers/replica-resources';(async()=>{const s=await openReplica('resources');if(!localStorage.getItem('seeded')){const f=await resourceFixture(s);localStorage.setItem('seeded','1');f.repo.close();}const runtime=createLibraryRuntime('resources',s,await s.checkpoint());window.runtime=runtime;createRoot(document.getElementById('root')).render(<ReplicaProvider runtime={runtime}><LibraryApp initial={await runtime.repository.overview()} ownerId="resources" today="2026-10-17" initialView="notes"/></ReplicaProvider>);})();`;
+  // The former top-level notes view was consolidated into the memo box. Home
+  // still opens the same real memo editor and is a supported initial route.
+  const code = `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';import {ReplicaProvider} from './src/components/replica/provider';import {createLibraryRuntime} from './src/client/replica/runtime';import {openReplica} from './src/client/replica/indexed-db';import {resourceFixture} from './tests/helpers/replica-resources';(async()=>{const s=await openReplica('resources');if(!localStorage.getItem('seeded')){const f=await resourceFixture(s);localStorage.setItem('seeded','1');f.repo.close();}const runtime=createLibraryRuntime('resources',s,await s.checkpoint());window.runtime=runtime;createRoot(document.getElementById('root')).render(<ReplicaProvider runtime={runtime}><LibraryApp initial={await runtime.repository.overview()} ownerId="resources" today="2026-10-17" initialView="home"/></ReplicaProvider>);})();`;
   bundle = (
     await build({
       stdin: { contents: code, loader: "tsx", resolveDir: process.cwd() },
