@@ -778,7 +778,8 @@ export function createAssistStore(
           },
           coverage: "partial",
           origin: "api",
-          generator: assistModel + "/" + ASSIST_PROMPT_VERSION,
+          generator:
+            r.result.provenance.model + "/" + r.result.provenance.promptVersion,
         };
         const c = createCurationStore({
           query: tx.query,
@@ -822,9 +823,9 @@ export function createAssistStore(
             context: [],
             provenance: {
               provider: "openai",
-              model: assistModel,
-              promptVersion: ASSIST_PROMPT_VERSION,
-              schemaVersion: ASSIST_SCHEMA_VERSION,
+              model: r.result.provenance.model,
+              promptVersion: r.result.provenance.promptVersion,
+              schemaVersion: r.result.provenance.schemaVersion,
               providerRequestId: r.result.provenance.providerRequestId,
               retrievalVersion: "explicit-two-records",
             },
