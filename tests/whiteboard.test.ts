@@ -146,7 +146,7 @@ describe("whiteboard", () => {
         },
         f,
       ).map((n) => n.id),
-    ).toEqual([n1, n2, n3]);
+    ).toEqual([n3]);
     expect(
       boardSchema.safeParse({
         ...emptyBoard(),
