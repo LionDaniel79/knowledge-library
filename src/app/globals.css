@@ -5425,16 +5425,16 @@ textarea {
   }
 }
 
-.assist-launcher > summary {
+.assist-launcher > summary.assist-launcher-summary {
   display: inline-flex;
   align-items: center;
+  gap: 12px;
   vertical-align: middle;
 }
 .assist-launcher-help {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  margin-left: 14px;
 }
 .assist-launcher-help button {
   min-height: 40px;
@@ -5453,10 +5453,6 @@ textarea {
   flex: 1 1 320px;
   min-width: 0;
 }
-.writing-assist .assist-topline .assist-synthesis-controls {
-  flex: 0 1 auto;
-  margin-left: auto;
-}
 .assist-synthesis-controls {
   display: flex;
   align-items: end;
@@ -5468,13 +5464,19 @@ textarea {
   gap: 5px;
   min-width: 180px;
 }
+.assist-analysis-controls {
+  min-width: 0;
+}
+.assist-model-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
 .assist-model-choice {
-  margin-left: auto;
   position: relative;
 }
 .assist-model-choice[open] {
-  flex-basis: 100%;
-  margin: 8px 0;
+  margin: 0;
 }
 .assist-model-choice label {
   display: inline-grid;
@@ -5496,6 +5498,9 @@ textarea {
   gap: 8px;
   border-top: 1px solid #dce2d7;
   padding: 8px 0;
+}
+.assist-request-row:has(.assist-request-actions button:not(.icon-button)) {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 .assist-request-row > details > summary {
   display: flex;
@@ -5551,6 +5556,9 @@ textarea {
   }
   .assist-model-choice {
     margin: 0;
+  }
+  .assist-request-row:has(.assist-request-actions button:not(.icon-button)) {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .assist-request-row {
     grid-template-columns: minmax(0, 1fr) 36px;
@@ -5806,7 +5814,7 @@ textarea {
   align-items: end;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin: 0.6rem 0;
+  margin: 0;
 }
 .writing-project-create > input {
   width: 18rem;

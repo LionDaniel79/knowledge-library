@@ -6,7 +6,15 @@ export function AssistHelp() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="secondary" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="secondary"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(true);
+        }}
+      >
         사용법
       </button>
       {open && (

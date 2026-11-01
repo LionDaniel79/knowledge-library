@@ -36,6 +36,7 @@ export type AssistProps = {
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
   ) => void;
+  analysisControls?: (onAnalyze: () => void, busy: boolean) => ReactNode;
 };
 export const focusNames = {
   all: "종합검토",
@@ -57,14 +58,17 @@ export function AssistLauncher({
         if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
       }}
     >
-      <summary>AI 도움</summary>
+      <summary className="assist-launcher-summary">
+        <span>AI 도움</span>
+        <span
+          className="assist-launcher-help"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <AssistHelp />
+        </span>
+      </summary>
       {open && (
         <>
-          {!props.analysis && (
-            <span className="assist-launcher-help">
-              <AssistHelp />
-            </span>
-          )}
           {children}
           {enabled && <AssistPanel {...props} />}
         </>
@@ -81,6 +85,7 @@ export function AssistPanel({
   ownerId,
   analysis,
   onWritingSuggestion,
+  analysisControls,
 }: AssistProps) {
   const replica = useReplicaOptional(),
     key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
@@ -395,14 +400,13 @@ export function AssistPanel({
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      <div className="assist-topline">
-        {analysis && (
-          <div className="assist-heading">
-            <AssistHelp />
-          </div>
-        )}
-        <div className="assist-synthesis-controls">
-          {!analysis && (
+      {analysisControls ? (
+        <div className="assist-analysis-controls">
+          {analysisControls(() => void prepare(), busy)}
+        </div>
+      ) : (
+        <div className="assist-topline">
+          <div className="assist-synthesis-controls">
             <label>
               도움 방향
               <select
@@ -419,52 +423,16 @@ export function AssistPanel({
                 ))}
               </select>
             </label>
-          )}
-          <details className="assist-model-choice">
-            <summary>모델 선택</summary>
-            <label>
-              AI 모델
-              <select
-                aria-label="AI 모델"
-                value={model}
-                onChange={(e) => {
-                  const v = assistModelSchema.parse(e.target.value);
-                  setModel(v);
-                  try {
-                    localStorage.setItem(key, v);
-                  } catch {}
-                }}
-              >
-                {Object.entries(assistModels).map(([id, m]) => (
-                  <option key={id} value={id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              전송 메모 수
-              <select
-                value={maximum}
-                onChange={(e) => setMaximum(Number(e.target.value))}
-              >
-                <option value={0}>전체</option>
-                <option value={24}>최대 24개</option>
-                <option value={12}>최대 12개</option>
-                <option value={6}>최대 6개</option>
-              </select>
-            </label>
-          </details>
-          <button type="button" disabled={busy} onClick={() => void prepare()}>
-            {busy ? "처리 중…" : "분석"}
-          </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void prepare()}
+            >
+              {busy ? "처리 중…" : "분석"}
+            </button>
+          </div>
         </div>
-      </div>
-      <small>
-        {analysis
-          ? `현재 글감의 메모와 목차를 검토합니다. 추가 후보 ${analysis.context.candidateNoteIds.length}개 포함.`
-          : "현재 선택한 조건의 기록을 바탕으로 검토합니다. 확인한 제안만 저장합니다."}
-      </small>
+      )}
       {currentPreview && (
         <section className="assist-preview">
           <strong>
@@ -569,6 +537,43 @@ export function AssistPanel({
           </button>
         </section>
       )}
+      <div className="assist-model-row">
+        <details className="assist-model-choice">
+          <summary>모델 선택</summary>
+          <label>
+            AI 모델
+            <select
+              aria-label="AI 모델"
+              value={model}
+              onChange={(e) => {
+                const v = assistModelSchema.parse(e.target.value);
+                setModel(v);
+                try {
+                  localStorage.setItem(key, v);
+                } catch {}
+              }}
+            >
+              {Object.entries(assistModels).map(([id, m]) => (
+                <option key={id} value={id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            전송 메모 수
+            <select
+              value={maximum}
+              onChange={(e) => setMaximum(Number(e.target.value))}
+            >
+              <option value={0}>전체</option>
+              <option value={24}>최대 24개</option>
+              <option value={12}>최대 12개</option>
+              <option value={6}>최대 6개</option>
+            </select>
+          </label>
+        </details>
+      </div>
       <div className="assist-results">
         <div className="section-heading">
           <h4>내가 요청한 도움</h4>

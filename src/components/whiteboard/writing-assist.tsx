@@ -155,37 +155,45 @@ export function WritingAssist({
         analysis={analysis}
         onOpen={onOpen}
         onWritingSuggestion={apply}
-        enabled={request !== "materials" || !!chapter}
+        analysisControls={(onAnalyze, busy) => (
+          <div className="writing-tools">
+            <label>
+              도움방향
+              <select
+                value={request}
+                onChange={(e) =>
+                  setRequest(e.target.value as WritingContext["request"])
+                }
+              >
+                <option value="ideas">글감 아이디어 제안</option>
+                <option value="titles">목차 상자 제목 추천</option>
+                <option value="materials">추가할 메모 추천</option>
+              </select>
+            </label>
+            <label>
+              대상 목차
+              <select
+                value={chapter?.id ?? "all"}
+                onChange={(e) => setTarget(e.target.value)}
+              >
+                <option value="all">전체 글감</option>
+                {board.writing?.chapters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.order}. {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={busy || (request === "materials" && !chapter)}
+              onClick={onAnalyze}
+            >
+              {busy ? "처리 중…" : "분석"}
+            </button>
+          </div>
+        )}
       >
-        <div className="writing-tools">
-          <label>
-            도움방향
-            <select
-              value={request}
-              onChange={(e) =>
-                setRequest(e.target.value as WritingContext["request"])
-              }
-            >
-              <option value="ideas">글감 아이디어 제안</option>
-              <option value="titles">목차 상자 제목 추천</option>
-              <option value="materials">추가할 메모 추천</option>
-            </select>
-          </label>
-          <label>
-            대상 목차
-            <select
-              value={chapter?.id ?? "all"}
-              onChange={(e) => setTarget(e.target.value)}
-            >
-              <option value="all">전체 글감</option>
-              {board.writing?.chapters.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.order}. {c.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
         {error && <p role="alert">{error}</p>}
         {appliedMessage && <p role="status">{appliedMessage}</p>}
         {request === "materials" && !chapter && (
