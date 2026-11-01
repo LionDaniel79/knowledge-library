@@ -146,7 +146,7 @@ describe("whiteboard", () => {
         },
         f,
       ).map((n) => n.id),
-    ).toEqual([n1, n2, n3]);
+    ).toEqual([n3]);
     expect(
       boardSchema.safeParse({
         ...emptyBoard(),
@@ -284,7 +284,7 @@ describe("whiteboard", () => {
     );
     expect(source.notes).toHaveLength(3);
   });
-  it("uses only accepted topic assignments including the note's book", () => {
+  it("finds accepted and suggested topics like 내 기록, with explicit note rejections", () => {
     expect(
       filterNotes(source, { ...emptyBoard().filter, topics: [topic] }).map(
         (n) => n.id,
@@ -300,8 +300,25 @@ describe("whiteboard", () => {
           })),
         },
         { ...emptyBoard().filter, topics: [topic] },
-      ),
-    ).toEqual([]);
+      ).map((n) => n.id),
+    ).toEqual([n1, n2]);
+    expect(
+      filterNotes(
+        {
+          ...source,
+          memberships: [
+            ...source.memberships,
+            {
+              topicId: topic,
+              sourceKind: "note",
+              sourceId: n1,
+              status: "rejected",
+            },
+          ],
+        },
+        { ...emptyBoard().filter, topics: [topic] },
+      ).map((n) => n.id),
+    ).toEqual([n2]);
   });
   it("all topics groups notes and retains unclassified notes", () => {
     const scene = buildScene(source, emptyBoard());

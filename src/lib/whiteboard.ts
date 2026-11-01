@@ -295,10 +295,41 @@ export function filterNotes(
 ) {
   assigned ??= f.topics.length ? assignedTopics(source) : undefined;
   const books = new Map(source.books.map((b) => [b.id, b]));
+  // "내 기록" searches all non-rejected memberships, including suggestions.
+  // Index them once: searching thousands of notes must not repeatedly scan
+  // the full topic-membership table for every individual memo.
+  const valid = new Set(source.topics.map((t) => t.id));
+  const linked = new Map<string, Set<string>>();
+  const directRejected = new Map<string, Set<string>>();
+  if (f.topics.length)
+    for (const m of source.memberships) {
+      if (!valid.has(m.topicId)) continue;
+      const key = m.sourceKind + ":" + m.sourceId;
+      const map =
+        m.status === "rejected" && m.sourceKind === "note"
+          ? directRejected
+          : m.status !== "rejected"
+            ? linked
+            : null;
+      if (!map) continue;
+      const ids = map.get(key) ?? new Set<string>();
+      ids.add(m.topicId);
+      map.set(key, ids);
+    }
+  const query = normalized(f.q);
   return source.notes.filter((n) => {
-    const book = n.bookId ? books.get(n.bookId) : undefined,
-      text = normalized(n.title + "\n" + n.content),
-      topics = f.topics.length ? (assigned!.get(n.id) ?? []) : [];
+    const book = n.bookId ? books.get(n.bookId) : undefined;
+    const topics = f.topics.length
+      ? [
+          ...new Set([
+            ...(assigned?.get(n.id) ?? []),
+            ...(linked.get("note:" + n.id) ?? []),
+            ...(n.bookId ? (linked.get("book:" + n.bookId) ?? []) : []),
+          ]),
+        ].filter(
+          (id) => valid.has(id) && !directRejected.get("note:" + n.id)?.has(id),
+        )
+      : [];
     return (
       (!f.topics.length ||
         (!topics.length && f.topics.includes("unclassified")) ||
@@ -307,7 +338,7 @@ export function filterNotes(
       (!f.books.length || (!!n.bookId && f.books.includes(n.bookId))) &&
       (!f.categories.length ||
         f.categories.includes(book?.category || "unclassified")) &&
-      containsSearchField(text, normalized(f.q))
+      containsSearchField(normalized(n.title + "\n" + n.content), query)
     );
   });
 }
@@ -334,9 +365,9 @@ export function buildScene(
         ...(b.searchNoteIds === undefined
           ? filterNotes(source, b.filter, assigned)
           : source.notes.filter((n) => b.searchNoteIds!.includes(n.id))),
-        ...(b.searchNoteIds?.length === 0
-          ? []
-          : source.notes.filter((n) => chapterNotes.has(n.id))),
+        // Search clearing affects loose search results, never notes already
+        // placed inside a visible thought box or a writing chapter.
+        ...source.notes.filter((n) => chapterNotes.has(n.id)),
       ]
         .filter((n) => !hidden.has(n.id))
         .map((n) => n.id),

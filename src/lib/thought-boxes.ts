@@ -253,6 +253,9 @@ export function thoughtView(
     board: {
       ...board,
       filter: { topics: [], tags: [], categories: [], books: [], q: "" },
+      // Explicit connection/box focus must show its members even when the
+      // user's last free-memo search was cleared.
+      searchNoteIds: undefined,
       groups: shown,
       positions,
       groupPositions,

@@ -27,7 +27,8 @@ export function WritingAssist({
 }) {
   const [request, setRequest] = useState<WritingContext["request"]>("ideas"),
     [target, setTarget] = useState("all"),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [appliedMessage, setAppliedMessage] = useState("");
   const chapter = board.writing?.chapters.find((c) => c.id === target);
   const analysis = useMemo(
     () =>
@@ -44,9 +45,13 @@ export function WritingAssist({
   function apply(
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
-  ) {
+  ): boolean {
     setError("");
-    if (scope.writingContext?.boardId !== boardId) return;
+    setAppliedMessage("");
+    if (scope.writingContext?.boardId !== boardId) {
+      setError("다른 글감에서 만든 제안입니다. 해당 글감에서 적용해 주세요.");
+      return false;
+    }
     const kind = scope.writingContext.request;
     const destination = board.writing?.chapters.find(
       (c) => c.id === scope.writingContext.targetChapterId,
@@ -67,7 +72,7 @@ export function WritingAssist({
     } else if (kind === "materials") {
       if (!destination) {
         setError("메모를 넣을 목차를 선택하고 다시 요청해 주세요.");
-        return;
+        return false;
       }
       const existing = new Set(
         board.writing?.chapters.flatMap((c) =>
@@ -88,7 +93,7 @@ export function WritingAssist({
         );
       if (!ids.length) {
         setError("이 제안의 메모는 이미 목차에 있습니다.");
-        return;
+        return false;
       }
       for (const id of ids) {
         const note = source.notes.find((n) => n.id === id)!;
@@ -122,7 +127,15 @@ export function WritingAssist({
         added.title = name.slice(0, 300);
       }
     }
+    if (next === board) {
+      setError("이미 글감에 반영된 제안입니다.");
+      return false;
+    }
     onChange(next);
+    setAppliedMessage(
+      "선택한 제안을 현재 글감에 반영했습니다. 글감 저장 상태를 확인해 주세요.",
+    );
+    return true;
   }
   return (
     <section className="writing-assist">
@@ -164,6 +177,7 @@ export function WritingAssist({
           </label>
         </div>
         {error && <p role="alert">{error}</p>}
+        {appliedMessage && <p role="status">{appliedMessage}</p>}
         {request === "materials" && !chapter && (
           <p>메모를 추천받을 목차를 선택해 주세요.</p>
         )}
