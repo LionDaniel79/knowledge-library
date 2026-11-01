@@ -1775,7 +1775,6 @@ export function WhiteboardPanel({
             )
           }
           onChapterRemove={(id) => {
-            const before = current.current;
             const chapter = displayBoard.writing?.chapters.find(
               (c) => c.id === id,
             );
