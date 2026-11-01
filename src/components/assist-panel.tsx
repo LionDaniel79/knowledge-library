@@ -96,7 +96,8 @@ export function AssistPanel({
     [model, setModel] = useState<AssistModel>("gpt-6-luna"),
     [focus, setFocus] = useState<keyof typeof focusNames>("all"),
     [maximum, setMaximum] = useState(24),
-    [preview, setPreview] = useState<any>(null);
+    [preview, setPreview] = useState<any>(null),
+    [requestsOpen, setRequestsOpen] = useState(true);
   const running = useRef(false),
     requestId = useRef(""),
     hidden = useRef(new Set<string>());
@@ -575,35 +576,48 @@ export function AssistPanel({
         </details>
       </div>
       <div className="assist-results">
-        <div className="section-heading">
-          <h4>내가 요청한 도움</h4>
-          <button
-            className="text-button"
-            aria-label="요청 목록 새로고침"
-            onClick={() => void load().catch((e) => setError(e.message))}
-          >
-            새로고침
-          </button>
-        </div>
-        {!state && <p role="status">요청 목록을 불러오는 중…</p>}
-        {state && !state.requests?.length && <p>요청한 기록이 없습니다.</p>}
-        {state?.requests
-          ?.filter((r: any) =>
-            analysis
-              ? r.scope?.writingContext?.boardId === analysis.context.boardId
-              : !r.scope?.writingContext,
-          )
-          .map((r: any) => (
-            <AssistRequestCard
-              key={r.id}
-              request={r}
-              busy={busy}
-              act={act}
-              library={library}
-              onOpen={onOpen}
-              onWritingSuggestion={analysis ? onWritingSuggestion : undefined}
-            />
-          ))}
+        <details
+          className="assist-results-toggle"
+          open={requestsOpen}
+          onToggle={(event) => setRequestsOpen(event.currentTarget.open)}
+        >
+          <summary>
+            <h4>내가 요청한 도움</h4>
+          </summary>
+          <div className="assist-results-content">
+            <div className="assist-results-actions">
+              <button
+                className="text-button"
+                aria-label="요청 목록 새로고침"
+                onClick={() => void load().catch((e) => setError(e.message))}
+              >
+                새로고침
+              </button>
+            </div>
+            {!state && <p role="status">요청 목록을 불러오는 중…</p>}
+            {state && !state.requests?.length && <p>요청한 기록이 없습니다.</p>}
+            {state?.requests
+              ?.filter((r: any) =>
+                analysis
+                  ? r.scope?.writingContext?.boardId ===
+                    analysis.context.boardId
+                  : !r.scope?.writingContext,
+              )
+              .map((r: any) => (
+                <AssistRequestCard
+                  key={r.id}
+                  request={r}
+                  busy={busy}
+                  act={act}
+                  library={library}
+                  onOpen={onOpen}
+                  onWritingSuggestion={
+                    analysis ? onWritingSuggestion : undefined
+                  }
+                />
+              ))}
+          </div>
+        </details>
       </div>
     </section>
   );

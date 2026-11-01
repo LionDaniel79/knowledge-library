@@ -5437,7 +5437,9 @@ textarea {
   vertical-align: middle;
 }
 .assist-launcher-help button {
-  min-height: 40px;
+  min-height: 32px;
+  padding-block: 4px;
+  font-size: 0.9rem;
 }
 .assist-topline {
   display: flex;
@@ -5469,8 +5471,20 @@ textarea {
 }
 .assist-model-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-top: 12px;
+}
+.assist-results-toggle > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.assist-results-toggle > summary h4 {
+  margin: 8px 0;
+}
+.assist-results-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 .assist-model-choice {
   position: relative;
