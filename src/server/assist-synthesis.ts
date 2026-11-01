@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { LibraryError, type Executor } from "./library-store";
 import { synthesisResultSchema } from "../lib/assist-synthesis";
 import { packOutline } from "../lib/writing";
+import { mutateThoughtBundle } from "./thought-bundles";
 export async function adoptSynthesis(
   tx: Executor,
   owner: string,
@@ -53,23 +54,111 @@ export async function adoptSynthesis(
         [owner, a, b],
       )
     ).rows[0];
+    // An existing accepted relationship is already visible in connection
+    // management; use a title proposal to rename it rather than overwriting it.
     if (before?.status === "accepted") return before.id;
     const after = before
       ? (
           await tx.query(
-            "UPDATE library_connections SET status='accepted',relation='related',reason=$3,method='manual',version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
-            [owner, before.id, s.reason],
+            "UPDATE library_connections SET status='accepted',relation='related',reason=$3,title=$4,method='manual',version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
+            [owner, before.id, s.reason, s.title.slice(0, 300)],
           )
         ).rows[0]
       : (
           await tx.query(
-            "INSERT INTO library_connections(id,owner_id,source_kind,source_id,target_kind,target_id,relation,status,reason,method) VALUES($1,$2,'note',$3,'note',$4,'related','accepted',$5,'manual') RETURNING *",
-            [randomUUID(), owner, a, b, s.reason],
+            "INSERT INTO library_connections(id,owner_id,source_kind,source_id,target_kind,target_id,relation,status,reason,method,title) VALUES($1,$2,'note',$3,'note',$4,'related','accepted',$5,'manual',$6) RETURNING *",
+            [randomUUID(), owner, a, b, s.reason, s.title.slice(0, 300)],
           )
         ).rows[0];
     await revise(after.id, before, after);
     return after.id;
   }
+  if (s.kind === "connection_title") {
+    const previous = request.task.payload.existingConnections?.find((c: any) =>
+      c.sourceIndices.every((i: number) => s.sourceIndices.includes(i)),
+    );
+    if (!previous)
+      throw new LibraryError(409, "제안된 메모 연결을 다시 확인해 주세요.");
+    const before = (
+      await tx.query(
+        "SELECT * FROM library_connections WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+        [owner, previous.id],
+      )
+    ).rows[0];
+    if (
+      !before ||
+      before.status !== "accepted" ||
+      before.version !== previous.version ||
+      before.source_kind !== "note" ||
+      before.target_kind !== "note" ||
+      !ids.includes(before.source_id) ||
+      !ids.includes(before.target_id)
+    )
+      throw new LibraryError(
+        409,
+        "연결이 변경됐습니다. 최신 연결을 확인해 주세요.",
+      );
+    if (before.title === s.title) return before.id;
+    const after = (
+      await tx.query(
+        "UPDATE library_connections SET title=$3,version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING *",
+        [owner, before.id, s.title.slice(0, 300)],
+      )
+    ).rows[0];
+    await revise(after.id, before, after);
+    return after.id;
+  }
+  if (s.kind === "thought_bundle") {
+    const existing = (
+      await tx.query(
+        "SELECT id FROM library_memo_bundles WHERE owner_id=$1 AND archived_at IS NULL AND note_ids @> $2::jsonb AND jsonb_array_length(note_ids)=$3 LIMIT 1",
+        [owner, JSON.stringify(ids), ids.length],
+      )
+    ).rows[0];
+    if (existing) return existing.id;
+    const result = await mutateThoughtBundle(tx, owner, "saveMemoBundle", {
+      expectedVersion: 0,
+      title: s.title.slice(0, 300),
+      description: s.reason,
+      noteIds: ids,
+    });
+    return result.id;
+  }
+  if (s.kind === "thought_bundle_title") {
+    const snapshot = request.task.payload.existingBundles?.find(
+      (b: any) => b.id === s.bundleId,
+    );
+    if (
+      !snapshot ||
+      !s.sourceIndices.every((i: number) => snapshot.noteIndices.includes(i))
+    )
+      throw new LibraryError(
+        409,
+        "생각묶음이 변경됐습니다. 다시 분석해 주세요.",
+      );
+    const before = (
+      await tx.query(
+        "SELECT * FROM library_memo_bundles WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+        [owner, snapshot.id],
+      )
+    ).rows[0];
+    if (!before || before.archived_at || before.version !== snapshot.version)
+      throw new LibraryError(
+        409,
+        "생각묶음이 변경됐습니다. 다시 분석해 주세요.",
+      );
+    if (before.title === s.title) return before.id;
+    const result = await mutateThoughtBundle(tx, owner, "saveMemoBundle", {
+      id: before.id,
+      expectedVersion: before.version,
+      title: s.title.slice(0, 300),
+      description: before.description,
+      noteIds: before.note_ids,
+    });
+    return result.id;
+  }
+  // Legacy kinds remain readable for previously completed jobs, but the new
+  // selection never sends legacy topic or writing proposals.
   if (s.kind === "topic_connection") {
     const [a, b] = [...s.topicIds].sort(),
       topics = request.task.payload.topics;

@@ -37,11 +37,11 @@ export type AssistProps = {
   ) => void;
 };
 export const focusNames = {
-  all: "종합 검토",
-  note_connection: "메모끼리의 연결",
-  topic_connection: "주제끼리의 연결",
-  new_topic: "새 주제 제안",
-  writing_idea: "글감·목차 방향",
+  all: "종합검토",
+  note_connection: "메모 연결 제안",
+  connection_title: "연결메모 제목 제안",
+  thought_bundle: "생각묶음 제안",
+  thought_bundle_title: "생각묶음 제목 제안",
 };
 export function AssistLauncher({
   children,
@@ -56,7 +56,7 @@ export function AssistLauncher({
         if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
       }}
     >
-      <summary>필요할 때 AI 도움</summary>
+      <summary>AI 도움</summary>
       {open && (
         <>
           {children}
@@ -158,11 +158,15 @@ export function AssistPanel({
     setError("");
     setMessage("");
     try {
-      const r = await libraryRequest("/api/assist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, payload }),
-        }),
+      const r = await libraryRequest(
+          "/api/assist",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, payload }),
+          },
+          { awaitDeviceSync: action === "adopt" },
+        ),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
       if (action === "hide") {
@@ -179,7 +183,9 @@ export function AssistPanel({
         }));
       }
       if (action === "adopt") {
-        setMessage("확인한 제안을 저장했습니다.");
+        setMessage("연결 또는 생각묶음을 저장했습니다.");
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new Event("library:assist-adopted"));
         onAdopt?.();
       }
       if (action !== "preview") void load().catch((e) => setError(e.message));
@@ -298,6 +304,7 @@ export function AssistPanel({
           model,
           focus: analysis ? "writing_idea" : focus,
           sources,
+          ...(!analysis ? { useCurrentRelations: true } : {}),
           ...(analysis ? { writingContext: analysis.context } : {}),
         },
         r = await libraryRequest("/api/assist", {
@@ -307,6 +314,20 @@ export function AssistPanel({
         }),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "전송 내용을 확인하지 못했습니다.");
+      if (
+        !analysis &&
+        focus === "connection_title" &&
+        !j.task.payload.existingConnections?.length
+      )
+        throw Error(
+          "선택한 기록 사이에 제목을 제안할 기존 메모 연결이 없습니다.",
+        );
+      if (
+        !analysis &&
+        focus === "thought_bundle_title" &&
+        !j.task.payload.existingBundles?.length
+      )
+        throw Error("선택한 기록을 함께 포함하는 기존 생각묶음이 없습니다.");
       if (contextRef.current !== ticket) return;
       requestId.current = crypto.randomUUID();
       setPreview({
@@ -338,7 +359,6 @@ export function AssistPanel({
   return (
     <section className="assist-panel assist-synthesis">
       <div className="assist-heading">
-        <h3>생각을 넓히는 AI 도움</h3>
         <AssistHelp />
       </div>
       {error && (
@@ -366,9 +386,6 @@ export function AssistPanel({
             </select>
           </label>
         )}
-        <button disabled={busy} onClick={() => void prepare()}>
-          {busy ? "처리 중…" : "분석할 기록 확인"}
-        </button>
         <details className="assist-model-choice">
           <summary>모델 선택</summary>
           <label>
@@ -404,6 +421,9 @@ export function AssistPanel({
             </select>
           </label>
         </details>
+        <button disabled={busy} onClick={() => void prepare()}>
+          {busy ? "처리 중…" : "분석"}
+        </button>
       </div>
       <small>
         {analysis
@@ -426,6 +446,29 @@ export function AssistPanel({
                 <blockquote>{s.text}</blockquote>
               </div>
             ))}
+            {!!(
+              currentPreview.task.payload.existingConnections?.length ||
+              currentPreview.task.payload.existingBundles?.length
+            ) && (
+              <div className="notice">
+                <strong>함께 전송되는 기존 연결·생각묶음 정보</strong>
+                <p>
+                  제목 제안을 위해 아래의 기존 제목과 설명도 AI에 전송합니다.
+                </p>
+                {currentPreview.task.payload.existingConnections?.map(
+                  (c: any) => (
+                    <p key={c.id}>
+                      연결: {c.title || "제목 없음"} · {c.reason}
+                    </p>
+                  ),
+                )}
+                {currentPreview.task.payload.existingBundles?.map((b: any) => (
+                  <p key={b.id}>
+                    생각묶음: {b.title} · {b.description}
+                  </p>
+                ))}
+              </div>
+            )}
             {maximum !== 0 && currentPreview.total > 200 && (
               <p>
                 최대 200개 후보에서 대표 기록을 골랐습니다. 범위를 좁히면 다른

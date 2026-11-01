@@ -255,6 +255,18 @@ test("request list is compact, details are loaded on demand and current record f
 }) => {
   const f = await mount(page);
   await expect(page.locator(".assist-settings")).toHaveCount(0);
+  expect(
+    await page
+      .getByRole("combobox", { name: "도움 방향" })
+      .locator("option")
+      .allTextContents(),
+  ).toEqual([
+    "종합검토",
+    "메모 연결 제안",
+    "연결메모 제목 제안",
+    "생각묶음 제안",
+    "생각묶음 제목 제안",
+  ]);
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toHaveCount(0);
@@ -262,9 +274,7 @@ test("request list is compact, details are loaded on demand and current record f
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "분석할 기록 확인", exact: true })
-    .click();
+  await page.getByRole("button", { name: "분석", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "이 기록으로 AI 도움 요청", exact: true }),
   ).toBeVisible();
@@ -316,9 +326,7 @@ test("raising a request cap preserves the monthly ceiling and does not start an 
   page,
 }) => {
   const f = await mount(page, false, "0.001");
-  await page
-    .getByRole("button", { name: "분석할 기록 확인", exact: true })
-    .click();
+  await page.getByRole("button", { name: "분석", exact: true }).click();
   const request = page.getByRole("button", {
     name: "이 기록으로 AI 도움 요청",
     exact: true,

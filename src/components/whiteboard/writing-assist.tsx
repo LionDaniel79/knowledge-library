@@ -136,7 +136,7 @@ export function WritingAssist({
       >
         <div className="writing-tools">
           <label>
-            AI 도움 방향
+            도움방향
             <select
               value={request}
               onChange={(e) =>

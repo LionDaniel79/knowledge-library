@@ -23,7 +23,7 @@ export function registerLibraryRuntime(
 export async function libraryRequest(
   input: RequestInfo | URL,
   init?: RequestInit,
-  options: { preferServer?: boolean } = {},
+  options: { preferServer?: boolean; awaitDeviceSync?: boolean } = {},
 ): Promise<Response> {
   const runtime = current,
     authorizeNetwork = networkAccess,
@@ -169,6 +169,10 @@ export async function libraryRequest(
     void task.finally(() => {
       if (reconciling.get(runtime) === task) reconciling.delete(runtime);
     });
+    // An explicitly adopted AI link is written to the server, not queued as
+    // a device command. Wait for the already scheduled incremental pull before
+    // refreshing connected notes and thought boxes in the visible device UI.
+    if (options.awaitDeviceSync) await task;
   }
   return response;
 }
