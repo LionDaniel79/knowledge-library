@@ -1,7 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { randomUUID } from "node:crypto";
-import { referenceThoughtBox, sharedBoxSummaries } from "../src/lib/shared-thought-boxes";
+import {
+  referenceThoughtBox,
+  sharedBoxSummaries,
+} from "../src/lib/shared-thought-boxes";
 import { emptyBoard, WHITEBOARD_ID } from "../src/lib/whiteboard";
 
 let script: string;
@@ -119,38 +122,71 @@ test("memo box deletes the canonical thought bundle while its original memo rema
   ]);
 });
 
-test("writing-board box delete archives the canonical bundle and removes it from connection management", async ({ page }) => {
+test("writing-board box delete archives the canonical bundle and removes it from connection management", async ({
+  page,
+}) => {
   const source: any = {
     board: null,
-    notes: [{
-      id: randomUUID(), title: "보존할 원문", content: "원문은 삭제하지 않음",
-      bookId: null, tags: [], kind: "thought", page: null, version: 1,
-      createdAt: "2026-01-01", updatedAt: "2026-01-01",
-    }],
-    books: [], topics: [], memberships: [], connections: [],
-    bundleLinks: [], bundles: [],
+    notes: [
+      {
+        id: randomUUID(),
+        title: "보존할 원문",
+        content: "원문은 삭제하지 않음",
+        bookId: null,
+        tags: [],
+        kind: "thought",
+        page: null,
+        version: 1,
+        createdAt: "2026-01-01",
+        updatedAt: "2026-01-01",
+      },
+    ],
+    books: [],
+    topics: [],
+    memberships: [],
+    connections: [],
+    bundleLinks: [],
+    bundles: [],
   };
   const id = randomUUID();
-  source.bundles = [{
-    id, title: "공통 생각묶음", description: "설명",
-    note_ids: [source.notes[0].id], version: 1, archived_at: null,
-  }];
+  source.bundles = [
+    {
+      id,
+      title: "공통 생각묶음",
+      description: "설명",
+      note_ids: [source.notes[0].id],
+      version: 1,
+      archived_at: null,
+    },
+  ];
   const board = referenceThoughtBox(emptyBoard(), source.bundles[0], source);
   source.board = { id: WHITEBOARD_ID, version: 1, data: board };
   const calls: any[] = [];
-  const js = (await build({
-    stdin: {
-      contents: `import{createRoot}from'react-dom/client';import{WhiteboardPanel}from'./src/components/whiteboard/panel';createRoot(document.getElementById('root')).render(<WhiteboardPanel library={window.fixture} ownerId="writing-delete-fixture" boardId="00000000-0000-4000-8000-000000000001" writingTitle="글감묶기" onOpen={()=>{}}/>);`,
-      resolveDir: process.cwd(), loader: "tsx",
-    },
-    bundle: true, write: false, format: "esm", platform: "browser",
-    jsx: "automatic", define: { "process.env.NODE_ENV": '"production"' },
-  })).outputFiles[0].text;
+  const js = (
+    await build({
+      stdin: {
+        contents: `import{createRoot}from'react-dom/client';import{WhiteboardPanel}from'./src/components/whiteboard/panel';createRoot(document.getElementById('root')).render(<WhiteboardPanel library={window.fixture} ownerId="writing-delete-fixture" boardId="00000000-0000-4000-8000-000000000001" writingTitle="글감묶기" onOpen={()=>{}}/>);`,
+        resolveDir: process.cwd(),
+        loader: "tsx",
+      },
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "browser",
+      jsx: "automatic",
+      define: { "process.env.NODE_ENV": '"production"' },
+    })
+  ).outputFiles[0].text;
   await page.route("https://writing-delete.test/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/whiteboard") return route.fulfill({ json: source });
     if (path === "/api/thought-boxes")
-      return route.fulfill({ json: { items: sharedBoxSummaries(source.bundles), pendingLegacy: false } });
+      return route.fulfill({
+        json: {
+          items: sharedBoxSummaries(source.bundles),
+          pendingLegacy: false,
+        },
+      });
     if (path === "/api/knowledge") {
       const command = route.request().postDataJSON();
       calls.push(command);
@@ -160,25 +196,49 @@ test("writing-board box delete archives the canonical bundle and removes it from
         return route.fulfill({ json: { id, version: 2 } });
       }
       if (command.type === "saveWhiteboard") {
-        source.board = { id: WHITEBOARD_ID, version: source.board.version + 1, data: command.payload.data };
-        return route.fulfill({ json: { id: WHITEBOARD_ID, version: source.board.version } });
+        source.board = {
+          id: WHITEBOARD_ID,
+          version: source.board.version + 1,
+          data: command.payload.data,
+        };
+        return route.fulfill({
+          json: { id: WHITEBOARD_ID, version: source.board.version },
+        });
       }
-      return route.fulfill({ status: 400, json: { error: "Unexpected command" } });
+      return route.fulfill({
+        status: 400,
+        json: { error: "Unexpected command" },
+      });
     }
-    return route.fulfill({ contentType: "text/html", body: '<html><div id="root"></div></html>' });
+    return route.fulfill({
+      contentType: "text/html",
+      body: '<html><div id="root"></div></html>',
+    });
   });
   await page.goto("https://writing-delete.test/");
   await page.evaluate((fixture) => ((window as any).fixture = fixture), {
-    notes: source.notes, books: [], cycles: [],
+    notes: source.notes,
+    books: [],
+    cycles: [],
   });
   await page.addScriptTag({ content: js, type: "module" });
-  await expect(page.getByRole("button", { name: "상자 삭제" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "상자 삭제" }).first(),
+  ).toBeVisible();
   await page.locator(".wb-connection-counts").click();
-  await expect(page.locator(".wb-connection-list")).toContainText("공통 생각묶음");
+  await expect(page.locator(".wb-connection-list")).toContainText(
+    "공통 생각묶음",
+  );
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "상자 삭제" }).first().click();
-  await expect.poll(() => calls.some((c) => c.type === "archiveMemoBundle" && c.payload.id === id)).toBe(true);
-  await expect(page.locator(".wb-connection-list")).not.toContainText("공통 생각묶음");
+  await expect
+    .poll(() =>
+      calls.some((c) => c.type === "archiveMemoBundle" && c.payload.id === id),
+    )
+    .toBe(true);
+  await expect(page.locator(".wb-connection-list")).not.toContainText(
+    "공통 생각묶음",
+  );
   expect(source.notes).toHaveLength(1);
   expect(source.bundles[0].archived_at).toBeTruthy();
 });
