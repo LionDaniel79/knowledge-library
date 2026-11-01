@@ -132,7 +132,9 @@ export function WritingAssist({
       return false;
     }
     onChange(next);
-    setAppliedMessage("선택한 제안을 현재 글감에 반영했습니다. 글감 저장 상태를 확인해 주세요.");
+    setAppliedMessage(
+      "선택한 제안을 현재 글감에 반영했습니다. 글감 저장 상태를 확인해 주세요.",
+    );
     return true;
   }
   return (

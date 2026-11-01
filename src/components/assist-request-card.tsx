@@ -172,9 +172,15 @@ export function AssistRequestCard({
                         try {
                           const success = onWritingSuggestion(s, value.scope);
                           if (success !== false)
-                            setAppliedWriting((old) => [...new Set([...old, index])]);
+                            setAppliedWriting((old) => [
+                              ...new Set([...old, index]),
+                            ]);
                         } catch (e) {
-                          setError(e instanceof Error ? e.message : "제안을 적용하지 못했습니다.");
+                          setError(
+                            e instanceof Error
+                              ? e.message
+                              : "제안을 적용하지 못했습니다.",
+                          );
                         }
                       }}
                     >
@@ -182,9 +188,9 @@ export function AssistRequestCard({
                         ? "적용함"
                         : value.scope.writingContext.request === "materials"
                           ? "추천 메모를 목차에 넣기"
-                        : value.scope.writingContext.request === "titles"
-                          ? "목차 제목으로 사용"
-                          : "목차로 추가"}
+                          : value.scope.writingContext.request === "titles"
+                            ? "목차 제목으로 사용"
+                            : "목차로 추가"}
                     </button>
                   ) : value.scope?.writingContext ? (
                     <small>해당 글감에서 제안을 적용할 수 있습니다.</small>

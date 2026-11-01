@@ -61,7 +61,9 @@ export function AssistLauncher({
       {open && (
         <>
           {!props.analysis && (
-            <span className="assist-launcher-help"><AssistHelp /></span>
+            <span className="assist-launcher-help">
+              <AssistHelp />
+            </span>
           )}
           {children}
           {enabled && <AssistPanel {...props} />}
@@ -394,64 +396,68 @@ export function AssistPanel({
       )}
       {message && <p role="status">{message}</p>}
       <div className="assist-topline">
-        {analysis && <div className="assist-heading"><AssistHelp /></div>}
-        <div className="assist-synthesis-controls">
-        {!analysis && (
-          <label>
-            도움 방향
-            <select
-              aria-label="도움 방향"
-              value={focus}
-              onChange={(e) =>
-                setFocus(e.target.value as keyof typeof focusNames)
-              }
-            >
-              {Object.entries(focusNames).map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {analysis && (
+          <div className="assist-heading">
+            <AssistHelp />
+          </div>
         )}
-        <details className="assist-model-choice">
-          <summary>모델 선택</summary>
-          <label>
-            AI 모델
-            <select
-              aria-label="AI 모델"
-              value={model}
-              onChange={(e) => {
-                const v = assistModelSchema.parse(e.target.value);
-                setModel(v);
-                try {
-                  localStorage.setItem(key, v);
-                } catch {}
-              }}
-            >
-              {Object.entries(assistModels).map(([id, m]) => (
-                <option key={id} value={id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            전송 메모 수
-            <select
-              value={maximum}
-              onChange={(e) => setMaximum(Number(e.target.value))}
-            >
-              <option value={0}>전체</option>
-              <option value={24}>최대 24개</option>
-              <option value={12}>최대 12개</option>
-              <option value={6}>최대 6개</option>
-            </select>
-          </label>
-        </details>
-        <button type="button" disabled={busy} onClick={() => void prepare()}>
-          {busy ? "처리 중…" : "분석"}
-        </button>
+        <div className="assist-synthesis-controls">
+          {!analysis && (
+            <label>
+              도움 방향
+              <select
+                aria-label="도움 방향"
+                value={focus}
+                onChange={(e) =>
+                  setFocus(e.target.value as keyof typeof focusNames)
+                }
+              >
+                {Object.entries(focusNames).map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <details className="assist-model-choice">
+            <summary>모델 선택</summary>
+            <label>
+              AI 모델
+              <select
+                aria-label="AI 모델"
+                value={model}
+                onChange={(e) => {
+                  const v = assistModelSchema.parse(e.target.value);
+                  setModel(v);
+                  try {
+                    localStorage.setItem(key, v);
+                  } catch {}
+                }}
+              >
+                {Object.entries(assistModels).map(([id, m]) => (
+                  <option key={id} value={id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              전송 메모 수
+              <select
+                value={maximum}
+                onChange={(e) => setMaximum(Number(e.target.value))}
+              >
+                <option value={0}>전체</option>
+                <option value={24}>최대 24개</option>
+                <option value={12}>최대 12개</option>
+                <option value={6}>최대 6개</option>
+              </select>
+            </label>
+          </details>
+          <button type="button" disabled={busy} onClick={() => void prepare()}>
+            {busy ? "처리 중…" : "분석"}
+          </button>
         </div>
       </div>
       <small>

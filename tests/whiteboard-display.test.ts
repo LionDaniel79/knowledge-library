@@ -229,13 +229,13 @@ it("retains accepted legacy bundle links while keeping plain display free of bun
   });
 });
 
-
 it("shows every memo within a selected shared thought box even after search clear", () => {
   const f = make();
   const bundle = f.source.bundles![0];
   f.board.searchNoteIds = [];
   const view = boardDisplaySelection(
-    f.source, f.board,
+    f.source,
+    f.board,
     { connections: [], boxes: { [bundle.id]: true }, plain: false },
     false,
   );
@@ -245,11 +245,14 @@ it("shows every memo within a selected shared thought box even after search clea
   expect(f.board.searchNoteIds).toEqual([]);
   expect(bundle.note_ids).toHaveLength(2);
   const focused = boardDisplaySelection(
-    f.source, f.board,
+    f.source,
+    f.board,
     { connections: [], boxes: { [bundle.id]: true }, plain: false },
     true,
   );
-  expect(buildScene(focused.source, focused.board).nodes.some((n) => n.chapterId)).toBe(true);
+  expect(
+    buildScene(focused.source, focused.board).nodes.some((n) => n.chapterId),
+  ).toBe(true);
 });
 
 it("topic search displays the same accepted note assignments in writing board as notes view", () => {
@@ -257,15 +260,28 @@ it("topic search displays the same accepted note assignments in writing board as
   const topicId = randomUUID();
   f.source.topics = [{ id: topicId, name: "교회회복", version: 1 }];
   f.source.memberships = f.ids.slice(0, 2).map((id) => ({
-    topicId, sourceKind: "note", sourceId: id, status: "accepted",
+    topicId,
+    sourceKind: "note",
+    sourceId: id,
+    status: "accepted",
   }));
-  const search = { ...f.board, filter: {
-    ...f.board.filter, topics: [topicId],
-  }, searchNoteIds: f.ids.slice(0, 2) };
+  const search = {
+    ...f.board,
+    filter: {
+      ...f.board.filter,
+      topics: [topicId],
+    },
+    searchNoteIds: f.ids.slice(0, 2),
+  };
   const view = boardDisplaySelection(
-    f.source, search, { connections: null, boxes: {}, plain: false }, true,
+    f.source,
+    search,
+    { connections: null, boxes: {}, plain: false },
+    true,
   );
-  const found = new Set(buildScene(view.source, view.board).nodes.map((n) => n.noteId));
+  const found = new Set(
+    buildScene(view.source, view.board).nodes.map((n) => n.noteId),
+  );
   expect(found).toEqual(new Set(f.ids.slice(0, 2)));
   const cleared = boardDisplaySelection(
     f.source,
@@ -273,6 +289,11 @@ it("topic search displays the same accepted note assignments in writing board as
     { connections: null, boxes: {}, plain: false },
     true,
   );
-  expect(new Set(buildScene(cleared.source, cleared.board).nodes.filter((n) => n.chapterId).map((n) => n.noteId)))
-    .toEqual(new Set(f.ids.slice(0, 2)));
+  expect(
+    new Set(
+      buildScene(cleared.source, cleared.board)
+        .nodes.filter((n) => n.chapterId)
+        .map((n) => n.noteId),
+    ),
+  ).toEqual(new Set(f.ids.slice(0, 2)));
 });
