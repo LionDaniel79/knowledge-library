@@ -12,6 +12,7 @@ import {
 import { readPdfSearchEntry, authReturnPath } from "@/lib/library-entry";
 import { privatePcOrigin } from "@/lib/pc-access";
 import type { PdfSummary } from "../lib/pdf-progress";
+import { pdfSearchHighlightParts } from "@/lib/pdf-search-highlight";
 type PdfDoc = {
   id: string;
   bookId: string;
@@ -74,7 +75,10 @@ export function PdfLibraryPanel({
   const setPage = paging.setPage;
   const request = useRef<AbortController | null>(null);
   const [docs, setDocs] = useState<PdfDoc[]>([]);
-  const [hits, setHits] = useState<Hit[]>([]);
+  const [{ hits, query: hitQuery }, setSearchResult] = useState({
+    hits: [] as Hit[],
+    query: "",
+  });
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<PdfSummary | null>(null);
   const [busy, setBusy] = useState(false);
@@ -130,7 +134,7 @@ export function PdfLibraryPanel({
         }
         setSummary(data.summary);
         setDocs(data.documents ?? []);
-        setHits(data.hits ?? []);
+        setSearchResult({ hits: data.hits ?? [], query: q });
         setTotal(data.total ?? 0);
       } catch (e) {
         if (!controller.signal.aborted)
@@ -274,7 +278,18 @@ export function PdfLibraryPanel({
                 외장하드가 필요합니다.
               </p>
             )}
-            <blockquote>{hit.quote}</blockquote>
+            <blockquote>
+              {pdfSearchHighlightParts(hit.quote, hitQuery).map(
+                (part, index) =>
+                  part.match ? (
+                    <strong key={index} style={{ fontWeight: 800 }}>
+                      {part.text}
+                    </strong>
+                  ) : (
+                    part.text
+                  ),
+              )}
+            </blockquote>
             {hit.extractionMethod?.startsWith("ocr_") && (
               <label className="ocr-confirmation">
                 <input

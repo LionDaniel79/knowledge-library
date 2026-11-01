@@ -83,12 +83,20 @@ export function boardDisplaySelection(
   const chapters = (projected.writing?.chapters ?? []).filter((c) => {
     const id = c.bundleId ?? c.id;
     if (selection.boxes[id] === false) return false;
-    if (!writing && (selection.plain || focus))
-      return selection.boxes[id] === true;
+    if (!writing) return selection.boxes[id] === true;
     return true;
   });
   let display: Board = {
     ...projected,
+    groupPositions: Object.fromEntries(
+      Object.entries(projected.groupPositions).filter(
+        ([id]) =>
+          !id.startsWith("bundle:") ||
+          (writing
+            ? selection.boxes[id.slice(7)] !== false
+            : selection.boxes[id.slice(7)] === true),
+      ),
+    ),
     writing: { ...projected.writing, chapters },
   };
   for (const bundle of source.bundles ?? [])

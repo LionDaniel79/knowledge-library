@@ -339,6 +339,13 @@ export function useSharedBoxEdits(
     error,
     busy,
     dirty: pending.current.size > 0,
+    current(id: string) {
+      const remote = latest.current.find((value) => value.id === id);
+      const local = saved.current.get(id);
+      return local && (!remote || local.version >= remote.version)
+        ? local
+        : remote;
+    },
     accept(value: MemoBundle) {
       saved.current.set(value.id, value);
       changed();

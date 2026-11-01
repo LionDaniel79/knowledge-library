@@ -35,7 +35,7 @@ export async function mutateThoughtBundle(
       "생각 묶음이 다른 곳에서 변경됐습니다. 최신 내용과 비교해 주세요.",
     );
   if (type !== "archiveMemoBundle" && before?.archived_at)
-    throw new LibraryError(409, "보관해제된 생각 묶음입니다.");
+    throw new LibraryError(409, "삭제된 생각 묶음입니다.");
   let after: any;
   if ("noteIds" in p) {
     // Existing hidden/trash references survive an edit; newly added references must be active and owned.
@@ -103,6 +103,31 @@ export async function mutateThoughtBundle(
           )
         ).rows[0];
   } else {
+    const links = (
+      await tx.query(
+        "SELECT * FROM library_bundle_links WHERE owner_id=$1 AND (source_id=$2 OR target_id=$2) AND status='accepted' ORDER BY id FOR UPDATE",
+        [owner, id],
+      )
+    ).rows;
+    for (const link of links) {
+      const unlinked = (
+        await tx.query(
+          "UPDATE library_bundle_links SET status='rejected',version=version+1,updated_at=now() WHERE owner_id=$1 AND id=$2 RETURNING *",
+          [owner, link.id],
+        )
+      ).rows[0];
+      await tx.query(
+        "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",
+        [
+          randomUUID(),
+          owner,
+          link.id,
+          type,
+          JSON.stringify(link),
+          JSON.stringify(unlinked),
+        ],
+      );
+    }
     after = (
       await tx.query(
         "UPDATE library_memo_bundles SET archived_at=now(),version=version+1,updated_at=now() WHERE owner_id=$1 AND id=$2 RETURNING *",

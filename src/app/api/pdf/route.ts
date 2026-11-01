@@ -2,7 +2,10 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
 import { withPdfIndex, pdfDocumentDetail } from "@/server/pdf-index";
-import { searchPdfPagesInWorker } from "@/server/pdf-search";
+import {
+  searchPdfPagesInWorker,
+  validatePdfSearchQuery,
+} from "@/server/pdf-search";
 import { readVisiblePdfSummary } from "@/server/pdf-visible-summary";
 import { z } from "zod";
 import { existsSync } from "node:fs";
@@ -15,11 +18,13 @@ export async function GET(request: Request) {
     const owner = await requireOwner();
     const params = new URL(request.url).searchParams;
     const mode = params.get("mode") ?? "list";
-    const query = (params.get("q") ?? "").slice(0, 200);
+    const rawQuery = params.get("q") ?? "";
+    const query = mode === "search" ? rawQuery : rawQuery.slice(0, 200);
     const id = params.get("id");
     if (id) z.string().uuid().parse(id);
     let result: unknown;
     if (mode === "search") {
+      validatePdfSearchQuery(query);
       const pc =
         process.env.LIBRARY_PC_PRIVATE_CONFIRMED === "true"
           ? privatePcOrigin(process.env.LIBRARY_PC_ORIGIN)

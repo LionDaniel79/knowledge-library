@@ -247,6 +247,33 @@ export function ThoughtBoxes({
                 ))}
                 <div className="form-footer">
                   <button
+                    type="button"
+                    onClick={async () => {
+                      if (
+                        !window.confirm(
+                          `‘${bundle.title}’ 생각묶음을 삭제할까요? 메모 원문은 유지됩니다.`,
+                        )
+                      )
+                        return;
+                      const result = await command.send("archiveMemoBundle", {
+                        id: bundle.id,
+                        expectedVersion: bundle.version,
+                      });
+                      if (!result) return;
+                      setSelected("");
+                      setDrafts((old) => {
+                        const next = { ...old };
+                        delete next[bundle.id];
+                        return next;
+                      });
+                      setMessage(
+                        "생각묶음을 삭제했습니다. 원문 메모는 유지됩니다.",
+                      );
+                    }}
+                  >
+                    삭제
+                  </button>
+                  <button
                     className="primary"
                     disabled={
                       !draft.dirty ||

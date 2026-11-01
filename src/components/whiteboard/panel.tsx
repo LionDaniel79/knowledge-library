@@ -597,6 +597,16 @@ export function WhiteboardPanel({
   const displaySource = display?.source ?? source;
   const displayBoard = display?.board ?? board;
   const boxes = sharedBoxSummaries(source?.bundles ?? []);
+  const selectableBoxIds = boxes
+    .filter(
+      (box) =>
+        !boxesResource.data?.legacyConflicts?.some((c) => c.id === box.id),
+    )
+    .map((box) => box.id);
+  const allConnectionsSelected =
+    availableConnections.length + selectableBoxIds.length > 0 &&
+    availableConnections.every((c) => selectedConnectionIds.includes(c.id)) &&
+    selectableBoxIds.every((id) => checkedBoxes.includes(id));
   function showConnection(c: BoardConnection) {
     const ids =
       connectionView === "all"
@@ -1159,6 +1169,51 @@ export function WhiteboardPanel({
       setLinkBusy(false);
     }
   }
+  async function removeThoughtBox(id: string, confirmed = false) {
+    if (linkBusy) return;
+    const original = shared.current(id);
+    if (!original || original.archived_at) return;
+    if (
+      !confirmed &&
+      !window.confirm(
+        `‘${original.title}’ 생각묶음을 삭제할까요? 메모 원문은 유지됩니다.`,
+      )
+    )
+      return;
+    setLinkBusy(true);
+    setError("");
+    try {
+      // Earlier edits must be durable before deleting their canonical version.
+      // With a device replica, this waits only for its local outbox transaction.
+      await shared.flush();
+      const latest = shared.current(id);
+      if (!latest || latest.archived_at) return;
+      const result = await send("archiveMemoBundle", {
+        id,
+        expectedVersion: latest.version,
+      });
+      shared.accept({
+        ...latest,
+        version: result.version,
+        archived_at: new Date().toISOString(),
+      });
+      setBoxVisibility((old) => ({ ...old, [id]: false }));
+      setCheckedBoxes((old) => old.filter((value) => value !== id));
+      setSelectedGroup(null);
+      setSelectedNote(null);
+      setLinkSource(null);
+      setUndo(null);
+      setMessage("생각묶음을 삭제했습니다. 메모 원문은 유지됩니다.");
+      resource.reload();
+      boxesResource.reload();
+    } catch (e) {
+      setError((e as Error).message);
+      resource.reload();
+      boxesResource.reload();
+    } finally {
+      setLinkBusy(false);
+    }
+  }
   async function removeGroupConnection(sourceId: string, targetId: string) {
     if (linkBusy) return;
     if (sourceId.startsWith("bundle:") && targetId.startsWith("bundle:")) {
@@ -1393,6 +1448,9 @@ export function WhiteboardPanel({
                   [bundle.id]: true,
                 });
                 setCheckedBoxes([bundle.id]);
+              } else {
+                setBoxVisibility((old) => ({ ...old, [bundle.id]: true }));
+                setCheckedBoxes((old) => [...new Set([...old, bundle.id])]);
               }
               setPlainBoard(false);
               update(
@@ -1681,6 +1739,10 @@ export function WhiteboardPanel({
               (c) => c.id === id,
             );
             const bundleId = chapter?.bundleId ?? id;
+            if (!writingTitle) {
+              void removeThoughtBox(bundleId, true);
+              return;
+            }
             setBoxVisibility((old) => ({ ...old, [bundleId]: false }));
             setCheckedBoxes((old) => old.filter((value) => value !== bundleId));
             if (!before.writing?.chapters.some((c) => c.id === id)) return;
@@ -1872,16 +1934,20 @@ export function WhiteboardPanel({
               type="button"
               disabled={
                 linkBusy ||
-                (!selectedConnectionIds.length &&
-                  !checkedBoxes.some((id) => boxes.some((c) => c.id === id)))
+                (!availableConnections.length && !selectableBoxIds.length)
               }
+              aria-pressed={allConnectionsSelected}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                void showConnections(selectedConnectionIds, true, checkedBoxes);
+                showConnections(
+                  allConnectionsSelected ? [] : "all",
+                  !allConnectionsSelected,
+                  allConnectionsSelected ? [] : selectableBoxIds,
+                );
               }}
             >
-              선택보기
+              전체선택
             </button>
             <button
               type="button"
@@ -1960,6 +2026,13 @@ export function WhiteboardPanel({
               <small>
                 {box.boardTitle} · {box.noteCount}개
               </small>
+            </button>
+            <button
+              type="button"
+              disabled={linkBusy}
+              onClick={() => void removeThoughtBox(box.bundleId ?? box.id)}
+            >
+              삭제
             </button>
           </div>
         ))}
