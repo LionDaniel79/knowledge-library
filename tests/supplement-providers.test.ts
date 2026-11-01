@@ -1,11 +1,10 @@
 import { it, expect, vi } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { supplementLookup } from "../src/local/curation/supplement-providers";
 it("reuses a persisted ISBN response after collector restart without another quota reservation", async () => {
-  const dir = await mkdtemp(
-    join(process.cwd(), ".superpowers", "supplement-cache-"),
-  );
+  const dir = await mkdtemp(join(tmpdir(), "supplement-cache-"));
   vi.stubEnv("YES24_API_KEY", "private-fixture");
   vi.stubEnv("CATALOG_API_USAGE_PATH", join(dir, "quota.sqlite"));
   const fetcher = vi.fn(async () =>
@@ -41,5 +40,6 @@ it("reuses a persisted ISBN response after collector restart without another quo
     expect(fetcher).toHaveBeenCalledTimes(1);
   } finally {
     vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
   }
 });
