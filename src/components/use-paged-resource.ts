@@ -12,6 +12,15 @@ export function usePagedResource<T>(
   const keepPreviousData = options.keepPreviousData ?? false;
   const replica = useReplicaDataOptional();
   const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!enabled || !(
+      path.startsWith("/api/whiteboard") ||
+      path.startsWith("/api/thought-boxes")
+    )) return;
+    const refreshAfterAi = () => setRetry((n) => n + 1);
+    window.addEventListener("library:assist-adopted", refreshAfterAi);
+    return () => window.removeEventListener("library:assist-adopted", refreshAfterAi);
+  }, [enabled, path]);
   const [state, setState] = useState<{
     path: string;
     data: T | null;
