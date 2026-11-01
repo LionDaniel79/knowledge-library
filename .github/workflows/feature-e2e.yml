@@ -5,6 +5,7 @@ on:
       - fix/whiteboard-search-bundles-ai-catalog-20261101
     paths:
       - .github/workflows/feature-e2e.yml
+      - e2e/thought-bundle-delete.spec.ts
 permissions:
   contents: read
 jobs:
