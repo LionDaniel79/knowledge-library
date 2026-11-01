@@ -268,7 +268,10 @@ it("adopting a memo link and a shared thought bundle makes both visible in white
 });
 it("can rename both accepted connections and thought bundles from one analysis without losing either adoption", async () => {
   const s = await setup(false, true);
-  if (s.input.task.phase !== "runtime" || s.input.task.payload.purpose !== "synthesis")
+  if (
+    s.input.task.phase !== "runtime" ||
+    s.input.task.payload.purpose !== "synthesis"
+  )
     throw Error("Expected synthesis task");
   expect(s.input.task.payload.existingConnections).toHaveLength(1);
   expect(s.input.task.payload.existingBundles).toHaveLength(1);
