@@ -37,11 +37,11 @@ export type AssistProps = {
   ) => void;
 };
 export const focusNames = {
-  all: "종합 검토",
-  note_connection: "메모끼리의 연결",
-  topic_connection: "주제끼리의 연결",
-  new_topic: "새 주제 제안",
-  writing_idea: "글감·목차 방향",
+  all: "종합검토",
+  note_connection: "메모 연결 제안",
+  connection_title: "연결메모 제목 제안",
+  thought_bundle: "생각묶음 제안",
+  thought_bundle_title: "생각묶음 제목 제안",
 };
 export function AssistLauncher({
   children,
@@ -56,7 +56,7 @@ export function AssistLauncher({
         if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
       }}
     >
-      <summary>필요할 때 AI 도움</summary>
+      <summary>AI 도움</summary>
       {open && (
         <>
           {children}
@@ -298,6 +298,7 @@ export function AssistPanel({
           model,
           focus: analysis ? "writing_idea" : focus,
           sources,
+          ...(!analysis ? { useCurrentRelations: true } : {}),
           ...(analysis ? { writingContext: analysis.context } : {}),
         },
         r = await libraryRequest("/api/assist", {
@@ -338,7 +339,6 @@ export function AssistPanel({
   return (
     <section className="assist-panel assist-synthesis">
       <div className="assist-heading">
-        <h3>생각을 넓히는 AI 도움</h3>
         <AssistHelp />
       </div>
       {error && (
@@ -366,9 +366,6 @@ export function AssistPanel({
             </select>
           </label>
         )}
-        <button disabled={busy} onClick={() => void prepare()}>
-          {busy ? "처리 중…" : "분석할 기록 확인"}
-        </button>
         <details className="assist-model-choice">
           <summary>모델 선택</summary>
           <label>
@@ -404,6 +401,9 @@ export function AssistPanel({
             </select>
           </label>
         </details>
+        <button disabled={busy} onClick={() => void prepare()}>
+          {busy ? "처리 중…" : "분석"}
+        </button>
       </div>
       <small>
         {analysis
