@@ -60,6 +60,9 @@ export function AssistLauncher({
       <summary>AI 도움</summary>
       {open && (
         <>
+          {!props.analysis && (
+            <span className="assist-launcher-help"><AssistHelp /></span>
+          )}
           {children}
           {enabled && <AssistPanel {...props} />}
         </>
@@ -384,16 +387,15 @@ export function AssistPanel({
     : "0";
   return (
     <section className="assist-panel assist-synthesis">
-      <div className="assist-heading">
-        <AssistHelp />
-      </div>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      <div className="assist-synthesis-controls">
+      <div className="assist-topline">
+        {analysis && <div className="assist-heading"><AssistHelp /></div>}
+        <div className="assist-synthesis-controls">
         {!analysis && (
           <label>
             도움 방향
@@ -447,9 +449,10 @@ export function AssistPanel({
             </select>
           </label>
         </details>
-        <button disabled={busy} onClick={() => void prepare()}>
+        <button type="button" disabled={busy} onClick={() => void prepare()}>
           {busy ? "처리 중…" : "분석"}
         </button>
+        </div>
       </div>
       <small>
         {analysis
