@@ -166,7 +166,9 @@ export function AssistPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action, payload }),
           },
-          { awaitDeviceSync: action === "adopt" },
+          // Server commit is authoritative; an optional device pull is never
+          // part of the user's explicit save acknowledgement.
+          { preferServer: true },
         ),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
@@ -208,7 +210,11 @@ export function AssistPanel({
           );
         onAdopt?.();
       }
-      if (action !== "preview") void load().catch((e) => setError(e.message));
+      if (action !== "preview")
+        void load().catch(() => {
+          // Refresh failure must not turn a successful persisted adoption
+          // into an apparent save error. The confirmed row is already visible.
+        });
       return j;
     } catch (e) {
       setError((e as Error).message);
