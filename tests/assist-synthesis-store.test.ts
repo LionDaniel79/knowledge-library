@@ -268,8 +268,8 @@ it("adopting a memo link and a shared thought bundle makes both visible in white
 });
 it("can rename both accepted connections and thought bundles from one analysis without losing either adoption", async () => {
   const s = await setup(false, true);
-  expect(s.input.payload.existingConnections).toHaveLength(1);
-  expect(s.input.payload.existingBundles).toHaveLength(1);
+  expect(s.input.task.payload.existingConnections).toHaveLength(1);
+  expect(s.input.task.payload.existingBundles).toHaveLength(1);
   await s.store.finish(s.d, s.job.id, s.job.leaseToken, s.result);
   await s.store.adopt(s.owner, s.request.id, 0);
   await s.store.adopt(s.owner, s.request.id, 1);
