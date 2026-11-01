@@ -23,6 +23,12 @@ export function usePagedResource<T>(
     >(),
     bundles: new Map<string, NonNullable<AdoptedRelationship["bundle"]>>(),
   });
+  const replicaOwner = replica?.runtime?.owner;
+  useEffect(() => {
+    // A confirmed row must never leak between logged-in library owners.
+    confirmed.current.connections.clear();
+    confirmed.current.bundles.clear();
+  }, [replicaOwner, path]);
   useEffect(() => {
     if (
       !enabled ||
