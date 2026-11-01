@@ -894,7 +894,10 @@ export function createAssistStore(
         adoptedId = c.id;
       } else throw new LibraryError(400, "설명은 별도 보조 카드로 보관합니다.");
       if (!adoptedId)
-        throw new LibraryError(409, "확정된 제안의 저장 항목을 찾지 못했습니다.");
+        throw new LibraryError(
+          409,
+          "확정된 제안의 저장 항목을 찾지 못했습니다.",
+        );
       if (!existing)
         await tx.query(
           "UPDATE library_assist_results SET adoption=adoption||$3::jsonb WHERE owner_id=$1 AND id=$2",
