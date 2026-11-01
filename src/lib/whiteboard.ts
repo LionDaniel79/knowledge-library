@@ -320,12 +320,14 @@ export function filterNotes(
   return source.notes.filter((n) => {
     const book = n.bookId ? books.get(n.bookId) : undefined;
     const topics = f.topics.length
-      ? [...new Set([
-          ...(assigned?.get(n.id) ?? []),
-          ...(linked.get("note:" + n.id) ?? []),
-          ...(n.bookId ? (linked.get("book:" + n.bookId) ?? []) : []),
-        ])].filter((id) =>
-          valid.has(id) && !directRejected.get("note:" + n.id)?.has(id),
+      ? [
+          ...new Set([
+            ...(assigned?.get(n.id) ?? []),
+            ...(linked.get("note:" + n.id) ?? []),
+            ...(n.bookId ? (linked.get("book:" + n.bookId) ?? []) : []),
+          ]),
+        ].filter(
+          (id) => valid.has(id) && !directRejected.get("note:" + n.id)?.has(id),
         )
       : [];
     return (

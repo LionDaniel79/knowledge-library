@@ -302,13 +302,23 @@ describe("whiteboard", () => {
         { ...emptyBoard().filter, topics: [topic] },
       ).map((n) => n.id),
     ).toEqual([n1, n2]);
-    expect(filterNotes({
-      ...source,
-      memberships: [
-        ...source.memberships,
-        { topicId: topic, sourceKind: "note", sourceId: n1, status: "rejected" },
-      ],
-    }, { ...emptyBoard().filter, topics: [topic] }).map((n) => n.id)).toEqual([n2]);
+    expect(
+      filterNotes(
+        {
+          ...source,
+          memberships: [
+            ...source.memberships,
+            {
+              topicId: topic,
+              sourceKind: "note",
+              sourceId: n1,
+              status: "rejected",
+            },
+          ],
+        },
+        { ...emptyBoard().filter, topics: [topic] },
+      ).map((n) => n.id),
+    ).toEqual([n2]);
   });
   it("all topics groups notes and retains unclassified notes", () => {
     const scene = buildScene(source, emptyBoard());
