@@ -1527,6 +1527,29 @@ test("touch line target and unlink controls keep a usable size when zoomed out",
     await context.close();
   }
 });
+test("successive memo searches accumulate without duplicates and clear removes all displayed memos", async ({ page }) => {
+  const f = await mount(page);
+  const search = page.getByRole("searchbox", { name: "메모 제목·내용 검색", exact: true });
+  await search.fill("수용");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(1);
+  await search.fill("신학");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(2);
+  expect(new Set(await page.locator(".wb-note").evaluateAll((els) => els.map((n) => n.getAttribute("data-note-id")))).size).toBe(2);
+  expect(await page.locator(".wb-note").evaluateAll((els) => {
+    const boxes = els.map((n) => n.getBoundingClientRect());
+    return boxes.every((a, i) => boxes.slice(i + 1).every((b) =>
+      a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top));
+  })).toBe(true);
+  await page.getByRole("button", { name: "지우기", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(0);
+  await expect(search).toHaveValue("");
+  await expect.poll(() => f.state.board?.data.searchNoteIds).toEqual([]);
+  await search.fill("수용");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.locator(".wb-note")).toHaveCount(1);
+});
 test("searchable multi-facets apply only on search and search the complete note body", async ({
   page,
 }) => {
