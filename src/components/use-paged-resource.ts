@@ -38,7 +38,9 @@ export function usePagedResource<T>(
         previous.path === path && previous.data
           ? {
               ...previous,
-              data: confirmed ? mergeAdoptedRelationships(previous.data, confirmed) : previous.data,
+              data: confirmed
+                ? mergeAdoptedRelationships(previous.data, confirmed)
+                : previous.data,
             }
           : previous,
       );
@@ -78,7 +80,9 @@ export function usePagedResource<T>(
             if (!controller.signal.aborted)
               setState({
                 path,
-                data: confirmed ? mergeAdoptedRelationships(data, confirmed) : data,
+                data: confirmed
+                  ? mergeAdoptedRelationships(data, confirmed)
+                  : data,
                 loading: false,
                 error: "",
               });
@@ -102,7 +106,15 @@ export function usePagedResource<T>(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [path, enabled, revision, retry, replica?.revision, keepPreviousData, confirmed]);
+  }, [
+    path,
+    enabled,
+    revision,
+    retry,
+    replica?.revision,
+    keepPreviousData,
+    confirmed,
+  ]);
   return {
     ...(enabled && state.path === path
       ? state

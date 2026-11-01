@@ -193,9 +193,13 @@ export function AssistPanel({
               ? "선택한 생각묶음을 저장했습니다."
               : "선택한 제안을 저장했습니다.",
         );
-        rememberConfirmedRelationship(ownerId || replica?.runtime?.owner || "", {
-          connection: j.connection, bundle: j.bundle,
-        });
+        rememberConfirmedRelationship(
+          ownerId || replica?.runtime?.owner || "",
+          {
+            connection: j.connection,
+            bundle: j.bundle,
+          },
+        );
         if (typeof window !== "undefined")
           window.dispatchEvent(
             new CustomEvent("library:assist-adopted", {
