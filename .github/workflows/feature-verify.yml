@@ -5,6 +5,10 @@ on:
       - fix/whiteboard-search-bundles-ai-catalog-20261101
     paths:
       - .github/workflows/feature-verify.yml
+      - src/components/use-paged-resource.ts
+      - src/components/assist-panel.tsx
+      - src/lib/assist-adoption-overlay.ts
+      - tests/assist-adoption-overlay.test.ts
       - src/server/assist-store.ts
 permissions:
   contents: write
