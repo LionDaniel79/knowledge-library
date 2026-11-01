@@ -162,7 +162,7 @@ export function AssistPanel({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, payload }),
-        }),
+        }, { awaitDeviceSync: action === "adopt" }),
         j = await r.json();
       if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
       if (action === "hide") {
@@ -179,7 +179,9 @@ export function AssistPanel({
         }));
       }
       if (action === "adopt") {
-        setMessage("확인한 제안을 저장했습니다.");
+        setMessage("연결 또는 생각묶음을 저장했습니다.");
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new Event("library:assist-adopted"));
         onAdopt?.();
       }
       if (action !== "preview") void load().catch((e) => setError(e.message));
