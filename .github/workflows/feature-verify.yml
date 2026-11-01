@@ -5,6 +5,7 @@ on:
       - fix/whiteboard-search-bundles-ai-catalog-20261101
     paths:
       - .github/workflows/feature-verify.yml
+      - src/server/assist-store.ts
 permissions:
   contents: write
 jobs:
