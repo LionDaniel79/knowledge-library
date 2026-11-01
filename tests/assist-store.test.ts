@@ -7,7 +7,7 @@ import { createDeviceAuth } from "../src/server/thought-device-auth";
 import { createAssistStore } from "../src/server/assist-store";
 import { createCurationStore } from "../src/server/curation-store";
 import { createThoughtMapStore } from "../src/server/thought-map-store";
-import { pricingVersion } from "../src/local/ai/openai";
+import { pricingVersion, costForUsage } from "../src/local/ai/openai";
 import {
   ASSIST_PROMPT_VERSION,
   ASSIST_SCHEMA_VERSION,
@@ -17,7 +17,11 @@ beforeAll(async () => {
   f = await testDatabase();
 });
 afterAll(async () => f?.pg.close());
-async function setup(owner: string, purpose = "tag_suggestion") {
+async function setup(
+  owner: string,
+  purpose = "tag_suggestion",
+  model?: "gpt-6-luna" | "gpt-6.1-sol",
+) {
   const store = createAssistStore(f.db),
     l = createLibraryStore(f.db);
   const n = await l.mutate(owner, {
@@ -32,12 +36,13 @@ async function setup(owner: string, purpose = "tag_suggestion") {
   await store.configure(owner, {
     expectedPolicyVersion: 0,
     requestsEnabled: true,
-    requestLimitUsd: "0.02",
+    requestLimitUsd: model === "gpt-6.1-sol" ? "0.5" : "0.02",
     runtimeMonthlyLimitUsd: "1",
     developmentLimitUsd: null,
   });
   const selection: any = {
     purpose,
+    ...(model ? { model } : {}),
     sources: [{ source: { kind: "note", id: n.id!, version: "1" } }],
   };
   const p = await store.preview(owner, selection);
@@ -163,6 +168,40 @@ it("organizes one note into reviewable tags and topics without rewriting it", as
     payload: { id: n.id, expectedVersion: 1 },
   });
   await expect(store.adopt(owner, job.id, 0)).rejects.toThrow();
+});
+it("preserves Sol provenance when adopting a generated tag", async () => {
+  const owner = "assist-sol-tag-provenance";
+  const { store, d, request } = await setup(
+    owner,
+    "organize_note",
+    "gpt-6.1-sol",
+  );
+  const job = (await store.claim(d))!;
+  await store.begin(d, job.id, job.leaseToken);
+  const base = result();
+  const sol = {
+    ...base,
+    output: {
+      items: [
+        {
+          kind: "tag",
+          value: "감정",
+          evidence: { sourceIndex: 0, start: 0, end: 2, quote: "감정" },
+        },
+      ],
+    },
+    costUsd: costForUsage(base.usage, "gpt-6.1-sol"),
+    provenance: { ...base.provenance, model: "gpt-6.1-sol" },
+  };
+  await store.finish(d, job.id, job.leaseToken, sol);
+  await store.adopt(owner, request.id, 0);
+  const rows = (
+    await f.db.query(
+      "SELECT generator FROM library_curation_items WHERE owner_id=$1",
+      [owner],
+    )
+  ).rows;
+  expect(rows).toEqual([{ generator: "gpt-6.1-sol/" + ASSIST_PROMPT_VERSION }]);
 });
 it.each(["source", "policy"])(
   "keeps unknown costs resolvable after a %s change",
