@@ -5,6 +5,7 @@ on:
       - fix/ai-note-bundle-adoption-controls-20261101
     paths:
       - .github/workflows/ai-quick-verify.yml
+      - tests/assist-synthesis-store.test.ts
 permissions:
   contents: read
 jobs:
