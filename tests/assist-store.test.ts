@@ -201,9 +201,7 @@ it("preserves Sol provenance when adopting a generated tag", async () => {
       [owner],
     )
   ).rows;
-  expect(rows).toEqual([
-    { generator: "gpt-6.1-sol/" + ASSIST_PROMPT_VERSION },
-  ]);
+  expect(rows).toEqual([{ generator: "gpt-6.1-sol/" + ASSIST_PROMPT_VERSION }]);
 });
 it.each(["source", "policy"])(
   "keeps unknown costs resolvable after a %s change",
