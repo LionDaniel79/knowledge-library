@@ -5425,6 +5425,38 @@ textarea {
   }
 }
 
+.assist-launcher > summary {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+.assist-launcher-help {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 14px;
+}
+.assist-launcher-help button {
+  min-height: 40px;
+}
+.assist-topline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.assist-topline .assist-heading {
+  flex: 0 0 auto;
+}
+.assist-topline .assist-synthesis-controls {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.writing-assist .assist-topline .assist-synthesis-controls {
+  flex: 0 1 auto;
+  margin-left: auto;
+}
 .assist-synthesis-controls {
   display: flex;
   align-items: end;
