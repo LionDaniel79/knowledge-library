@@ -1,8 +1,9 @@
 "use client";
 import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   mergeAdoptedRelationships,
+  confirmedRelationships,
   type AdoptedRelationship,
 } from "@/lib/assist-adoption-overlay";
 import { useReplicaDataOptional } from "./replica/provider";
@@ -16,19 +17,8 @@ export function usePagedResource<T>(
   const keepPreviousData = options.keepPreviousData ?? false;
   const replica = useReplicaDataOptional();
   const [retry, setRetry] = useState(0);
-  const confirmed = useRef({
-    connections: new Map<
-      string,
-      NonNullable<AdoptedRelationship["connection"]>
-    >(),
-    bundles: new Map<string, NonNullable<AdoptedRelationship["bundle"]>>(),
-  });
-  const replicaOwner = replica?.runtime?.owner;
-  useEffect(() => {
-    // A confirmed row must never leak between logged-in library owners.
-    confirmed.current.connections.clear();
-    confirmed.current.bundles.clear();
-  }, [replicaOwner, path]);
+  const replicaOwner = replica?.runtime?.owner ?? "";
+  const confirmed = confirmedRelationships(replicaOwner);
   useEffect(() => {
     if (
       !enabled ||
@@ -41,17 +31,14 @@ export function usePagedResource<T>(
     const refreshAfterAi = (event: Event) => {
       const value = (event as CustomEvent<AdoptedRelationship>).detail;
       if (value?.connection?.id)
-        confirmed.current.connections.set(
-          value.connection.id,
-          value.connection,
-        );
+        confirmed?.connections.set(value.connection.id, value.connection);
       if (value?.bundle?.id)
-        confirmed.current.bundles.set(value.bundle.id, value.bundle);
+        confirmed?.bundles.set(value.bundle.id, value.bundle);
       setState((previous) =>
         previous.path === path && previous.data
           ? {
               ...previous,
-              data: mergeAdoptedRelationships(previous.data, confirmed.current),
+              data: confirmed ? mergeAdoptedRelationships(previous.data, confirmed) : previous.data,
             }
           : previous,
       );
@@ -60,7 +47,7 @@ export function usePagedResource<T>(
     window.addEventListener("library:assist-adopted", refreshAfterAi);
     return () =>
       window.removeEventListener("library:assist-adopted", refreshAfterAi);
-  }, [enabled, path]);
+  }, [enabled, path, confirmed]);
   const [state, setState] = useState<{
     path: string;
     data: T | null;
@@ -91,7 +78,7 @@ export function usePagedResource<T>(
             if (!controller.signal.aborted)
               setState({
                 path,
-                data: mergeAdoptedRelationships(data, confirmed.current),
+                data: confirmed ? mergeAdoptedRelationships(data, confirmed) : data,
                 loading: false,
                 error: "",
               });
@@ -115,7 +102,7 @@ export function usePagedResource<T>(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [path, enabled, revision, retry, replica?.revision, keepPreviousData]);
+  }, [path, enabled, revision, retry, replica?.revision, keepPreviousData, confirmed]);
   return {
     ...(enabled && state.path === path
       ? state
