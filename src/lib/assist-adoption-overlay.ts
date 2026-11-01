@@ -4,6 +4,30 @@ export type AdoptedRelationship = {
   bundle?: { id: string; version: number; [key: string]: unknown } | null;
 };
 
+// Temporary, owner-scoped confirmations survive component navigation until
+// normal replica synchronization supplies the same canonical rows.
+const confirmedByOwner = new Map<string, {
+  connections: Map<string, NonNullable<AdoptedRelationship["connection"]>>;
+  bundles: Map<string, NonNullable<AdoptedRelationship["bundle"]>>;
+}>();
+export function confirmedRelationships(owner: string) {
+  if (!owner) return null;
+  let rows = confirmedByOwner.get(owner);
+  if (!rows) {
+    rows = { connections: new Map(), bundles: new Map() };
+    confirmedByOwner.set(owner, rows);
+  }
+  return rows;
+}
+export function rememberConfirmedRelationship(owner: string, detail: AdoptedRelationship) {
+  const rows = confirmedRelationships(owner);
+  if (!rows) return;
+  if (detail.connection?.id) rows.connections.set(detail.connection.id, detail.connection);
+  if (detail.bundle?.id) rows.bundles.set(detail.bundle.id, detail.bundle);
+}
+export function releaseConfirmedRelationships(owner: string) {
+  confirmedByOwner.delete(owner);
+}
 export function mergeAdoptedRelationships<T>(
   data: T,
   adopted: {
