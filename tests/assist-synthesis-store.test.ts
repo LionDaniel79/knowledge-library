@@ -4,6 +4,7 @@ import { testDatabase } from "./helpers/database";
 import { createLibraryStore } from "../src/server/library-store";
 import { createAssistStore } from "../src/server/assist-store";
 import { createDeviceAuth } from "../src/server/thought-device-auth";
+import { readWhiteboard } from "../src/server/whiteboard-store";
 import { pricingVersion, costForUsage } from "../src/local/ai/openai";
 import {
   ASSIST_PROMPT_VERSION,
@@ -16,7 +17,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await f?.pg.close();
 });
-async function setup(partial = false) {
+async function setup(partial = false, withExisting = false) {
   const owner = randomUUID(),
     l = createLibraryStore(f.db),
     store = createAssistStore(f.db),
@@ -51,6 +52,18 @@ async function setup(partial = false) {
     "INSERT INTO library_topic_memberships(id,owner_id,topic_id,source_kind,source_id,source_version,status,method) VALUES($1,$2,$3,'note',$4,'1','accepted','manual')",
     [randomUUID(), owner, topicIds[0], notes[1].id],
   );
+  const existingLinkId = randomUUID();
+  const existingBundleId = randomUUID();
+  if (withExisting) {
+    await f.db.query(
+      "INSERT INTO library_connections(id,owner_id,source_kind,source_id,target_kind,target_id,relation,status,reason,method,title) VALUES($1,$2,'note',$3,'note',$4,'related','accepted','수동 연결','manual','기존 연결')",
+      [existingLinkId, owner, notes[0].id, notes[1].id],
+    );
+    await f.db.query(
+      "INSERT INTO library_memo_bundles(owner_id,id,title,description,note_ids) VALUES($1,$2,'기존 생각묶음','기존 설명',$3)",
+      [owner, existingBundleId, JSON.stringify(notes.map((n) => n.id))],
+    );
+  }
   await store.configure(owner, {
     expectedPolicyVersion: 0,
     requestsEnabled: true,
@@ -62,6 +75,7 @@ async function setup(partial = false) {
     purpose: "synthesis",
     focus: "all",
     model: "gpt-6.1-sol",
+    ...(withExisting ? { useCurrentRelations: true } : {}),
     sources: notes.map((n, i) => ({
       source: { kind: "note", id: n.id, version: "1" },
       ...(partial
@@ -104,16 +118,21 @@ async function setup(partial = false) {
       evidence,
     };
   const output = {
-    suggestions: [
-      { ...common, kind: "note_connection" },
-      { ...common, kind: "topic_connection", topicIds },
-      { ...common, kind: "new_topic", title: "지속 가능한 이해" },
-      {
-        ...common,
-        kind: "writing_idea",
-        outline: ["이해의 의미", "관계를 지속하는 경계"],
-      },
-    ],
+    suggestions: withExisting
+      ? [
+          { ...common, kind: "connection_title", title: "공감과 건강한 경계", bundleId: null },
+          { ...common, kind: "thought_bundle_title", title: "함께 성장하는 공감", bundleId: existingBundleId },
+        ]
+      : [
+          { ...common, kind: "note_connection" },
+          { ...common, kind: "topic_connection", topicIds },
+          { ...common, kind: "new_topic", title: "지속 가능한 이해" },
+          {
+            ...common,
+            kind: "writing_idea",
+            outline: ["이해의 의미", "관계를 지속하는 경계"],
+          },
+        ],
   };
   const usage = {
       inputTokens: 100,
@@ -145,6 +164,8 @@ async function setup(partial = false) {
     store,
     notes,
     topicIds,
+    existingLinkId,
+    existingBundleId,
     request,
     d,
     job: job!,
@@ -198,6 +219,52 @@ it("human adoption creates real connections, a classified topic and frozen writi
       ])
     ).rows.map((n) => n.version),
   ).toEqual([1, 1]);
+});
+it("adopting a memo link and a shared thought bundle makes both visible in whiteboard and connection management", async () => {
+  const s = await setup();
+  const base = s.result.output.suggestions[0];
+  await s.store.finish(s.d, s.job.id, s.job.leaseToken, {
+    ...s.result,
+    output: {
+      suggestions: [
+        { ...base, kind: "note_connection" },
+        { ...base, kind: "thought_bundle", title: "공감과 경계를 함께 읽기" },
+      ],
+    },
+  });
+  await s.store.adopt(s.owner, s.request.id, 0);
+  await s.store.adopt(s.owner, s.request.id, 1);
+  const whiteboard = await readWhiteboard(f.db, s.owner);
+  expect(whiteboard.connections).toHaveLength(1);
+  expect(whiteboard.connections[0]).toMatchObject({
+    status: "accepted",
+    title: "공감과 경계",
+    source_kind: "note",
+    target_kind: "note",
+  });
+  expect(whiteboard.bundles.filter((b: any) => !b.archived_at)).toEqual([
+    expect.objectContaining({
+      title: "공감과 경계를 함께 읽기",
+      note_ids: s.notes.map((n) => n.id),
+    }),
+  ]);
+  expect((await f.db.query(
+    "SELECT version FROM library_notes WHERE owner_id=$1",
+    [s.owner],
+  )).rows.map((n) => n.version)).toEqual([1, 1]);
+});
+it("can rename both accepted connections and thought bundles from one analysis without losing either adoption", async () => {
+  const s = await setup(false, true);
+  expect(s.input.payload.existingConnections).toHaveLength(1);
+  expect(s.input.payload.existingBundles).toHaveLength(1);
+  await s.store.finish(s.d, s.job.id, s.job.leaseToken, s.result);
+  await s.store.adopt(s.owner, s.request.id, 0);
+  await s.store.adopt(s.owner, s.request.id, 1);
+  const whiteboard = await readWhiteboard(f.db, s.owner);
+  expect(whiteboard.connections.find((c) => c.id === s.existingLinkId)?.title)
+    .toBe("공감과 건강한 경계");
+  expect(whiteboard.bundles.find((b: any) => b.id === s.existingBundleId)?.title)
+    .toBe("함께 성장하는 공감");
 });
 it("only raises a per-request allowance after explicit confirmation and preserves the monthly ceiling", async () => {
   const owner = randomUUID(),
