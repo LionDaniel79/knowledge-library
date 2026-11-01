@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { mergeAdoptedRelationships } from "../src/lib/assist-adoption-overlay";
+import { mergeAdoptedRelationships, rememberConfirmedRelationship, confirmedRelationships, releaseConfirmedRelationships } from "../src/lib/assist-adoption-overlay";
 
 it("shows exactly the adopted connection and shared thought bundle over a lagging device snapshot", () => {
   const connection = {
@@ -45,4 +45,20 @@ it("shows exactly the adopted connection and shared thought bundle over a laggin
   );
   expect(changed.connections[0].status).toBe("rejected");
   expect(earlier.connections).toHaveLength(1);
+});
+
+it("preserves selected link between component mounts but keeps other account rows isolated", () => {
+  const owner = "test-owner-navigation";
+  const other = "test-other-owner";
+  releaseConfirmedRelationships(owner);
+  releaseConfirmedRelationships(other);
+  rememberConfirmedRelationship(owner, {
+    connection: { id: "link-navigation", version: 1, status: "accepted" },
+  });
+  expect(confirmedRelationships(other)?.connections.size).toBe(0);
+  const mountedAfterNavigation = confirmedRelationships(owner)!;
+  expect(mergeAdoptedRelationships({ connections: [], bundles: [] }, mountedAfterNavigation)
+    .connections).toEqual([{ id: "link-navigation", version: 1, status: "accepted" }]);
+  releaseConfirmedRelationships(owner);
+  releaseConfirmedRelationships(other);
 });
