@@ -20,8 +20,8 @@ const statusNames: Record<string, string> = {
 };
 const kindNames = {
   note_connection: "메모 연결",
-  topic_connection: "주제 연결",
-  new_topic: "새 주제",
+  topic_connection: "이전 형식 제안",
+  new_topic: "이전 형식 제안",
   writing_idea: "글감 방향",
   connection_title: "연결메모 제목 제안",
   thought_bundle: "생각묶음 제안",
@@ -155,7 +155,10 @@ export function AssistRequestCard({
                       ))}
                     </ol>
                   )}
-                  {onWritingSuggestion && value.scope?.writingContext ? (
+                  {!value.scope?.writingContext &&
+                  ["topic_connection", "new_topic", "writing_idea"].includes(s.kind) ? (
+                    <small>이전 분석에서 생성한 제안입니다. 현재 도움 방향으로 다시 분석해 주세요.</small>
+                  ) : onWritingSuggestion && value.scope?.writingContext ? (
                     <button
                       disabled={busy}
                       onClick={() => onWritingSuggestion(s, value.scope)}
