@@ -6,7 +6,10 @@ export type AdoptedRelationship = {
 
 export function mergeAdoptedRelationships<T>(
   data: T,
-  adopted: { connections: ReadonlyMap<string, AdoptedRelationship["connection"]>; bundles: ReadonlyMap<string, AdoptedRelationship["bundle"]> },
+  adopted: {
+    connections: ReadonlyMap<string, AdoptedRelationship["connection"]>;
+    bundles: ReadonlyMap<string, AdoptedRelationship["bundle"]>;
+  },
 ): T {
   if (!data || typeof data !== "object") return data;
   const record = data as Record<string, unknown>;

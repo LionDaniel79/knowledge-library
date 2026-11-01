@@ -1197,13 +1197,18 @@ export function WhiteboardPanel({
       // archived. Other boards hide the archived bundle via projection.
       const before = current.current;
       if (before.writing?.chapters.some((c) => (c.bundleId ?? c.id) === id)) {
-        update({
-          ...before,
-          writing: {
-            ...before.writing,
-            chapters: before.writing.chapters.filter((c) => (c.bundleId ?? c.id) !== id),
+        update(
+          {
+            ...before,
+            writing: {
+              ...before.writing,
+              chapters: before.writing.chapters.filter(
+                (c) => (c.bundleId ?? c.id) !== id,
+              ),
+            },
           },
-        }, before);
+          before,
+        );
       }
       shared.accept({
         ...latest,
@@ -1373,20 +1378,28 @@ export function WhiteboardPanel({
         onSubmit={(e) => {
           e.preventDefault();
           const before = current.current;
-          const previous = before.searchNoteIds ?? (
-            before.filter.q || before.filter.topics.length || before.filter.tags.length ||
-            before.filter.categories.length || before.filter.books.length
+          const previous =
+            before.searchNoteIds ??
+            (before.filter.q ||
+            before.filter.topics.length ||
+            before.filter.tags.length ||
+            before.filter.categories.length ||
+            before.filter.books.length
               ? filterNotes(source, before.filter).map((n) => n.id)
-              : []
-          );
+              : []);
           const found = filterNotes(source, filter).map((n) => n.id);
           const searchNoteIds = [...new Set([...previous, ...found])];
           criteriaEdited.current = false;
           setSearchRevision((n) => n + 1);
           update(
-            arrangeSearchResults(source, seedBoard(source, {
-              ...before, filter, searchNoteIds,
-            })),
+            arrangeSearchResults(
+              source,
+              seedBoard(source, {
+                ...before,
+                filter,
+                searchNoteIds,
+              }),
+            ),
             before,
           );
           setSelectedGroup(null);
@@ -1447,7 +1460,10 @@ export function WhiteboardPanel({
             setBoxVisibility({});
             setPlainBoard(true);
             setSearchRevision((n) => n + 1);
-            update({ ...before, filter: emptyFilter, searchNoteIds: [] }, before);
+            update(
+              { ...before, filter: emptyFilter, searchNoteIds: [] },
+              before,
+            );
           }}
         >
           지우기

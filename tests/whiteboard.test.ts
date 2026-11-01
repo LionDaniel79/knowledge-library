@@ -250,25 +250,38 @@ describe("whiteboard", () => {
   });
 
   it("keeps distinct memos from successive searches, arranges them without overlap, and clears only the display", () => {
-    const a = filterNotes(source, { ...emptyBoard().filter, q: "수용" }).map((n) => n.id);
-    const b = filterNotes(source, { ...emptyBoard().filter, q: "생각" }).map((n) => n.id);
+    const a = filterNotes(source, { ...emptyBoard().filter, q: "수용" }).map(
+      (n) => n.id,
+    );
+    const b = filterNotes(source, { ...emptyBoard().filter, q: "생각" }).map(
+      (n) => n.id,
+    );
     expect(a).toEqual([n1]);
     const selected = [...new Set([...a, ...b, ...a])];
-    const board = boardSchema.parse(arrangeSearchResults(source, seedBoard(source, {
-      ...emptyBoard(),
-      filter: { ...emptyBoard().filter, q: "생각" },
-      searchNoteIds: selected,
-    })));
+    const board = boardSchema.parse(
+      arrangeSearchResults(
+        source,
+        seedBoard(source, {
+          ...emptyBoard(),
+          filter: { ...emptyBoard().filter, q: "생각" },
+          searchNoteIds: selected,
+        }),
+      ),
+    );
     const nodes = buildScene(source, board).nodes;
     expect(nodes.map((n) => n.noteId).sort()).toEqual(selected.sort());
     expect(new Set(nodes.map((n) => n.noteId)).size).toBe(nodes.length);
     for (const [i, x] of nodes.entries())
       for (const y of nodes.slice(i + 1))
         expect(
-          x.x + 220 <= y.x || y.x + 220 <= x.x ||
-          x.y + 166 <= y.y || y.y + 166 <= x.y,
+          x.x + 220 <= y.x ||
+            y.x + 220 <= x.x ||
+            x.y + 166 <= y.y ||
+            y.y + 166 <= x.y,
         ).toBe(true);
-    expect(buildScene(source, { ...board, searchNoteIds: [] }).nodes).toEqual([]);
+    expect(buildScene(source, { ...board, searchNoteIds: [] }).nodes).toEqual(
+      [],
+    );
     expect(source.notes).toHaveLength(3);
   });
   it("uses only accepted topic assignments including the note's book", () => {

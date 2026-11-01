@@ -94,27 +94,56 @@ it("falls back after provider errors, does not expose keys, and uses fixed servi
 });
 
 it("reads real library keyword fields and safely applies only matching-edition publisher subjects", async () => {
-  expect(parseLibraryKeywords({
-    response: { items: { item: [{ word: "상담", weight: 4 }, { word: "목회", weight: 3 }, { word: "상담" }] } },
-  })).toEqual(["상담", "목회"]);
+  expect(
+    parseLibraryKeywords({
+      response: {
+        items: {
+          item: [
+            { word: "상담", weight: 4 },
+            { word: "목회", weight: 3 },
+            { word: "상담" },
+          ],
+        },
+      },
+    }),
+  ).toEqual(["상담", "목회"]);
   const isbn = "9780306406157";
-  const fetcher = vi.fn(async (url: URL | string) => String(url).includes("yes24")
-    ? Response.json({ success: true, data: { items: [{
-      itemId: 15, title: "상담과 믿음", isbn13: isbn,
-      author: "저자", publisher: "출판사",
-    }] } })
-    : Response.json({ items: [
-      { id: "matching", volumeInfo: {
-        title: "상담과 믿음",
-        industryIdentifiers: [{ identifier: isbn }],
-        categories: ["Religion / Christian Ministry"],
-      } },
-      { id: "other", volumeInfo: {
-        title: "다른 판본",
-        industryIdentifiers: [{ identifier: "9780140449136" }],
-        categories: ["History"],
-      } },
-    ] }),
+  const fetcher = vi.fn(async (url: URL | string) =>
+    String(url).includes("yes24")
+      ? Response.json({
+          success: true,
+          data: {
+            items: [
+              {
+                itemId: 15,
+                title: "상담과 믿음",
+                isbn13: isbn,
+                author: "저자",
+                publisher: "출판사",
+              },
+            ],
+          },
+        })
+      : Response.json({
+          items: [
+            {
+              id: "matching",
+              volumeInfo: {
+                title: "상담과 믿음",
+                industryIdentifiers: [{ identifier: isbn }],
+                categories: ["Religion / Christian Ministry"],
+              },
+            },
+            {
+              id: "other",
+              volumeInfo: {
+                title: "다른 판본",
+                industryIdentifiers: [{ identifier: "9780140449136" }],
+                categories: ["History"],
+              },
+            },
+          ],
+        }),
   );
   const result = await searchBookMetadata(isbn, {
     fetcher: fetcher as typeof fetch,
@@ -123,7 +152,9 @@ it("reads real library keyword fields and safely applies only matching-edition p
   });
   expect(result.items).toHaveLength(1);
   expect(result.items[0]).toMatchObject({
-    isbn, provider: "yes24", category: "200",
+    isbn,
+    provider: "yes24",
+    category: "200",
     tags: ["Religion / Christian Ministry"],
   });
   expect(result.items[0].tags).not.toContain("History");

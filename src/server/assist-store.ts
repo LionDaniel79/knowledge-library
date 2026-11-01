@@ -894,32 +894,43 @@ export function createAssistStore(
           });
         adoptedId = c.id;
       } else throw new LibraryError(400, "설명은 별도 보조 카드로 보관합니다.");
-      if (!existing) await tx.query(
-        "UPDATE library_assist_results SET adoption=adoption||$3::jsonb WHERE owner_id=$1 AND id=$2",
-        [
-          owner,
-          r.result_id,
-          JSON.stringify([
-            { index, id: adoptedId, at: new Date().toISOString() },
-          ]),
-        ],
-      );
-      const kind = r.purpose === "synthesis"
-        ? r.result.output.suggestions[index]?.kind
-        : null;
+      if (!existing)
+        await tx.query(
+          "UPDATE library_assist_results SET adoption=adoption||$3::jsonb WHERE owner_id=$1 AND id=$2",
+          [
+            owner,
+            r.result_id,
+            JSON.stringify([
+              { index, id: adoptedId, at: new Date().toISOString() },
+            ]),
+          ],
+        );
+      const kind =
+        r.purpose === "synthesis"
+          ? r.result.output.suggestions[index]?.kind
+          : null;
       const connection = ["note_connection", "connection_title"].includes(kind)
-        ? (await tx.query(
-            "SELECT id,source_kind,source_id,target_kind,target_id,title,relation,reason,status,version FROM library_connections WHERE owner_id=$1 AND id=$2",
-            [owner, adoptedId],
-          )).rows[0]
+        ? (
+            await tx.query(
+              "SELECT id,source_kind,source_id,target_kind,target_id,title,relation,reason,status,version FROM library_connections WHERE owner_id=$1 AND id=$2",
+              [owner, adoptedId],
+            )
+          ).rows[0]
         : null;
       const bundle = ["thought_bundle", "thought_bundle_title"].includes(kind)
-        ? (await tx.query(
-            "SELECT id,title,description,note_ids,version,archived_at FROM library_memo_bundles WHERE owner_id=$1 AND id=$2",
-            [owner, adoptedId],
-          )).rows[0]
+        ? (
+            await tx.query(
+              "SELECT id,title,description,note_ids,version,archived_at FROM library_memo_bundles WHERE owner_id=$1 AND id=$2",
+              [owner, adoptedId],
+            )
+          ).rows[0]
         : null;
-      return { ok: true, adoption: { index, id: adoptedId, kind }, connection, bundle };
+      return {
+        ok: true,
+        adoption: { index, id: adoptedId, kind },
+        connection,
+        bundle,
+      };
     });
   }
   async function hide(owner: string, id: string) {

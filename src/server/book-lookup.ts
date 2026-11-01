@@ -12,7 +12,11 @@ import { LibraryError } from "./library-store";
 const text = (v: unknown, max = 300) => providerText(v).slice(0, max);
 function subjectTags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((v) => text(v, 40).trim()).filter((v) => v.length > 1))].slice(0, 12);
+  return [
+    ...new Set(
+      value.map((v) => text(v, 40).trim()).filter((v) => v.length > 1),
+    ),
+  ].slice(0, 12);
 }
 function candidate(v: BookCandidate): BookCandidate {
   return {
@@ -22,7 +26,9 @@ function candidate(v: BookCandidate): BookCandidate {
     publisher: text(v.publisher),
     description: text(v.description, 3000),
     tags: subjectTags(v.tags),
-    category: categories.some(([code]) => code === v.category) ? v.category : "",
+    category: categories.some(([code]) => code === v.category)
+      ? v.category
+      : "",
     coverUrl: secureImage(v.coverUrl),
     totalPages:
       v.totalPages &&
@@ -52,7 +58,10 @@ export function parseYes24Books(json: any, expectedIsbn = ""): BookCandidate[] {
         totalPages: Number(b.pages) || null,
         description: b.contentDetail?.bookIntroduction ?? "",
         tags: subjectTags([b.categoryName, b.category?.name].filter(Boolean)),
-        category: suggestCategory("", subjectTags([b.categoryName, b.category?.name].filter(Boolean))),
+        category: suggestCategory(
+          "",
+          subjectTags([b.categoryName, b.category?.name].filter(Boolean)),
+        ),
       }),
     )
     .filter((b: BookCandidate) => !expectedIsbn || b.isbn === expectedIsbn);
@@ -93,11 +102,24 @@ export function parseLibraryKeywords(payload: any): string[] {
   if (payload?.error || payload?.response?.error) return [];
   const items = payload?.response?.items;
   const list = Array.isArray(items) ? items : items?.item;
-  return subjectTags((Array.isArray(list) ? list : list ? [list] : []).map((v: any) => v.item?.word ?? v.word));
+  return subjectTags(
+    (Array.isArray(list) ? list : list ? [list] : []).map(
+      (v: any) => v.item?.word ?? v.word,
+    ),
+  );
 }
-async function lookupLibraryKeywords(isbn: string, key: string, fetcher: typeof fetch) {
+async function lookupLibraryKeywords(
+  isbn: string,
+  key: string,
+  fetcher: typeof fetch,
+) {
   const url = new URL("https://data4library.kr/api/keywordList");
-  url.search = new URLSearchParams({ authKey: key, isbn13: isbn, additionalYN: "Y", format: "json" }).toString();
+  url.search = new URLSearchParams({
+    authKey: key,
+    isbn13: isbn,
+    additionalYN: "Y",
+    format: "json",
+  }).toString();
   reserveCatalogRequest("library", key);
   const response = await fetcher(url, {
     signal: AbortSignal.timeout(8000),
@@ -195,7 +217,8 @@ export async function searchBookMetadata(raw: string, options: Options = {}) {
         for (let i = 0; i < items.length; i++)
           if (items[i].isbn === isbn)
             items[i] = candidate({
-              ...items[i], tags: [...(items[i].tags ?? []), ...keywords],
+              ...items[i],
+              tags: [...(items[i].tags ?? []), ...keywords],
             });
       }
     } catch {
@@ -215,12 +238,15 @@ export async function searchBookMetadata(raw: string, options: Options = {}) {
       if (google) url.searchParams.set("key", google);
       const candidates = parseGoogleBooks(await json(url), isbn);
       for (const item of items) {
-        const match = candidates.find((b) =>
-          b.isbn && item.isbn && b.isbn === item.isbn,
+        const match = candidates.find(
+          (b) => b.isbn && item.isbn && b.isbn === item.isbn,
         );
         if (match) {
           item.category ||= match.category;
-          item.tags = subjectTags([...(item.tags ?? []), ...(match.tags ?? [])]);
+          item.tags = subjectTags([
+            ...(item.tags ?? []),
+            ...(match.tags ?? []),
+          ]);
         }
       }
     } catch {

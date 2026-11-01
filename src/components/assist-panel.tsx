@@ -185,15 +185,19 @@ export function AssistPanel({
       if (action === "adopt") {
         if (!j.ok || !j.adoption?.id)
           throw Error("연결 확정 결과를 확인하지 못했습니다.");
-        setMessage(j.connection
-          ? "선택한 메모 연결을 확정했습니다. 연결된 메모 목록에 반영됩니다."
-          : j.bundle
-            ? "선택한 생각묶음을 저장했습니다."
-            : "선택한 제안을 저장했습니다.");
+        setMessage(
+          j.connection
+            ? "선택한 메모 연결을 확정했습니다. 연결된 메모 목록에 반영됩니다."
+            : j.bundle
+              ? "선택한 생각묶음을 저장했습니다."
+              : "선택한 제안을 저장했습니다.",
+        );
         if (typeof window !== "undefined")
-          window.dispatchEvent(new CustomEvent("library:assist-adopted", {
-            detail: { connection: j.connection, bundle: j.bundle },
-          }));
+          window.dispatchEvent(
+            new CustomEvent("library:assist-adopted", {
+              detail: { connection: j.connection, bundle: j.bundle },
+            }),
+          );
         onAdopt?.();
       }
       if (action !== "preview") void load().catch((e) => setError(e.message));

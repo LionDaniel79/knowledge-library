@@ -300,9 +300,13 @@ it("accepts only the chosen AI link and returns its canonical row for connection
   const board = await readWhiteboard(f.db, s.owner);
   expect(board.connections).toHaveLength(1);
   expect(board.bundles.filter((v: any) => !v.archived_at)).toHaveLength(0);
-  expect((await f.db.query(
-    "SELECT * FROM library_topic_links WHERE owner_id=$1", [s.owner],
-  )).rows).toHaveLength(0);
+  expect(
+    (
+      await f.db.query("SELECT * FROM library_topic_links WHERE owner_id=$1", [
+        s.owner,
+      ])
+    ).rows,
+  ).toHaveLength(0);
   const requests = await s.store.status(s.owner, { id: s.request.id });
   expect(requests.requests[0].adoption.map((v: any) => v.index)).toEqual([0]);
 });

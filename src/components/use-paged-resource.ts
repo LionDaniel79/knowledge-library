@@ -1,7 +1,10 @@
 "use client";
 import { libraryRequest, isLocalReplicaReady } from "@/client/replica/request";
 import { useEffect, useRef, useState } from "react";
-import { mergeAdoptedRelationships, type AdoptedRelationship } from "@/lib/assist-adoption-overlay";
+import {
+  mergeAdoptedRelationships,
+  type AdoptedRelationship,
+} from "@/lib/assist-adoption-overlay";
 import { useReplicaDataOptional } from "./replica/provider";
 
 export function usePagedResource<T>(
@@ -14,7 +17,10 @@ export function usePagedResource<T>(
   const replica = useReplicaDataOptional();
   const [retry, setRetry] = useState(0);
   const confirmed = useRef({
-    connections: new Map<string, NonNullable<AdoptedRelationship["connection"]>>(),
+    connections: new Map<
+      string,
+      NonNullable<AdoptedRelationship["connection"]>
+    >(),
     bundles: new Map<string, NonNullable<AdoptedRelationship["bundle"]>>(),
   });
   useEffect(() => {
@@ -29,12 +35,20 @@ export function usePagedResource<T>(
     const refreshAfterAi = (event: Event) => {
       const value = (event as CustomEvent<AdoptedRelationship>).detail;
       if (value?.connection?.id)
-        confirmed.current.connections.set(value.connection.id, value.connection);
+        confirmed.current.connections.set(
+          value.connection.id,
+          value.connection,
+        );
       if (value?.bundle?.id)
         confirmed.current.bundles.set(value.bundle.id, value.bundle);
-      setState((previous) => previous.path === path && previous.data
-        ? { ...previous, data: mergeAdoptedRelationships(previous.data, confirmed.current) }
-        : previous);
+      setState((previous) =>
+        previous.path === path && previous.data
+          ? {
+              ...previous,
+              data: mergeAdoptedRelationships(previous.data, confirmed.current),
+            }
+          : previous,
+      );
       setRetry((n) => n + 1);
     };
     window.addEventListener("library:assist-adopted", refreshAfterAi);
