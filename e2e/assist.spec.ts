@@ -263,7 +263,7 @@ test("request list is compact, details are loaded on demand and current record f
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "분석할 기록 확인", exact: true })
+    .getByRole("button", { name: "분석", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "이 기록으로 AI 도움 요청", exact: true }),
@@ -317,7 +317,7 @@ test("raising a request cap preserves the monthly ceiling and does not start an 
 }) => {
   const f = await mount(page, false, "0.001");
   await page
-    .getByRole("button", { name: "분석할 기록 확인", exact: true })
+    .getByRole("button", { name: "분석", exact: true })
     .click();
   const request = page.getByRole("button", {
     name: "이 기록으로 AI 도움 요청",
