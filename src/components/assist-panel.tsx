@@ -97,7 +97,7 @@ export function AssistPanel({
     [focus, setFocus] = useState<keyof typeof focusNames>("all"),
     [maximum, setMaximum] = useState(24),
     [preview, setPreview] = useState<any>(null),
-    [requestsOpen, setRequestsOpen] = useState(true);
+    [requestsOpen, setRequestsOpen] = useState(false);
   const running = useRef(false),
     requestId = useRef(""),
     hidden = useRef(new Set<string>());
