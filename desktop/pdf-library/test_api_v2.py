@@ -93,6 +93,41 @@ class Contract(unittest.TestCase):
         for bad in [dict(bookId=None),dict(expectedBookVersion=True),dict(extra='private')]:
             with self.assertRaises(ValueError):api.prepare([items[0]|bad],uid(999))
 
+    def test_live_owner_scoped_version_snapshot_201_rows(self):
+        items = rows(201)
+        stamp = int(time.time())
+        def send(method, path, payload):
+            self.assertEqual((method,path),('POST','/api/desktop/catalog/versions'))
+            docs = set(payload['documentIds'])
+            return {'verifiedAtUnix':stamp,
+                    'items':[dict(legacyDocumentId=r['legacyDocumentId'],
+                                  bookId=r['bookId'],
+                                  expectedBookVersion=r['expectedBookVersion'])
+                             for r in reversed(items) if r['legacyDocumentId'] in docs]}
+        send = Mock(side_effect=send)
+        snapshot = api.fetch_version_snapshot(items,'https://test.invalid',send)
+        self.assertEqual(len(snapshot['items']),201)
+        self.assertEqual(snapshot['verifiedAtUnix'],stamp)
+        self.assertEqual(send.call_count,2)
+        self.assertEqual([len(call.args[2]['documentIds']) for call in send.call_args_list],[200,1])
+        api.check_snapshot(snapshot,'https://test.invalid',items)
+
+    def test_server_version_export_does_not_override_stale_local_data(self):
+        items = rows(1)
+        stamp = int(time.time())
+        for mismatch in ['version','book_id','unknown_document']:
+            def send(method,path,payload):
+                item=items[0]
+                value={'legacyDocumentId':item['legacyDocumentId'],
+                       'bookId':item['bookId'],
+                       'expectedBookVersion':item['expectedBookVersion']}
+                if mismatch=='version':value['expectedBookVersion']+=1
+                elif mismatch=='book_id':value['bookId']=uid(9999)
+                else:value['legacyDocumentId']=uid(9999)
+                return {'verifiedAtUnix':stamp,'items':[value]}
+            with self.subTest(mismatch=mismatch),self.assertRaises(ValueError):
+                api.fetch_version_snapshot(items,'https://test.invalid',send)
+
     def test_stale_and_wrong_owner_export(self):
         items = rows(1)
         for stamp, data in [(0,items),(time.time(),[])]:
