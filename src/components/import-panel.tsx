@@ -37,7 +37,11 @@ export function ImportPanel({
         iReadItNow HD에서 변환한 <b>ireaditnow-library.json</b> 파일을
         선택하세요.
       </p>
-      <p className="form-hint">로고스 전자책은 <a href="/logos/import">로고스 XML 전용 가져오기 화면</a>에서 검토할 수 있습니다.</p>
+      <p className="form-hint">
+        로고스 전자책은{" "}
+        <a href="/logos/import">로고스 XML 전용 가져오기 화면</a>에서 검토할 수
+        있습니다.
+      </p>
       <p className="form-hint">
         원본 ID가 같은 자료는 건너뛰고 기존 편집 내용은 유지합니다. 같은 ISBN의
         다른 항목은 자동으로 합치지 않습니다.
