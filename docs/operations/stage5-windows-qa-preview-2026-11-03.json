@@ -1,0 +1,16 @@
+{
+  "sourceCommit": "665537361ceebc4a1d9bd161d6c1608ccab0b3d5",
+  "serverApplied": false,
+  "sampleVersionMatches": 5,
+  "allVersionMatches": 4108,
+  "received": 4108,
+  "itemsDigest": "b4790ec251650e29ce237177c6aea07d7cdd5a9b4a54d4efe6f800fc4b0ed8e5",
+  "missing": 0,
+  "versionConflicts": 0,
+  "sameOperationReplay": true,
+  "status": "passed",
+  "canApplySelection": false,
+  "canDelete": false,
+  "temporaryBypassRevoked": true,
+  "timingNote": "The first sample was blocked by the strict timestamp check. The server timestamp was observed 1.26 seconds ahead. The QA harness waited for the PC clock to reach each response timestamp before running the unchanged client checks."
+}
