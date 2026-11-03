@@ -67,7 +67,7 @@ describe("Logos preview contract", () => {
     publisher: "Publisher",
     license: "permanent",
     series: "",
-    resourceType: "Book",
+    resourceType: "성경 주석",
     language: "English",
     publicationDate: "2020",
     edition: "First",
