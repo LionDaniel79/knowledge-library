@@ -1,0 +1,33 @@
+name: Stage5 one-time QA API formatter
+on:
+  push:
+    branches:
+      - feat/stage5-windows-https-v2
+    paths:
+      - .github/workflows/stage5-qa-format-once.yml
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/stage5-windows-https-v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Format stage5 QA sources
+        run: npx prettier --write src/app/api/desktop/catalog/versions/route.ts tests/desktop-http-manifest-stage5.test.ts
+      - name: Commit formatting
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/app/api/desktop/catalog/versions/route.ts tests/desktop-http-manifest-stage5.test.ts
+            git commit -m "style(stage5): format QA version API and HTTP tests"
+            git pull --rebase origin feat/stage5-windows-https-v2
+            git push origin HEAD:feat/stage5-windows-https-v2
+          fi
