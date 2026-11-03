@@ -10,7 +10,7 @@ import {
 import { desktopItemsDigest } from "../src/lib/desktop-catalog-contract";
 import { applyPdfRetention } from "../src/server/pdf-retention";
 
-it("archives nonselected PDFs reversibly and re-registers with the same document IDs", async () => {
+it("holds unselected PDFs and reversibly restores only a previously approved pdf_archive", async () => {
   const fixture = await testDatabase();
   const originalFlag = process.env.LIBRARY_STAGE5_WRITE_ENABLED;
   try {
@@ -83,6 +83,8 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
       selectedDocuments: 1,
       archiveBooks: 1,
       archiveDocuments: 1,
+      heldUnselectedBooks: 1,
+      automaticallyArchivableBooks: 0,
       canDelete: false,
     });
     const input = {
@@ -98,21 +100,28 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
     const applied = await applyPdfRetention(fixture.db, owner, first.id, input);
     expect(applied).toMatchObject({
       registeredDocuments: 1,
-      archivedBooks: 1,
+      archivedBooks: 0,
       restoredBooks: 0,
+      heldUnselectedBooks: 1,
       preservedPdfFiles: true,
     });
     expect(await applyPdfRetention(fixture.db, owner, first.id, input)).toEqual(
       applied,
     );
+    // A missing/unselected source PDF is not an archive instruction.
     expect(
       (
         await fixture.db.query(
-          "SELECT kind,state FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
+          "SELECT count(*)::int AS n FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
           [owner, secondBook],
         )
-      ).rows[0],
-    ).toMatchObject({ kind: "pdf_archive", state: "excluded" });
+      ).rows[0].n,
+    ).toBe(0);
+    // An explicitly preexisting reversible archive can still be restored.
+    await fixture.db.query(
+      "INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id,state) VALUES($1,$2,'pdf_archive','Previously reviewed decision',$3,'excluded')",
+      [secondBook,owner,randomUUID()],
+    );
     expect(
       (
         await fixture.db.query(
@@ -122,7 +131,7 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
       ).rows[0].state,
     ).toBe("registered");
 
-    const second = await seal(secondBook, secondDoc, 2);
+    const second = await seal(secondBook, secondDoc, 1);
     const restored = await applyPdfRetention(fixture.db, owner, second.id, {
       itemsDigest: second.itemsDigest,
       expectedArchiveBooks: 1,
@@ -130,8 +139,9 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
     });
     expect(restored).toMatchObject({
       registeredDocuments: 1,
-      archivedBooks: 1,
+      archivedBooks: 0,
       restoredBooks: 1,
+      heldUnselectedBooks: 1,
     });
     expect(
       (
@@ -148,7 +158,7 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
           [owner, firstDoc],
         )
       ).rows[0].state,
-    ).toBe("archived");
+    ).toBe("registered");
     expect(
       (
         await fixture.db.query(
