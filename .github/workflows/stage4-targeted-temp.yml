@@ -1,0 +1,18 @@
+name: Stage4 targeted CI
+on:
+  push:
+    branches: [feat/stage4-desktop-logos-web]
+permissions:
+  contents: read
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/desktop-catalog-contract.test.ts tests/desktop-catalog-integration.test.ts --maxWorkers=2
