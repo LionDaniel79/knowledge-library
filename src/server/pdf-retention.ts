@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { withSyncWrite } from "./sync/write";
+import { retentionHolds, unselectedPdfBooks } from "./pdf-retention-policy";
 import { LibraryError, type Database } from "./library-store";
 
 const input = z
@@ -63,22 +64,16 @@ export async function applyPdfRetention(
       if (
         row.document_book_id !== row.book_id ||
         row.app !== "Local PDF" ||
-        Number(row.version) !== Number(row.expected_book_version) ||
-        (row.exclusion_state === "excluded" &&
-          row.exclusion_kind !== "pdf_archive")
+        Number(row.version) !== Number(row.expected_book_version)
       )
         throw new LibraryError(
           409,
           "PDF 문서 소유권·버전 또는 수동 제외 상태가 변경되었습니다.",
         );
     }
-    const archive = (
-      await tx.query(
-        "SELECT DISTINCT b.id FROM library_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=b.owner_id AND i.manifest_id=$2 AND i.book_id=b.id) ORDER BY b.id",
-        [owner, id],
-      )
-    ).rows.map((row) => String(row.id));
-    if (archive.length !== p.expectedArchiveBooks)
+    const unselected = await unselectedPdfBooks(tx, owner, id);
+    const holds = retentionHolds(unselected);
+    if (unselected.length !== p.expectedArchiveBooks)
       throw new LibraryError(
         409,
         "기존 도서의 보관 후보 수가 달라졌습니다. 다시 검토해 주세요.",
@@ -96,15 +91,11 @@ export async function applyPdfRetention(
         ).rows.map((row) => String(row.id))
       : [];
 
-    // Do not override manually removed/excluded books.
-    const archived = archive.length
-      ? (
-          await tx.query(
-            "INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id,state) SELECT b.id,$1,'pdf_archive','지정 PDF 폴더 외 자료 보관',$3,'excluded' FROM library_books b WHERE b.owner_id=$1 AND b.id=ANY($2::uuid[]) ON CONFLICT(owner_id,id) DO UPDATE SET state='excluded',kind='pdf_archive',reason=excluded.reason,batch_id=excluded.batch_id,version=library_book_exclusions.version+1,updated_at=now() WHERE library_book_exclusions.kind='pdf_archive' AND library_book_exclusions.state<>'excluded' RETURNING id",
-            [owner, archive, id],
-          )
-        ).rows.map((row) => String(row.id))
-      : [];
+    // An absent PDF is not permission to hide its book. In particular,
+    // 37 moved research supplements and 3 owner-deleted/merged source PDFs
+    // must remain in the existing catalog state. A separately reviewed
+    // archive workflow is required before *any* new exclusion is created.
+    const archived: string[] = [];
 
     const registrations = selected.map((row) => ({
       document_id: row.document_id,
@@ -118,7 +109,7 @@ export async function applyPdfRetention(
         [owner, JSON.stringify(registrations), id],
       );
     await tx.query(
-      "UPDATE library_pdf_registry r SET state='archived',manifest_id=$2,updated_at=now() WHERE r.owner_id=$1 AND r.state='registered' AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=r.owner_id AND i.manifest_id=$2 AND i.document_id=r.document_id)",
+      "UPDATE library_pdf_registry r SET state='archived',manifest_id=$2,updated_at=now() WHERE r.owner_id=$1 AND r.state='registered' AND EXISTS(SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=r.owner_id AND e.id=r.book_id AND e.kind='pdf_archive' AND e.state='excluded') AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=r.owner_id AND i.manifest_id=$2 AND i.document_id=r.document_id)",
       [owner, id],
     );
     const changed = [...new Set([...restored, ...archived])];
@@ -153,6 +144,12 @@ export async function applyPdfRetention(
       registeredDocuments: registrations.length,
       archivedBooks: archived.length,
       restoredBooks: restored.length,
+      protectedSelectedExclusions: selected.filter(
+        (row) =>
+          row.exclusion_state === "excluded" &&
+          row.exclusion_kind !== "pdf_archive",
+      ).length,
+      ...holds,
       preservedPdfFiles: true,
       preservedOcrAndHistory: true,
     };
