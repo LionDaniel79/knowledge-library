@@ -45,10 +45,14 @@ export async function POST(request: Request) {
     ).rows[0];
     if (!row)
       throw new LibraryError(404, "선택한 기기의 검토 목록을 찾지 못했습니다.");
-    const preview = await previewDesktopCleanup(database, {
-      owner,
-      deviceId: String(row.token_id),
-    }, manifestId);
+    const preview = await previewDesktopCleanup(
+      database,
+      {
+        owner,
+        deviceId: String(row.token_id),
+      },
+      manifestId,
+    );
     return Response.json(preview, { headers });
   } catch (error) {
     return failure(error);
