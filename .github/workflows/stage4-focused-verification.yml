@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - name: Format stage4 code
         run: |
-          npx prettier --write src/server/pdf-retention.ts tests/pdf-retention-stage4.test.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx src/app/desktop/review/page.tsx src/components/book-exclusions.tsx src/server/desktop-catalog.ts tests/logos-stage4.test.ts tests/desktop-catalog-contract.test.ts e2e/logos-import-selection.spec.ts
+          npx prettier --write src/server/pdf-retention.ts tests/pdf-retention-stage4.test.ts src/server/logos-cover.ts tests/logos-apply-stage4.test.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx src/app/desktop/review/page.tsx src/components/book-exclusions.tsx src/server/desktop-catalog.ts tests/logos-stage4.test.ts tests/desktop-catalog-contract.test.ts e2e/logos-import-selection.spec.ts
       - name: Commit formatting (if needed)
         run: |
           if ! git diff --quiet; then
@@ -33,7 +33,7 @@ jobs:
             git push origin HEAD:feat/stage4-desktop-logos-web
           fi
       - run: npm run typecheck
-      - run: npx vitest run tests/pdf-retention-stage4.test.ts tests/desktop-catalog-integration.test.ts tests/logos-stage4.test.ts tests/desktop-catalog-contract.test.ts --maxWorkers=2
+      - run: npx vitest run tests/pdf-retention-stage4.test.ts tests/desktop-catalog-integration.test.ts tests/logos-stage4.test.ts tests/logos-apply-stage4.test.ts tests/desktop-catalog-contract.test.ts --maxWorkers=2
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test e2e/logos-import-selection.spec.ts
