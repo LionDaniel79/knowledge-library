@@ -1,0 +1,45 @@
+name: Windows PDF stage 5 contracts
+on:
+  push:
+    branches:
+      - feat/stage5-windows-https-v2
+    paths:
+      - "desktop/pdf-library/**"
+      - ".github/workflows/windows-pdf-stage5.yml"
+  pull_request:
+    paths:
+      - "desktop/pdf-library/**"
+      - ".github/workflows/windows-pdf-stage5.yml"
+permissions:
+  contents: read
+jobs:
+  windows-manifest:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install TypeScript contract dependencies
+        run: npm ci
+      - name: Run isolated Python HTTPS contract tests
+        working-directory: desktop/pdf-library
+        run: python -B -m unittest -v test_api_v2
+      - name: Cross-check 201 synthetic items against server TypeScript
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          $payload = & python -B -c "import json; from test_api_v2 import rows; from api_v2 import items_digest; r=rows(201)[::-1]; print(json.dumps({'rows':r,'digest':items_digest(r)}))"
+          if ($LASTEXITCODE -ne 0) { throw "Python digest fixture failed" }
+          $payload | node verify-digest.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Server/Python digest mismatch" }
+      - name: Compile Windows WPF searcher
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          .\Build.ps1 -Output "$env:RUNNER_TEMP\pdf-stage5.exe"
