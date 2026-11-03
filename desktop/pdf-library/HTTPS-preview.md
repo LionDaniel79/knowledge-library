@@ -6,7 +6,7 @@ WPF의 **HTTPS 전송 목록 점검**은 최신 완료 스캔과 현재 파일�
 
        {"origin":"https://test.example","verifiedAtUnix":0,"items":[{"legacyDocumentId":"<UUID>","bookId":"<UUID>","expectedBookVersion":1}]}
 
-2. 별도 검산 사본을 지정하고 그 안의 도서 ID·버전과 위 자료가 일치하는지 확인한다. 최초 기기 키는 PowerShell 보안 입력창에 입력한다. Windows 사용자의 DPAPI와 시험 origin별로 키를 보관한다.
+2. 별도 검산 사본을 지정하고 그 안의 도서 ID·버전과 위 자료가 일치하는지 확인한다. 먼저 관리자에게 **실제 운영 DB와 분리된 시험 DB인지 확인받은 HTTPS origin**을 정확히 허용 목록에 등록한다. PowerShell 창에서는 `$env:KL_STAGE5_TEST_ORIGIN = $testOrigin`으로 지정한다. Python도 같은 변수와 요청 origin의 완전 일치를 확인해 시험 환경이 아닌 곳으로 우발적으로 manifest를 보내는 일을 차단한다. 최초 기기 키는 PowerShell 보안 입력창에 입력한다. Windows 사용자의 DPAPI와 시험 origin별로 키를 보관한다.
 
        $op = [guid]::NewGuid()
        .\Test-ManifestPreview.ps1 -TestOrigin $testOrigin -Operation $op -VersionExport $versionJson -Index $index -Root $pdfRoot -Directory $scanCopy -Python $python -Enroll
