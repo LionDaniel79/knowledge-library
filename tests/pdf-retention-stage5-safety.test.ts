@@ -37,7 +37,14 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       material: Seed["material"],
       scope: Seed["scope"],
     ) => {
-      const row = { bookId: randomUUID(), documentId: randomUUID(), selected, kind, material, scope };
+      const row = {
+        bookId: randomUUID(),
+        documentId: randomUUID(),
+        selected,
+        kind,
+        material,
+        scope,
+      };
       cases.push(row);
       return row;
     };
@@ -45,7 +52,8 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     // Exact real-world cohort shapes; every identifier is synthetic.
     const manual = add(true, "book", "book", "full");
     for (let i = 0; i < 31; i++) add(true, "paper", "paper", "metadata_only");
-    for (let i = 0; i < 4; i++) add(true, "periodical", "periodical", "metadata_only");
+    for (let i = 0; i < 4; i++)
+      add(true, "periodical", "periodical", "metadata_only");
     const currentMergedBook = add(true, null, "book", "full");
     const reversible = add(true, "pdf_archive", "book", "full");
     const movedResearch = Array.from({ length: 37 }, () =>
@@ -60,7 +68,9 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       await fixture.db.query(
         "INSERT INTO library_books(id,owner_id,title,author,formats,source_key,source_data) VALUES($1,$2,$3,'QA',ARRAY['pdf'],$4,$5::jsonb)",
         [
-          row.bookId, owner, "Synthetic PDF " + i,
+          row.bookId,
+          owner,
+          "Synthetic PDF " + i,
           "qa-stage5-book-" + i,
           JSON.stringify({ app: "Local PDF", testOnly: true }),
         ],
@@ -90,7 +100,10 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
         [randomUUID(), owner, row.bookId],
       );
     }
-    const [left, right] = [referenceBook.bookId, currentMergedBook.bookId].sort();
+    const [left, right] = [
+      referenceBook.bookId,
+      currentMergedBook.bookId,
+    ].sort();
     await fixture.db.query(
       "INSERT INTO library_book_relations(id,owner_id,left_id,right_id,relation,state,reason,evidence) VALUES($1,$2,$3,$4,'same_edition','accepted','Synthetic link','{}'::jsonb)",
       [randomUUID(), owner, left, right],
@@ -105,28 +118,44 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     );
 
     const selected = cases.filter((row) => row.selected);
-    const start = await startDesktopManifest(fixture.db, { owner, deviceId }, {
-      operationId: randomUUID(),
-      scanComplete: true,
-      rootsAvailable: true,
-      physicalByRoot: { christian: selected.length, general: 0 },
-      expectedDocuments: selected.length,
-    });
+    const start = await startDesktopManifest(
+      fixture.db,
+      { owner, deviceId },
+      {
+        operationId: randomUUID(),
+        scanComplete: true,
+        rootsAvailable: true,
+        physicalByRoot: { christian: selected.length, general: 0 },
+        expectedDocuments: selected.length,
+      },
+    );
     const items = selected.map((row) => ({
       legacyDocumentId: row.documentId,
       bookId: row.bookId,
       expectedBookVersion: 1,
       copiesByRoot: { christian: 1, general: 0 },
     }));
-    expect((await putDesktopItems(fixture.db, {owner, deviceId}, start.manifestId, { items })).created)
-      .toBe(selected.length);
+    expect(
+      (
+        await putDesktopItems(
+          fixture.db,
+          { owner, deviceId },
+          start.manifestId,
+          { items },
+        )
+      ).created,
+    ).toBe(selected.length);
     const digest = desktopItemsDigest(items);
     await sealDesktopManifest(
-      fixture.db, { owner, deviceId }, start.manifestId,
+      fixture.db,
+      { owner, deviceId },
+      start.manifestId,
       { itemsDigest: digest },
     );
     const preview = await previewDesktopManifest(
-      fixture.db, { owner, deviceId }, start.manifestId,
+      fixture.db,
+      { owner, deviceId },
+      start.manifestId,
     );
     expect(preview).toMatchObject({
       selectedDocuments: 38,
@@ -143,7 +172,11 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       canApplySelection: false,
       canDelete: false,
     });
-    const cleanup = await previewDesktopCleanup(fixture.db, { owner, deviceId }, start.manifestId);
+    const cleanup = await previewDesktopCleanup(
+      fixture.db,
+      { owner, deviceId },
+      start.manifestId,
+    );
     expect(cleanup).toMatchObject({
       heldUnselectedBooks: 40,
       protectedSelectedBooks: 36,
@@ -157,15 +190,20 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     expect(Number(cleanup.relatedRecords.relations)).toBe(1);
     expect(Number(cleanup.relatedRecords.reference_sources)).toBe(1);
 
-    const fingerprint = async (table: string) => (
-      await fixture.db.query(
-        `SELECT count(*)::int AS n,md5(coalesce(string_agg(md5(to_jsonb(t)::text),'' ORDER BY t.id::text),'')) AS checksum FROM ${table} t WHERE owner_id=$1`,
-        [owner],
-      )
-    ).rows[0];
+    const fingerprint = async (table: string) =>
+      (
+        await fixture.db.query(
+          `SELECT count(*)::int AS n,md5(coalesce(string_agg(md5(to_jsonb(t)::text),'' ORDER BY t.id::text),'')) AS checksum FROM ${table} t WHERE owner_id=$1`,
+          [owner],
+        )
+      ).rows[0];
     const preservedTables = [
-      "library_documents", "library_notes", "library_cycles",
-      "library_book_relations", "library_catalog_reviews", "library_reference_sources",
+      "library_documents",
+      "library_notes",
+      "library_cycles",
+      "library_book_relations",
+      "library_catalog_reviews",
+      "library_reference_sources",
     ];
     const before = await Promise.all(preservedTables.map(fingerprint));
     const exclusionsBefore = await fixture.db.query(
@@ -190,17 +228,22 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       expectedArchiveBooks: 41,
       confirmation: "ARCHIVE_UNSELECTED_AND_REGISTER_SELECTED",
     };
-    await expect(applyPdfRetention(fixture.db, owner, start.manifestId, payload))
-      .rejects.toMatchObject({ status: 403 });
+    await expect(
+      applyPdfRetention(fixture.db, owner, start.manifestId, payload),
+    ).rejects.toMatchObject({ status: 403 });
 
     process.env.LIBRARY_STAGE5_WRITE_ENABLED = "true";
     await expect(
       applyPdfRetention(fixture.db, owner, start.manifestId, {
-        ...payload, expectedArchiveBooks: 40,
+        ...payload,
+        expectedArchiveBooks: 40,
       }),
     ).rejects.toMatchObject({ status: 409 });
     const applied = await applyPdfRetention(
-      fixture.db, owner, start.manifestId, payload,
+      fixture.db,
+      owner,
+      start.manifestId,
+      payload,
     );
     expect(applied).toMatchObject({
       registeredDocuments: 38,
@@ -216,39 +259,55 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       preservedOcrAndHistory: true,
     });
     // A repeated apply must not generate duplicate history or state changes.
-    expect(await applyPdfRetention(fixture.db, owner, start.manifestId, payload))
-      .toEqual(applied);
+    expect(
+      await applyPdfRetention(fixture.db, owner, start.manifestId, payload),
+    ).toEqual(applied);
 
     const after = await Promise.all(preservedTables.map(fingerprint));
     expect(after).toEqual(before);
     expect(
       (
-        await fixture.db.query("SELECT count(*)::int AS n FROM library_pdf_registry WHERE owner_id=$1 AND state='registered'", [owner])
+        await fixture.db.query(
+          "SELECT count(*)::int AS n FROM library_pdf_registry WHERE owner_id=$1 AND state='registered'",
+          [owner],
+        )
       ).rows[0].n,
     ).toBe(38);
     expect(
       (
-        await fixture.db.query("SELECT count(*)::int AS n FROM library_pdf_registry WHERE owner_id=$1 AND state='archived'", [owner])
+        await fixture.db.query(
+          "SELECT count(*)::int AS n FROM library_pdf_registry WHERE owner_id=$1 AND state='archived'",
+          [owner],
+        )
       ).rows[0].n,
     ).toBe(0);
     const exclusionsAfter = await fixture.db.query(
       "SELECT id,kind,state,reason,batch_id,version FROM library_book_exclusions WHERE owner_id=$1 ORDER BY id",
       [owner],
     );
-    const unchangedBefore = exclusionsBefore.rows.filter(row => row.id !== reversible.bookId);
-    const unchangedAfter = exclusionsAfter.rows.filter(row => row.id !== reversible.bookId);
+    const unchangedBefore = exclusionsBefore.rows.filter(
+      (row) => row.id !== reversible.bookId,
+    );
+    const unchangedAfter = exclusionsAfter.rows.filter(
+      (row) => row.id !== reversible.bookId,
+    );
     expect(unchangedAfter).toEqual(unchangedBefore);
-    expect(exclusionsAfter.rows.find(row => row.id === reversible.bookId)).toMatchObject({
-      kind: "pdf_archive", state: "restored",
+    expect(
+      exclusionsAfter.rows.find((row) => row.id === reversible.bookId),
+    ).toMatchObject({
+      kind: "pdf_archive",
+      state: "restored",
     });
     const currentBooks = await fixture.db.query(
       "SELECT id,version FROM library_books WHERE owner_id=$1 ORDER BY id",
       [owner],
     );
-    expect(currentBooks.rows.filter(row => row.id !== reversible.bookId)).toEqual(
-      existingBooks.rows.filter(row => row.id !== reversible.bookId),
-    );
-    expect(currentBooks.rows.find(row => row.id === reversible.bookId)?.version).toBe(2);
+    expect(
+      currentBooks.rows.filter((row) => row.id !== reversible.bookId),
+    ).toEqual(existingBooks.rows.filter((row) => row.id !== reversible.bookId));
+    expect(
+      currentBooks.rows.find((row) => row.id === reversible.bookId)?.version,
+    ).toBe(2);
     const activeAfter = await fixture.db.query(
       "SELECT count(*)::int AS n FROM library_active_books WHERE owner_id=$1",
       [owner],
@@ -264,7 +323,7 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     // owner-deleted MLK source are not hidden or deleted by an automated scan.
     for (const row of [...movedResearch, ...supersededOrDeleted]) {
       expect(
-        exclusionsAfter.rows.find(exclusion => exclusion.id === row.bookId)
+        exclusionsAfter.rows.find((exclusion) => exclusion.id === row.bookId),
       ).toBeUndefined();
     }
     expect(
@@ -284,7 +343,8 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       ).rows[0].state,
     ).toBe("excluded");
   } finally {
-    if (priorFlag === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+    if (priorFlag === undefined)
+      delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
     else process.env.LIBRARY_STAGE5_WRITE_ENABLED = priorFlag;
     await fixture.pg.close();
   }

@@ -28,7 +28,8 @@ export async function unselectedPdfBooks(
   );
   return result.rows.map((row) => ({
     id: String(row.id),
-    exclusionKind: row.exclusion_kind == null ? null : String(row.exclusion_kind),
+    exclusionKind:
+      row.exclusion_kind == null ? null : String(row.exclusion_kind),
     exclusionState:
       row.exclusion_state == null ? null : String(row.exclusion_state),
     reviewPending: row.review_pending === true,

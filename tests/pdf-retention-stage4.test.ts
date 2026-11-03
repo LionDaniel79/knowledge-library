@@ -120,7 +120,7 @@ it("holds unselected PDFs and reversibly restores only a previously approved pdf
     // An explicitly preexisting reversible archive can still be restored.
     await fixture.db.query(
       "INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id,state) VALUES($1,$2,'pdf_archive','Previously reviewed decision',$3,'excluded')",
-      [secondBook,owner,randomUUID()],
+      [secondBook, owner, randomUUID()],
     );
     expect(
       (
