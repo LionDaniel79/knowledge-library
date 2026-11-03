@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { testDatabase } from "./helpers/database";
 import { applyLogos, previewLogos } from "../src/server/logos-import";
