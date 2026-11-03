@@ -248,9 +248,20 @@ export async function previewDesktopCleanup(
       [who.owner, id],
     )
   ).rows[0];
+  const other=(await db.query(
+    "WITH candidates AS (SELECT d.book_id FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS (SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.document_id=d.id)) SELECT "+
+    "(SELECT count(*) FROM library_reference_sources r JOIN candidates x ON r.source_kind='book' AND r.source_id=x.book_id::text WHERE r.owner_id=$1)::int AS reference_sources,"+
+    "(SELECT count(*) FROM library_book_exclusions e JOIN candidates x ON e.id=x.book_id WHERE e.owner_id=$1)::int AS exclusions,"+
+    "(SELECT count(*) FROM library_book_introductions d JOIN candidates x ON d.book_id=x.book_id WHERE d.owner_id=$1)::int AS introductions,"+
+    "(SELECT count(*) FROM library_external_links l JOIN candidates x ON l.book_id=x.book_id WHERE l.owner_id=$1)::int AS external_links,"+
+    "(SELECT count(*) FROM library_field_origins f JOIN candidates x ON f.entity_id=x.book_id::text WHERE f.owner_id=$1)::int AS field_origins,"+
+    "(SELECT count(*) FROM library_connections c JOIN candidates x ON ((c.source_kind='book' AND c.source_id=x.book_id) OR (c.target_kind='book' AND c.target_id=x.book_id)) WHERE c.owner_id=$1)::int AS connections",
+    [who.owner,id],
+  )).rows[0];
   return {
     ...p,
-    relatedRecords: r,
+    relatedRecords: {...r,...other},
+    indirectJsonReferencesReviewed:false,
     backupVerified: false,
     syncVerified: false,
     deleteAuthorized: false,
