@@ -30,11 +30,22 @@ async function checks(db: Database, owner: string, items: LogosRow[]) {
   const candidates = (
     await db.query(
       "SELECT DISTINCT x.resource_id FROM jsonb_to_recordset($2::jsonb) AS x(resource_id text,title text,author text) JOIN library_books b ON b.owner_id=$1 AND lower(b.title)=lower(x.title) AND lower(b.author)=lower(x.author)",
-      [owner,JSON.stringify(items.map(i=>({resource_id:i.resourceId,title:i.title,author:i.author})))],
+      [
+        owner,
+        JSON.stringify(
+          items.map((i) => ({
+            resource_id: i.resourceId,
+            title: i.title,
+            author: i.author,
+          })),
+        ),
+      ],
     )
   ).rows;
-  const potential = new Set(candidates.map(r=>r.resource_id));
-  const conflicts = items.filter(i => !known.has(key(i)) && potential.has(i.resourceId));
+  const potential = new Set(candidates.map((r) => r.resource_id));
+  const conflicts = items.filter(
+    (i) => !known.has(key(i)) && potential.has(i.resourceId),
+  );
   return { known, conflicts };
 }
 export async function previewLogos(db: Database, owner: string, raw: unknown) {
