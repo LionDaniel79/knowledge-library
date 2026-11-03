@@ -23,7 +23,7 @@ export default function LogosImportPage() {
   const [created, setCreated] = useState<number | null>(null);
   useEffect(() => {
     void fetch("/api/logos", { credentials: "same-origin" })
-      .then(async (r) => r.ok ? r.json() : { registrationEnabled: false })
+      .then(async (r) => (r.ok ? r.json() : { registrationEnabled: false }))
       .then((v) => setRegistrationEnabled(v.registrationEnabled === true))
       .catch(() => setRegistrationEnabled(false));
   }, []);
@@ -92,7 +92,10 @@ export default function LogosImportPage() {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "apply", batch: { items: eligible.slice(i, i + 100) } }),
+          body: JSON.stringify({
+            action: "apply",
+            batch: { items: eligible.slice(i, i + 100) },
+          }),
         });
         const part = await response.json();
         if (!response.ok) throw Error(part.error ?? "등록에 실패했습니다.");
@@ -101,8 +104,12 @@ export default function LogosImportPage() {
       }
       setSummary(null);
     } catch (e) {
-      setError((e instanceof Error ? e.message : "등록 실패") +
-        " 이미 반영된 " + added + "건은 그대로 보존됩니다. 중복 검사 후 다시 진행하세요.");
+      setError(
+        (e instanceof Error ? e.message : "등록 실패") +
+          " 이미 반영된 " +
+          added +
+          "건은 그대로 보존됩니다. 중복 검사 후 다시 진행하세요.",
+      );
     } finally {
       setBusy(false);
       setConfirmed(false);
@@ -112,8 +119,9 @@ export default function LogosImportPage() {
     <main style={{ maxWidth: 900, margin: "3rem auto", padding: "1.5rem" }}>
       <h1>로고스 전자책 등록 준비</h1>
       <p>
-        Logos의 Excel 2003 XML 내보내기를 선택하세요. Resource Type이 성경 주석·단행본인 자료만 검토합니다. 이 화면은 서지 미리보기만
-        수행하며 실제 도서를 등록하지 않습니다.
+        Logos의 Excel 2003 XML 내보내기를 선택하세요. Resource Type이 성경
+        주석·단행본인 자료만 검토합니다. 이 화면은 서지 미리보기만 수행하며 실제
+        도서를 등록하지 않습니다.
       </p>
       <p>
         <a href="/">나의 서재로 돌아가기</a> ·{" "}
@@ -153,7 +161,9 @@ export default function LogosImportPage() {
         <section style={{ marginTop: 20 }}>
           <h2>파일 미리보기</h2>
           <p>
-            원본 {totalInFile.toLocaleString()}건 · 등록 대상 {rows.length.toLocaleString()}건 · 제외 {(totalInFile - rows.length).toLocaleString()}건 · 영구 소유{" "}
+            원본 {totalInFile.toLocaleString()}건 · 등록 대상{" "}
+            {rows.length.toLocaleString()}건 · 제외{" "}
+            {(totalInFile - rows.length).toLocaleString()}건 · 영구 소유{" "}
             {permanent.toLocaleString()}건 · 임시 소유{" "}
             {temporary.toLocaleString()}건
           </p>
@@ -208,21 +218,43 @@ export default function LogosImportPage() {
           )}
           {registrationEnabled ? (
             <section>
-              <p>기존 판본 충돌 {summary.possibleExistingEdition}건은 제외합니다. 실제 등록 전 대상과 백업을 확인하세요.</p>
+              <p>
+                기존 판본 충돌 {summary.possibleExistingEdition}건은 제외합니다.
+                실제 등록 전 대상과 백업을 확인하세요.
+              </p>
               <label>
-                <input type="checkbox" checked={confirmed} disabled={busy} onChange={(e) => setConfirmed(e.target.checked)} />
-                새 도서의 실제 등록을 승인합니다. 기존 도서는 자동 병합하지 않습니다.
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  disabled={busy}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                />
+                새 도서의 실제 등록을 승인합니다. 기존 도서는 자동 병합하지
+                않습니다.
               </label>
-              <button disabled={busy || !confirmed} onClick={() => void register()}>
+              <button
+                disabled={busy || !confirmed}
+                onClick={() => void register()}
+              >
                 중복·판본 충돌 자료를 제외하고 도서 등록
               </button>
             </section>
           ) : (
-            <p><strong>실제 등록은 운영 데이터 이전 승인 이후에만 활성화됩니다.</strong> 현재는 미리보기 전용입니다.</p>
+            <p>
+              <strong>
+                실제 등록은 운영 데이터 이전 승인 이후에만 활성화됩니다.
+              </strong>{" "}
+              현재는 미리보기 전용입니다.
+            </p>
           )}
         </section>
       )}
-      {created !== null && <p role="status">등록 성공: {created.toLocaleString()}건 (기존 도서·충돌 자료는 별도 검토)</p>}
+      {created !== null && (
+        <p role="status">
+          등록 성공: {created.toLocaleString()}건 (기존 도서·충돌 자료는 별도
+          검토)
+        </p>
+      )}
       {error && (
         <p role="alert" style={{ color: "crimson" }}>
           {error}

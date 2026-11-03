@@ -10,7 +10,10 @@ export async function GET() {
   try {
     await requireOwner();
     return Response.json(
-      { registrationEnabled: process.env.LIBRARY_STAGE5_WRITE_ENABLED === "true" },
+      {
+        registrationEnabled:
+          process.env.LIBRARY_STAGE5_WRITE_ENABLED === "true",
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e) {

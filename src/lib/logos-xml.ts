@@ -1,10 +1,18 @@
-import { LOGOS_INCLUDED_TYPES, logosRow, type LogosRow } from "./logos-contract";
+import {
+  LOGOS_INCLUDED_TYPES,
+  logosRow,
+  type LogosRow,
+} from "./logos-contract";
 const NS = "urn:schemas-microsoft-com:office:spreadsheet";
 const value = (cell: Element) =>
   Array.from(cell.children)
     .find((x) => x.localName === "Data")
     ?.textContent?.trim() ?? "";
-export function parseLogosXmlSelection(xml: string): { items: LogosRow[]; total: number; excluded: number } {
+export function parseLogosXmlSelection(xml: string): {
+  items: LogosRow[];
+  total: number;
+  excluded: number;
+} {
   if (new TextEncoder().encode(xml).length > 8 * 1024 * 1024)
     throw Error("로고스 XML은 8MB를 넘을 수 없습니다.");
   if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(xml))
@@ -33,7 +41,14 @@ export function parseLogosXmlSelection(xml: string): { items: LogosRow[]; total:
     return out;
   }
   const headers = rowCells(rows[0]);
-  const expected = ["Resource ID", "Title", "Authors", "Publishers", "License", "Resource Type"];
+  const expected = [
+    "Resource ID",
+    "Title",
+    "Authors",
+    "Publishers",
+    "License",
+    "Resource Type",
+  ];
   if (expected.some((h) => !headers.includes(h)))
     throw Error("Logos 서재 내보내기 형식이 아닙니다.");
   const results: LogosRow[] = [];
@@ -71,7 +86,8 @@ export function parseLogosXmlSelection(xml: string): { items: LogosRow[]; total:
     known.add(book.resourceId);
     results.push(book);
   }
-  if (!results.length) throw Error("등록 대상으로 지정한 성경 주석·단행본이 없습니다.");
+  if (!results.length)
+    throw Error("등록 대상으로 지정한 성경 주석·단행본이 없습니다.");
   return { items: results, total, excluded: total - results.length };
 }
 
