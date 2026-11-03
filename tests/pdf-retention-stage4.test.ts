@@ -34,8 +34,8 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
         [bookId, owner, key, key, JSON.stringify({ app: "Local PDF", recordId: documentId, libraryId: "test", raw: {} })],
       );
       await fixture.db.query(
-        "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'test','test.pdf','기독도서/test.pdf',1,'1','full','book','','v1')",
-        [documentId, owner, bookId],
+        "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'test',$4,$5,1,'1','full','book','','v1')",
+        [documentId, owner, bookId, key + '.pdf', '기독도서/' + key + '.pdf'],
       );
     }
     const seal = async (bookId: string, documentId: string, version: number) => {
