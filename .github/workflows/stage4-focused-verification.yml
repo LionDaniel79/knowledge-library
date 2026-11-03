@@ -5,6 +5,9 @@ on:
       - feat/stage4-desktop-logos-web
     paths:
       - .github/workflows/stage4-focused-verification.yml
+      - src/server/desktop-transition.ts
+      - src/server/pdf-retention.ts
+      - src/app/api/logos/route.ts
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -33,5 +36,5 @@ jobs:
             git push origin HEAD:feat/stage4-desktop-logos-web
           fi
       - run: npm run typecheck
-      - run: npx vitest run tests/desktop-transition.test.ts tests/desktop-catalog-integration.test.ts tests/logos-stage4.test.ts tests/desktop-catalog-contract.test.ts --maxWorkers=2
+      - run: npx vitest run tests/desktop-transition.test.ts tests/pdf-retention-stage4.test.ts tests/desktop-catalog-integration.test.ts tests/logos-stage4.test.ts tests/desktop-catalog-contract.test.ts --maxWorkers=2
       - run: npm run build
