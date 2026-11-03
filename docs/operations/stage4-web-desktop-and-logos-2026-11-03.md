@@ -40,3 +40,8 @@
 - 코드에는 XML 타입 제한, 기기 인증·소유자 경계, manifest 수량/지문 검산, 보관·재등록 기본 차단 및 왕복 회귀 테스트가 포함된다.
 - 4단계 PR 초안 상태를 유지하며 실제 운영 Neon 마이그레이션·자료 등록·PDF 보관·삭제·main 병합·Vercel 배포는 자동 진행하지 않는다.
 - 실기기 HTTPS 및 운영 데이터 검증, 외부 백업 복원, 표지 영구 저장 전략, 오래된 참조와 모바일 재접속 검사는 배포 승인 전에 별도로 완료해야 한다.
+
+## 6. CI 검수 기록
+
+- GitHub Actions [Stage4 focused verification #41592608651](https://github.com/LionDaniel79/knowledge-library/actions/runs/41592608651): 코드 서식, TypeScript, PDF 보관·등록 및 로고스 입력 회귀시험, Next.js production build, Chromium XML 선택 브라우저 시험 **통과**.
+- 이후 추가한 격리 DB의 로고스 실제 INSERT·표지 연결 시험은 최신 전체 CI에서 별도로 검증한다. 운영 DB·실제 PDF는 시험에 사용하지 않는다.
