@@ -23,7 +23,7 @@ class Contract(unittest.TestCase):
         for r in responses:
             r.read.return_value = b'{"ok":true}'
         conn.getresponse.side_effect = responses
-        with patch.object(api.http.client,'HTTPSConnection',return_value=conn), patch.object(api.time,'sleep'):
+        with patch.dict(api.os.environ,{'KL_STAGE5_TEST_ORIGIN':'https://test.invalid'}), patch.object(api.http.client,'HTTPSConnection',return_value=conn), patch.object(api.time,'sleep'):
             try:
                 return api.transport('https://test.invalid','klw_'+'a'*43)('POST',api.BASE,{})
             finally:
@@ -37,10 +37,20 @@ class Contract(unittest.TestCase):
             with self.subTest(code=code),self.assertRaisesRegex(ValueError,str(code)):
                 self.transport([code])
 
+    def test_disallow_unapproved_or_production_origin(self):
+        # Manifest staging changes DB state; HTTPS alone is not sufficient
+        # proof that a destination is an isolated staging environment.
+        with patch.dict(api.os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'allowlist'):
+                api.transport('https://test.invalid', 'klw_'+'a'*43)
+        with patch.dict(api.os.environ, {'KL_STAGE5_TEST_ORIGIN':'https://test.invalid'}):
+            with self.assertRaisesRegex(ValueError, 'allowlist'):
+                api.transport('https://production.example', 'klw_'+'a'*43)
+
     def test_tls_failure(self):
         conn = Mock()
         conn.request.side_effect = ssl.SSLCertVerificationError()
-        with patch.object(api.http.client,'HTTPSConnection',return_value=conn):
+        with patch.dict(api.os.environ,{'KL_STAGE5_TEST_ORIGIN':'https://test.invalid'}), patch.object(api.http.client,'HTTPSConnection',return_value=conn):
             with self.assertRaisesRegex(ValueError,'TLS validation'):
                 api.transport('https://test.invalid','klw_'+'a'*43)('POST',api.BASE,{})
         self.assertEqual(conn.request.call_count,1)
