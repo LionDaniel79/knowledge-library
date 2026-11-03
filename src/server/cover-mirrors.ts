@@ -1,3 +1,5 @@
+import sharp from "sharp";
+import { createHash } from "node:crypto";
 import { syncQuery } from "./sync/write";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import type { Book } from "../lib/domain";
@@ -66,6 +68,20 @@ export async function readStoredBookCover(
   ).rows[0];
   if (!book?.cover_url?.startsWith("https://"))
     throw new LibraryError(404, "저장할 표지가 없습니다.");
+  // For owner-verified Logos image URLs, proxy an optimized image without
+  // occupying the legacy 5,000-row base64 asset store.
+  const location = (await db.query(
+    "SELECT storage_kind,object_key FROM library_cover_locations WHERE owner_id=$1 AND book_id=$2",
+    [owner,bookId]
+  )).rows[0];
+  if(location?.storage_kind==="external" && location.object_key===book.cover_url){
+    const raw=await downloadCover(book.cover_url);
+    const bytes=await sharp(raw,{limitInputPixels:24000000,failOn:"error"})
+      .rotate().resize({width:800,height:1200,fit:"inside",withoutEnlargement:true})
+      .webp({quality:78}).toBuffer();
+    const checksum='"'+createHash("sha256").update(bytes).digest("hex")+'"';
+    return {bytes:etag===checksum?null:bytes,mime:"image/webp",etag:checksum};
+  }
   const asset = await mirrorCover(db, owner, book.cover_url);
   return createCoverStore(db).readConditional(owner, asset.id, etag);
 }
