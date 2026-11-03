@@ -18,6 +18,8 @@ type Preview = {
   manualExclusions: number;
   scopeExclusions: number;
   deleteCandidates: number;
+  archiveBooks: number;
+  archiveDocuments: number;
   warning: string;
   relatedRecords: Record<string, number>;
   indirectJsonReferencesReviewed: false;
@@ -77,7 +79,7 @@ export default function DesktopReviewPage() {
 
   return (
     <main style={{ maxWidth: 920, margin: "3rem auto", padding: "1.5rem" }}>
-      <h1>Windows PDF 등록·정리 사전 검토</h1>
+      <h1>Windows PDF 폴더 동기화·보관·재등록 검토</h1>
       <p>
         <a href="/desktop/connect">Windows 연결 설정</a> ·{" "}
         <a href="/">나의 서재</a>
@@ -87,7 +89,7 @@ export default function DesktopReviewPage() {
         PDF·메모·도서·OCR을 수정하거나 삭제하지 않습니다.
       </p>
       <p>
-        삭제 후보 수는 실행 승인 수가 아닙니다. 백업 복원·기기 동기화·간접
+        보관 대상 수는 삭제 승인 수가 아닙니다. 기존 문서와 OCR은 보존합니다. 백업 복원·기기 동기화·간접
         참조는 5단계에서 별도 확인합니다.
       </p>
       {manifests.length === 0 && !error && (
@@ -140,11 +142,11 @@ export default function DesktopReviewPage() {
           </p>
           <p>
             <strong>
-              정리 후보 {preview.deleteCandidates.toLocaleString()}건 (삭제하지
+              보관 후보 {preview.archiveBooks.toLocaleString()}권 / {preview.archiveDocuments.toLocaleString()}개 문서 (삭제하지
               않음)
             </strong>
           </p>
-          <h3>정리 후보의 관련 기록 건수</h3>
+          <h3>보관 후보의 관련 기록 건수</h3>
           <table>
             <thead>
               <tr>
