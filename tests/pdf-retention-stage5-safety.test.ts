@@ -77,7 +77,15 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       );
       await fixture.db.query(
         "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'qa',$4,$5,1,'1',$6,$7,'','v1')",
-        [row.documentId, owner, row.bookId, "fake-" + i + ".pdf", "qa/fake-" + i + ".pdf", row.scope, row.material],
+        [
+          row.documentId,
+          owner,
+          row.bookId,
+          "fake-" + i + ".pdf",
+          "qa/fake-" + i + ".pdf",
+          row.scope,
+          row.material,
+        ],
       );
       if (row.kind) {
         await fixture.db.query(
@@ -289,13 +297,14 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     ).toBe(40);
     const heldRegistered = await fixture.db.query(
       "SELECT document_id,state,manifest_id FROM library_pdf_registry WHERE owner_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY document_id",
-      [
-        owner,
-        [movedResearch[0].documentId, supersededOrDeleted[0].documentId],
-      ],
+      [owner, [movedResearch[0].documentId, supersededOrDeleted[0].documentId]],
     );
     expect(heldRegistered.rows).toHaveLength(2);
-    expect(heldRegistered.rows.every((row) => row.state === "registered" && row.manifest_id === null)).toBe(true);
+    expect(
+      heldRegistered.rows.every(
+        (row) => row.state === "registered" && row.manifest_id === null,
+      ),
+    ).toBe(true);
     expect(
       (
         await fixture.db.query(
@@ -316,7 +325,9 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     );
     expect(unchangedAfter).toEqual(unchangedBefore);
     expect(
-      exclusionsAfter.rows.find((row) => row.id === historicallyExcluded.bookId),
+      exclusionsAfter.rows.find(
+        (row) => row.id === historicallyExcluded.bookId,
+      ),
     ).toMatchObject({ kind: "paper", state: "excluded" });
     expect(
       exclusionsAfter.rows.find((row) => row.id === reversible.bookId),
