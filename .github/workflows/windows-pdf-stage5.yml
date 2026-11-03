@@ -40,6 +40,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Python digest fixture failed" }
           $payload | node verify-digest.cjs
           if ($LASTEXITCODE -ne 0) { throw "Server/Python digest mismatch" }
+      - name: Parse Windows QA enrollment and HTTPS preview scripts
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          foreach ($file in @('Test-ManifestPreview.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell syntax invalid: $file"
+            }
+          }
       - name: Compile Windows WPF searcher
         shell: pwsh
         working-directory: desktop/pdf-library
