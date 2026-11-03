@@ -55,6 +55,11 @@ try {
   );
   if (role) {
     await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_desktop_tokens,library_desktop_manifests,library_desktop_manifest_items,library_book_sources,library_pdf_registry,library_cover_locations TO "' +
+        role +
+        '"',
+    );
+    await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_memo_bundles,library_bundle_links TO "' +
         role +
         '"',
