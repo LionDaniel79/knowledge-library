@@ -5,9 +5,6 @@ on:
       - feat/stage4-desktop-logos-web
     paths:
       - .github/workflows/stage4-focused-verification.yml
-      - src/server/desktop-transition.ts
-      - src/server/pdf-retention.ts
-      - src/app/api/logos/route.ts
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -24,13 +21,13 @@ jobs:
       - run: npm ci
       - name: Format stage4 code
         run: |
-          npx prettier --write src/server/desktop-transition.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/desktop/catalog/cleanup/archive-batch/route.ts tests/desktop-transition.test.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx tests/logos-stage4.test.ts
+          npx prettier --write src/server/pdf-retention.ts tests/pdf-retention-stage4.test.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx tests/logos-stage4.test.ts
       - name: Commit formatting (if needed)
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/server/desktop-transition.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/desktop/catalog/cleanup/archive-batch/route.ts tests/desktop-transition.test.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx tests/logos-stage4.test.ts
+            git add src/server/pdf-retention.ts tests/pdf-retention-stage4.test.ts src/server/desktop-transition.ts src/app/api/desktop/catalog/manifests/'[id]'/apply-selection/route.ts src/app/api/desktop/catalog/cleanup/archive-batch/route.ts tests/desktop-transition.test.ts src/app/api/logos/route.ts src/lib/logos-xml.ts src/lib/logos-contract.ts src/app/logos/import/page.tsx tests/logos-stage4.test.ts
             git commit -m "style(stage4): format guarded PDF transition and Logos importer"
             git pull --rebase origin feat/stage4-desktop-logos-web
             git push origin HEAD:feat/stage4-desktop-logos-web
