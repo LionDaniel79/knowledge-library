@@ -117,6 +117,19 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       [randomUUID(), owner, referenceBook.bookId, "d".repeat(64)],
     );
 
+    // A prior registry entry on a held source must not be marked archived
+    // merely because the document moved out of the selected Windows roots.
+    await fixture.db.query(
+      "INSERT INTO library_pdf_registry(owner_id,document_id,book_id,registration_root,state) VALUES($1,$2,$3,'general','registered'),($1,$4,$5,'general','registered')",
+      [
+        owner,
+        movedResearch[0].documentId,
+        movedResearch[0].bookId,
+        supersededOrDeleted[0].documentId,
+        supersededOrDeleted[0].bookId,
+      ],
+    );
+
     const selected = cases.filter((row) => row.selected);
     const start = await startDesktopManifest(
       fixture.db,
@@ -273,7 +286,16 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
           [owner],
         )
       ).rows[0].n,
-    ).toBe(38);
+    ).toBe(40);
+    const heldRegistered = await fixture.db.query(
+      "SELECT document_id,state,manifest_id FROM library_pdf_registry WHERE owner_id=$1 AND document_id=ANY($2::uuid[]) ORDER BY document_id",
+      [
+        owner,
+        [movedResearch[0].documentId, supersededOrDeleted[0].documentId],
+      ],
+    );
+    expect(heldRegistered.rows).toHaveLength(2);
+    expect(heldRegistered.rows.every((row) => row.state === "registered" && row.manifest_id === null)).toBe(true);
     expect(
       (
         await fixture.db.query(
