@@ -38,7 +38,8 @@ export default function ConnectDesktop() {
     <main style={{ maxWidth: 720, margin: "3rem auto", padding: "1.5rem" }}>
       <h1>Windows PDF 검색기 연결</h1>
       <p>
-        <a href="/">나의 서재로 돌아가기</a>
+        <a href="/">나의 서재로 돌아가기</a> ·{" "}
+        <a href="/desktop/review">등록·정리 사전 검토</a>
       </p>
       <p>
         이 기기 인증키는 PDF 원본이나 OCR 본문 전송 권한이 없습니다. 서버에서
