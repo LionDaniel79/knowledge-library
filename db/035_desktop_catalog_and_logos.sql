@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS library_cover_locations (
  PRIMARY KEY(owner_id,book_id),
  FOREIGN KEY(owner_id,book_id) REFERENCES library_books(owner_id,id)
 );
+-- Reversible PDF preservation/re-registration. Older library_books/documents/OCR stay intact.
+ALTER TABLE library_book_exclusions DROP CONSTRAINT IF EXISTS library_book_exclusions_kind_check;
+ALTER TABLE library_book_exclusions ADD CONSTRAINT library_book_exclusions_kind_check
+  CHECK(kind IN ('book','paper','periodical','pdf_archive'));
+ALTER TABLE library_desktop_manifests ADD COLUMN IF NOT EXISTS applied_at timestamptz;
+ALTER TABLE library_desktop_manifests ADD COLUMN IF NOT EXISTS applied_summary jsonb;
+ALTER TABLE library_pdf_registry ADD COLUMN IF NOT EXISTS state text NOT NULL DEFAULT 'registered'
+  CHECK(state IN ('registered','archived'));
+ALTER TABLE library_pdf_registry ADD COLUMN IF NOT EXISTS manifest_id uuid;
+ALTER TABLE library_pdf_registry ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 -- Do not expose auth/manifest/cover staging to the IndexedDB replica.
 DO $role$ BEGIN
  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='library_web_runtime') THEN
