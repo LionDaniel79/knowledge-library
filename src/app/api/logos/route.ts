@@ -5,6 +5,17 @@ import { previewLogos, applyLogos } from "@/server/logos-import";
 import { failure } from "@/server/http";
 import { z } from "zod";
 export const dynamic = "force-dynamic";
+export async function GET() {
+  try {
+    await requireOwner();
+    return Response.json(
+      { registrationEnabled: process.env.LIBRARY_STAGE5_WRITE_ENABLED === "true" },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (e) {
+    return failure(e);
+  }
+}
 export async function POST(request: Request) {
   try {
     validateWriteOrigin(request, process.env.APP_ORIGIN ?? "");
