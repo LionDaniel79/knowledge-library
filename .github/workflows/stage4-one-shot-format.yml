@@ -1,0 +1,31 @@
+name: Stage4 one-shot formatter
+on:
+  push:
+    branches:
+      - feat/stage4-desktop-logos-web
+    paths:
+      - .github/workflows/stage4-one-shot-format.yml
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/stage4-desktop-logos-web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --write src/app/api/desktop/catalog/review/route.ts src/app/desktop/review/page.tsx src/app/desktop/connect/page.tsx tests/desktop-auth.test.ts
+      - name: Commit formatting
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/app/api/desktop/catalog/review/route.ts src/app/desktop/review/page.tsx src/app/desktop/connect/page.tsx tests/desktop-auth.test.ts
+            git commit -m "style(stage4): format owner review UI and token regression"
+            git push origin HEAD:feat/stage4-desktop-logos-web
+          fi
