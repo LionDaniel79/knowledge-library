@@ -14,8 +14,11 @@ it("accepts the Logos cover CDN on HTTPS, but never on HTTP", async () => {
   );
   expect(actual).toEqual(expected);
   await expect(
-    downloadCover("http://covers.logoscdn.com/lls_example/cover.jpg", async () => {
-      throw new Error("unsafe fetch");
-    }),
+    downloadCover(
+      "http://covers.logoscdn.com/lls_example/cover.jpg",
+      async () => {
+        throw new Error("unsafe fetch");
+      },
+    ),
   ).rejects.toMatchObject({ status: 400 });
 });
