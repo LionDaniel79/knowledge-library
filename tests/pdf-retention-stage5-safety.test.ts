@@ -293,6 +293,9 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
     );
     expect(unchangedAfter).toEqual(unchangedBefore);
     expect(
+      exclusionsAfter.rows.find((row) => row.id === historicallyExcluded.bookId),
+    ).toMatchObject({ kind: "paper", state: "excluded" });
+    expect(
       exclusionsAfter.rows.find((row) => row.id === reversible.bookId),
     ).toMatchObject({
       kind: "pdf_archive",
