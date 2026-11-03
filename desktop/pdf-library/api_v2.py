@@ -2,6 +2,7 @@
 import hashlib
 import http.client
 import json
+import os
 import re
 import ssl
 import time
@@ -74,6 +75,10 @@ def check_snapshot(snapshot, origin, rows):
 
 def transport(origin, token):
     require(re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]+)?', origin), 'HTTPS test origin required')
+    # A preview still writes manifests to a database. Require an explicit,
+    # exact-match allowlist to prevent accidental use of a production origin.
+    allowed = os.environ.get('KL_STAGE5_TEST_ORIGIN', '')
+    require(allowed and origin == allowed, 'Explicit isolated test origin allowlist required')
     target = urlsplit(origin)
     require(re.fullmatch(r'klw_[A-Za-z0-9_-]{43}', token) is not None, 'Invalid device credential')
     context = ssl.create_default_context()
