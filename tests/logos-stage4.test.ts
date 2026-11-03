@@ -19,7 +19,7 @@ it("previews Logos resources by stable ID, flags edition matches and forbids Sta
       publisher: "Publisher",
       license: "permanent" as const,
       series: "",
-      resourceType: "book",
+      resourceType: "단행본",
       language: "English",
       publicationDate: "2000",
       edition: "",
