@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { parseLogosXml } from "@/lib/logos-xml";
+import { parseLogosXmlSelection } from "@/lib/logos-xml";
 import type { LogosRow } from "@/lib/logos-contract";
 type Result = {
   received: number;
@@ -13,6 +13,7 @@ type Result = {
 };
 export default function LogosImportPage() {
   const [rows, setRows] = useState<LogosRow[]>([]);
+  const [totalInFile, setTotalInFile] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -75,7 +76,7 @@ export default function LogosImportPage() {
     <main style={{ maxWidth: 900, margin: "3rem auto", padding: "1.5rem" }}>
       <h1>로고스 전자책 등록 준비</h1>
       <p>
-        Logos의 Excel 2003 XML 내보내기를 선택하세요. 이 화면은 서지 미리보기만
+        Logos의 Excel 2003 XML 내보내기를 선택하세요. Resource Type이 성경 주석·단행본인 자료만 검토합니다. 이 화면은 서지 미리보기만
         수행하며 실제 도서를 등록하지 않습니다.
       </p>
       <p>
@@ -91,6 +92,7 @@ export default function LogosImportPage() {
           onChange={async (e) => {
             setError("");
             setRows([]);
+            setTotalInFile(0);
             setSummary(null);
             setProgress(0);
             const file = e.target.files?.[0];
@@ -98,7 +100,9 @@ export default function LogosImportPage() {
             try {
               if (file.size > 8 * 1024 * 1024)
                 throw Error("8MB 이하 XML 파일을 선택해 주세요.");
-              setRows(parseLogosXml(await file.text()));
+              const selection = parseLogosXmlSelection(await file.text());
+              setRows(selection.items);
+              setTotalInFile(selection.total);
             } catch (x) {
               setError(
                 x instanceof Error ? x.message : "XML을 읽지 못했습니다.",
@@ -111,7 +115,7 @@ export default function LogosImportPage() {
         <section style={{ marginTop: 20 }}>
           <h2>파일 미리보기</h2>
           <p>
-            전체 {rows.length.toLocaleString()}건 · 영구 소유{" "}
+            원본 {totalInFile.toLocaleString()}건 · 등록 대상 {rows.length.toLocaleString()}건 · 제외 {(totalInFile - rows.length).toLocaleString()}건 · 영구 소유{" "}
             {permanent.toLocaleString()}건 · 임시 소유{" "}
             {temporary.toLocaleString()}건
           </p>
