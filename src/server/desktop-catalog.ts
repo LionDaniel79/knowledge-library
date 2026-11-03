@@ -212,7 +212,7 @@ export async function previewDesktopManifest(
     throw new LibraryError(409, "확정된 목록만 검토할 수 있습니다.");
   const c = (
     await db.query(
-      "WITH selected AS (SELECT i.document_id,i.book_id,i.expected_book_version,b.version,b.source_data->>'app' AS app,e.state,e.kind FROM library_desktop_manifest_items i LEFT JOIN library_documents d ON d.owner_id=i.owner_id AND d.id=i.document_id LEFT JOIN library_books b ON b.owner_id=i.owner_id AND b.id=i.book_id AND d.book_id=b.id LEFT JOIN library_book_exclusions e ON e.owner_id=i.owner_id AND e.id=i.book_id WHERE i.owner_id=$1 AND i.manifest_id=$2) SELECT count(*)::int AS selected,count(*) FILTER(WHERE version IS NULL OR app IS DISTINCT FROM 'Local PDF')::int AS missing,count(*) FILTER(WHERE version IS NOT NULL AND version<>expected_book_version)::int AS conflicts,count(*) FILTER(WHERE state='excluded' AND kind='book')::int AS manual_exclusions,count(*) FILTER(WHERE state='excluded' AND kind<>'book')::int AS scope_exclusions FROM selected",
+      "WITH selected AS (SELECT i.document_id,i.book_id,i.expected_book_version,b.version,b.source_data->>'app' AS app,e.state,e.kind FROM library_desktop_manifest_items i LEFT JOIN library_documents d ON d.owner_id=i.owner_id AND d.id=i.document_id LEFT JOIN library_books b ON b.owner_id=i.owner_id AND b.id=i.book_id AND d.book_id=b.id LEFT JOIN library_book_exclusions e ON e.owner_id=i.owner_id AND e.id=i.book_id WHERE i.owner_id=$1 AND i.manifest_id=$2) SELECT count(*)::int AS selected,count(*) FILTER(WHERE version IS NULL OR app IS DISTINCT FROM 'Local PDF')::int AS missing,count(*) FILTER(WHERE version IS NOT NULL AND version<>expected_book_version)::int AS conflicts,count(*) FILTER(WHERE state='excluded' AND kind='book')::int AS manual_exclusions,count(*) FILTER(WHERE state='excluded' AND kind IN ('paper','periodical'))::int AS scope_exclusions,count(*) FILTER(WHERE state='excluded' AND kind='pdf_archive')::int AS restorable_pdf_archive FROM selected",
       [who.owner, id],
     )
   ).rows[0];
@@ -240,6 +240,7 @@ export async function previewDesktopManifest(
     versionConflicts: Number(c.conflicts),
     manualExclusions: Number(c.manual_exclusions),
     scopeExclusions: Number(c.scope_exclusions),
+    restorablePdfArchiveBooks: Number(c.restorable_pdf_archive),
     deleteCandidates: Number(d.n), // Legacy compatibility: document count, never deletion approval.
     archiveBooks: Number(a.n),
     archiveDocuments: Number(d.n),
