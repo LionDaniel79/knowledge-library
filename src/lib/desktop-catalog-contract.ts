@@ -45,6 +45,6 @@ export function desktopItemsDigest(items: DesktopItem[]) {
   const canonical = items.map(i => [
     i.legacyDocumentId.toLowerCase(), i.bookId.toLowerCase(),
     i.expectedBookVersion, i.copiesByRoot.christian, i.copiesByRoot.general
-  ]).sort((a,b) => String(a[0]).localeCompare(String(b[0]),"en"));
+  ]).sort((a,b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
   return createHash("sha256").update(JSON.stringify(canonical),"utf8").digest("hex");
 }
