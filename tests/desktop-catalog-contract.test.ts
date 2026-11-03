@@ -77,11 +77,25 @@ describe("Logos preview contract", () => {
     expect(
       logosBatch.safeParse({ items: [{ ...logos, resourceType: "설교" }] })
         .success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       logosBatch.safeParse({ items: [{ ...logos, resourceType: "주석" }] })
         .success,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      logosBatch.safeParse({ items: [{ ...logos, resourceType: "조직 신학" }] })
+        .success,
+    ).toBe(true);
+    expect(
+      logosBatch.safeParse({ items: [{ ...logos, resourceType: "학술지" }] })
+        .success,
+    ).toBe(true);
+    for (const nonBook of ["미디어 컬렉션", "코스웨어 미디어 컬렉션", "인터랙티브", "설명서", "구 시각화", "성경 인물 도표", "성경 장소 지도", "UNKNOWN_KIND"]) {
+      expect(
+        logosBatch.safeParse({ items: [{ ...logos, resourceType: nonBook }] })
+          .success,
+      ).toBe(false);
+    }
     expect(
       logosBatch.safeParse({ items: [{ ...logos, resourceType: "단행본" }] })
         .success,
