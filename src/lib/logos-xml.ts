@@ -1,10 +1,10 @@
-import { logosRow, type LogosRow } from "./logos-contract";
+import { LOGOS_INCLUDED_TYPES, logosRow, type LogosRow } from "./logos-contract";
 const NS = "urn:schemas-microsoft-com:office:spreadsheet";
 const value = (cell: Element) =>
   Array.from(cell.children)
     .find((x) => x.localName === "Data")
     ?.textContent?.trim() ?? "";
-export function parseLogosXml(xml: string): LogosRow[] {
+export function parseLogosXmlSelection(xml: string): { items: LogosRow[]; total: number; excluded: number } {
   if (new TextEncoder().encode(xml).length > 8 * 1024 * 1024)
     throw Error("로고스 XML은 8MB를 넘을 수 없습니다.");
   if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(xml))
@@ -33,15 +33,20 @@ export function parseLogosXml(xml: string): LogosRow[] {
     return out;
   }
   const headers = rowCells(rows[0]);
-  const expected = ["Resource ID", "Title", "Authors", "Publishers", "License"];
+  const expected = ["Resource ID", "Title", "Authors", "Publishers", "License", "Resource Type"];
   if (expected.some((h) => !headers.includes(h)))
     throw Error("Logos 서재 내보내기 형식이 아닙니다.");
   const results: LogosRow[] = [];
   const known = new Set<string>();
+  let total = 0;
   for (const row of rows.slice(1)) {
     const cells = rowCells(row);
     const cell = (header: string) => cells[headers.indexOf(header)] ?? "";
     if (!cell("Resource ID")) continue;
+    total++;
+    // Use the exact Logos Resource Type, not title keywords or an inferred genre.
+    if (!LOGOS_INCLUDED_TYPES.some((type) => type === cell("Resource Type")))
+      continue;
     const licenseText = cell("License");
     const license =
       licenseText === "영구 소유"
@@ -66,6 +71,10 @@ export function parseLogosXml(xml: string): LogosRow[] {
     known.add(book.resourceId);
     results.push(book);
   }
-  if (!results.length) throw Error("로고스 도서 정보가 없습니다.");
-  return results;
+  if (!results.length) throw Error("등록 대상으로 지정한 성경 주석·단행본이 없습니다.");
+  return { items: results, total, excluded: total - results.length };
+}
+
+export function parseLogosXml(xml: string): LogosRow[] {
+  return parseLogosXmlSelection(xml).items;
 }
