@@ -1,7 +1,7 @@
 import { requireOwner } from "@/server/auth";
 import { validateWriteOrigin } from "@/server/access";
 import { database } from "@/server/db";
-import { applyPdfRetention } from "@/server/pdf-retention";
+import { registerSelectedPdfBooks } from "@/server/desktop-transition";
 import { failure } from "@/server/http";
 import { LibraryError } from "@/server/library-store";
 
@@ -18,7 +18,7 @@ export async function POST(
     const raw = await request.text();
     if (Buffer.byteLength(raw) > 2048)
       throw new LibraryError(413, "요청 크기가 너무 큽니다.");
-    const result = await applyPdfRetention(
+    const result = await registerSelectedPdfBooks(
       database,
       owner,
       (await params).id,
