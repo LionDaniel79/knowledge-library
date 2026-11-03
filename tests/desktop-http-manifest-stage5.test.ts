@@ -16,6 +16,7 @@ import { POST as startRoute } from "../src/app/api/desktop/catalog/manifests/rou
 import { PUT as itemsRoute } from "../src/app/api/desktop/catalog/manifests/[id]/items/route";
 import { POST as sealRoute } from "../src/app/api/desktop/catalog/manifests/[id]/seal/route";
 import { POST as previewRoute } from "../src/app/api/desktop/catalog/manifests/[id]/preview/route";
+import { POST as versionsRoute } from "../src/app/api/desktop/catalog/versions/route";
 
 const base = "https://stage5-test.invalid/api/desktop/catalog/manifests";
 function req(
@@ -56,6 +57,37 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
       [documentId, owner, bookId],
     );
     const token = await createDesktopToken(fixture.db, owner, "QA device");
+    // A Windows scan may only obtain fresh owner-scoped IDs and versions,
+    // never absolute filenames, PDF contents, OCR text or other users' IDs.
+    const versionsUrl =
+      "https://stage5-test.invalid/api/desktop/catalog/versions";
+    expect(
+      (await versionsRoute(
+        req(versionsUrl, "POST", { documentIds: [documentId] }),
+      )).status,
+    ).toBe(401);
+    const currentVersions = await versionsRoute(
+      req(versionsUrl, "POST", { documentIds: [documentId] }, token.token),
+    );
+    expect(currentVersions.status).toBe(200);
+    expect(currentVersions.headers.get("cache-control")).toContain("no-store");
+    const currentVersionsBody = await currentVersions.json();
+    expect(currentVersionsBody.items).toEqual([
+      { legacyDocumentId: documentId, bookId, expectedBookVersion: 1 },
+    ]);
+    expect(currentVersionsBody.verifiedAtUnix).toEqual(expect.any(Number));
+    expect(JSON.stringify(currentVersionsBody)).not.toContain("test.pdf");
+    expect(
+      (await versionsRoute(
+        req(versionsUrl, "POST", { documentIds: [documentId, documentId] }, token.token),
+      )).status,
+    ).toBe(400);
+    expect(
+      (await versionsRoute(
+        req(versionsUrl, "POST", { documentIds: [randomUUID()] }, token.token),
+      )).status,
+    ).toBe(409);
+
     const start = {
       operationId,
       scanComplete: true,
