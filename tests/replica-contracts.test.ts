@@ -37,6 +37,13 @@ it("includes every owner application table and its complete safe column set", as
     "library_mcp_tokens",
     "library_assist_workers",
     "library_analysis_workers",
+    // Server-only Stage 4 catalog/linkage tables must never reach a device replica.
+    "library_desktop_tokens",
+    "library_desktop_manifests",
+    "library_desktop_manifest_items",
+    "library_book_sources",
+    "library_pdf_registry",
+    "library_cover_locations",
   ]);
   const tables = [...new Set(rows.map((r) => String(r.table_name)))].filter(
     (t) => !serverOnly.has(t) && !t.startsWith("library_sync_"),
