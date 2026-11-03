@@ -89,8 +89,8 @@ export default function DesktopReviewPage() {
         PDF·메모·도서·OCR을 수정하거나 삭제하지 않습니다.
       </p>
       <p>
-        보관 대상 수는 삭제 승인 수가 아닙니다. 기존 문서와 OCR은 보존합니다. 백업 복원·기기 동기화·간접
-        참조는 5단계에서 별도 확인합니다.
+        보관 대상 수는 삭제 승인 수가 아닙니다. 기존 문서와 OCR은 보존합니다.
+        백업 복원·기기 동기화·간접 참조는 5단계에서 별도 확인합니다.
       </p>
       {manifests.length === 0 && !error && (
         <p>
@@ -142,8 +142,8 @@ export default function DesktopReviewPage() {
           </p>
           <p>
             <strong>
-              보관 후보 {preview.archiveBooks.toLocaleString()}권 / {preview.archiveDocuments.toLocaleString()}개 문서 (삭제하지
-              않음)
+              보관 후보 {preview.archiveBooks.toLocaleString()}권 /{" "}
+              {preview.archiveDocuments.toLocaleString()}개 문서 (삭제하지 않음)
             </strong>
           </p>
           <h3>보관 후보의 관련 기록 건수</h3>

@@ -31,14 +31,29 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
     ]) {
       await fixture.db.query(
         "INSERT INTO library_books(id,owner_id,title,author,formats,source_key,source_data) VALUES($1,$2,$3,'author',ARRAY['pdf'],$4,$5::jsonb)",
-        [bookId, owner, key, key, JSON.stringify({ app: "Local PDF", recordId: documentId, libraryId: "test", raw: {} })],
+        [
+          bookId,
+          owner,
+          key,
+          key,
+          JSON.stringify({
+            app: "Local PDF",
+            recordId: documentId,
+            libraryId: "test",
+            raw: {},
+          }),
+        ],
       );
       await fixture.db.query(
         "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'test',$4,$5,1,'1','full','book','','v1')",
-        [documentId, owner, bookId, key + '.pdf', '기독도서/' + key + '.pdf'],
+        [documentId, owner, bookId, key + ".pdf", "기독도서/" + key + ".pdf"],
       );
     }
-    const seal = async (bookId: string, documentId: string, version: number) => {
+    const seal = async (
+      bookId: string,
+      documentId: string,
+      version: number,
+    ) => {
       const begin = await startDesktopManifest(fixture.db, who, {
         operationId: randomUUID(),
         scanComplete: true,
@@ -52,13 +67,19 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
         expectedBookVersion: version,
         copiesByRoot: { christian: 1, general: 0 },
       };
-      await putDesktopItems(fixture.db, who, begin.manifestId, { items: [item] });
+      await putDesktopItems(fixture.db, who, begin.manifestId, {
+        items: [item],
+      });
       const itemsDigest = desktopItemsDigest([item]);
-      await sealDesktopManifest(fixture.db, who, begin.manifestId, { itemsDigest });
+      await sealDesktopManifest(fixture.db, who, begin.manifestId, {
+        itemsDigest,
+      });
       return { id: begin.manifestId, itemsDigest };
     };
     const first = await seal(firstBook, firstDoc, 1);
-    expect(await previewDesktopManifest(fixture.db, who, first.id)).toMatchObject({
+    expect(
+      await previewDesktopManifest(fixture.db, who, first.id),
+    ).toMatchObject({
       selectedDocuments: 1,
       archiveBooks: 1,
       archiveDocuments: 1,
@@ -70,8 +91,9 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
       confirmation: "ARCHIVE_UNSELECTED_AND_REGISTER_SELECTED",
     };
     delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
-    await expect(applyPdfRetention(fixture.db, owner, first.id, input))
-      .rejects.toMatchObject({ status: 403 });
+    await expect(
+      applyPdfRetention(fixture.db, owner, first.id, input),
+    ).rejects.toMatchObject({ status: 403 });
     process.env.LIBRARY_STAGE5_WRITE_ENABLED = "true";
     const applied = await applyPdfRetention(fixture.db, owner, first.id, input);
     expect(applied).toMatchObject({
@@ -80,8 +102,9 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
       restoredBooks: 0,
       preservedPdfFiles: true,
     });
-    expect(await applyPdfRetention(fixture.db, owner, first.id, input))
-      .toEqual(applied);
+    expect(await applyPdfRetention(fixture.db, owner, first.id, input)).toEqual(
+      applied,
+    );
     expect(
       (
         await fixture.db.query(
@@ -135,7 +158,8 @@ it("archives nonselected PDFs reversibly and re-registers with the same document
       ).rows[0].n,
     ).toBe(2);
   } finally {
-    if (originalFlag === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+    if (originalFlag === undefined)
+      delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
     else process.env.LIBRARY_STAGE5_WRITE_ENABLED = originalFlag;
     await fixture.pg.close();
   }

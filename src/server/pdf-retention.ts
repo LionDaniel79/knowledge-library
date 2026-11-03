@@ -3,11 +3,13 @@ import { z } from "zod";
 import { withSyncWrite } from "./sync/write";
 import { LibraryError, type Database } from "./library-store";
 
-const input = z.object({
-  itemsDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  expectedArchiveBooks: z.number().int().min(0).max(100000),
-  confirmation: z.literal("ARCHIVE_UNSELECTED_AND_REGISTER_SELECTED"),
-}).strict();
+const input = z
+  .object({
+    itemsDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    expectedArchiveBooks: z.number().int().min(0).max(100000),
+    confirmation: z.literal("ARCHIVE_UNSELECTED_AND_REGISTER_SELECTED"),
+  })
+  .strict();
 
 /**
  * Prepare a reversible catalog change, without changing a PDF file, OCR, document
@@ -21,7 +23,10 @@ export async function applyPdfRetention(
   raw: unknown,
 ) {
   if (process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
-    throw new LibraryError(403, "별도 승인 전에는 PDF 보관·재등록을 실행할 수 없습니다.");
+    throw new LibraryError(
+      403,
+      "별도 승인 전에는 PDF 보관·재등록을 실행할 수 없습니다.",
+    );
   const id = z.string().uuid().parse(manifestId);
   const p = input.parse(raw);
   return withSyncWrite(db, owner, async (tx) => {
@@ -59,9 +64,13 @@ export async function applyPdfRetention(
         row.document_book_id !== row.book_id ||
         row.app !== "Local PDF" ||
         Number(row.version) !== Number(row.expected_book_version) ||
-        (row.exclusion_state === "excluded" && row.exclusion_kind !== "pdf_archive")
+        (row.exclusion_state === "excluded" &&
+          row.exclusion_kind !== "pdf_archive")
       )
-        throw new LibraryError(409, "PDF 문서 소유권·버전 또는 수동 제외 상태가 변경되었습니다.");
+        throw new LibraryError(
+          409,
+          "PDF 문서 소유권·버전 또는 수동 제외 상태가 변경되었습니다.",
+        );
     }
     const archive = (
       await tx.query(
@@ -70,9 +79,14 @@ export async function applyPdfRetention(
       )
     ).rows.map((row) => String(row.id));
     if (archive.length !== p.expectedArchiveBooks)
-      throw new LibraryError(409, "기존 도서의 보관 후보 수가 달라졌습니다. 다시 검토해 주세요.");
+      throw new LibraryError(
+        409,
+        "기존 도서의 보관 후보 수가 달라졌습니다. 다시 검토해 주세요.",
+      );
 
-    const selectedBooks = [...new Set(selected.map((row) => String(row.book_id)))];
+    const selectedBooks = [
+      ...new Set(selected.map((row) => String(row.book_id))),
+    ];
     const restored = selectedBooks.length
       ? (
           await tx.query(
@@ -95,7 +109,8 @@ export async function applyPdfRetention(
     const registrations = selected.map((row) => ({
       document_id: row.document_id,
       book_id: row.book_id,
-      registration_root: Number(row.christian_copies) > 0 ? "christian" : "general",
+      registration_root:
+        Number(row.christian_copies) > 0 ? "christian" : "general",
     }));
     if (registrations.length)
       await tx.query(
@@ -117,8 +132,18 @@ export async function applyPdfRetention(
         [
           owner,
           JSON.stringify([
-            ...restored.map((bookId) => ({ id: randomUUID(), book_id: bookId, action: "restorePdf", after_data: { manifestId: id, state: "registered" } })),
-            ...archived.map((bookId) => ({ id: randomUUID(), book_id: bookId, action: "archivePdf", after_data: { manifestId: id, state: "archived" } })),
+            ...restored.map((bookId) => ({
+              id: randomUUID(),
+              book_id: bookId,
+              action: "restorePdf",
+              after_data: { manifestId: id, state: "registered" },
+            })),
+            ...archived.map((bookId) => ({
+              id: randomUUID(),
+              book_id: bookId,
+              action: "archivePdf",
+              after_data: { manifestId: id, state: "archived" },
+            })),
           ]),
         ],
       );
