@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Database, Executor } from "./library-store";
 import { LibraryError } from "./library-store";
 import type { DesktopIdentity } from "./desktop-auth";
+import { retentionHolds, unselectedPdfBooks } from "./pdf-retention-policy";
 import {
   desktopStart,
   desktopPut,
@@ -227,9 +228,13 @@ export async function previewDesktopManifest(
       [who.owner, id],
     )
   ).rows[0];
+  const holds = retentionHolds(await unselectedPdfBooks(db, who.owner, id));
   return {
     manifestId: id,
     status: "preview",
+    ...holds,
+    protectedSelectedBooks:
+      Number(c.manual_exclusions) + Number(c.scope_exclusions),
     selectedDocuments: Number(c.selected),
     missing: Number(c.missing),
     versionConflicts: Number(c.conflicts),
@@ -241,7 +246,7 @@ export async function previewDesktopManifest(
     canApplySelection: false,
     canDelete: false,
     warning:
-      "선택되지 않은 기존 PDF는 삭제하지 않고 보관하며, 승인 후 같은 문서 ID로 재등록합니다. 5단계 백업 검증과 별도 승인 전에는 실행되지 않습니다.",
+      "미선택 5,213건과 보관 승인은 다릅니다. 사용자 제외 36건을 자동 복원하지 않으며 미선택·미제외 자료는 자동 보관하지 않습니다. 기존 도서 ID·메모·독서 기록을 유지하고 별도 검토·백업·승인이 필요합니다.",
   };
 }
 export async function previewDesktopCleanup(
