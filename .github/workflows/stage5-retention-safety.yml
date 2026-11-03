@@ -1,5 +1,6 @@
 name: Stage5 reversible PDF retention safety
 on:
+  workflow_dispatch:
   push:
     branches:
       - feat/stage5-windows-https-v2
