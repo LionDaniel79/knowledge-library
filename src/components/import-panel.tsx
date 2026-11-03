@@ -39,7 +39,7 @@ export function ImportPanel({
       </p>
       <p className="form-hint">
         로고스 전자책은{" "}
-        <a href="/logos/import">로고스 XML 전용 가져오기 화면</a>에서 검토할 수
+        <a href="/logos/import">로고스 XML 전용 가져오기 화면</a> · <a href="/desktop/connect">Windows 검색기 연결</a>에서 검토할 수
         있습니다.
       </p>
       <p className="form-hint">
