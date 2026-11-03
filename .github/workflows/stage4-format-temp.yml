@@ -18,7 +18,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: |
-          npx prettier --write src/lib/desktop-catalog-contract.ts src/lib/logos-contract.ts src/lib/logos-xml.ts src/server/desktop-auth.ts src/server/desktop-catalog.ts src/server/logos-import.ts src/server/logos-cover.ts src/server/cover-mirrors.ts src/components/import-panel.tsx src/app/api/desktop src/app/api/logos src/app/desktop src/app/logos tests/desktop-catalog-contract.test.ts scripts/migrate.ts
+          npx prettier --write src/lib/desktop-catalog-contract.ts src/lib/logos-contract.ts src/lib/logos-xml.ts src/server/desktop-auth.ts src/server/desktop-catalog.ts src/server/logos-import.ts src/server/logos-cover.ts src/server/cover-mirrors.ts src/components/import-panel.tsx src/app/api/desktop src/app/api/logos src/app/desktop src/app/logos tests/desktop-catalog-contract.test.ts tests/desktop-catalog-integration.test.ts scripts/migrate.ts
           git add -u
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
