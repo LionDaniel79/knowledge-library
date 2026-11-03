@@ -79,7 +79,7 @@ export default function LogosImportPage() {
         수행하며 실제 도서를 등록하지 않습니다.
       </p>
       <p>
-        <a href="/">나의 서재로 돌아가기</a>
+        <a href="/">나의 서재로 돌아가기</a> · <a href="/logos/covers">로고스 표지 확인 화면</a>
       </p>
       <label>
         로고스 서재 XML{" "}
