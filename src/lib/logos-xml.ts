@@ -1,5 +1,6 @@
 import {
-  LOGOS_INCLUDED_TYPES,
+  LOGOS_BOOK_RESOURCE_TYPES,
+  LOGOS_EXCLUDED_TYPES,
   logosRow,
   type LogosRow,
 } from "./logos-contract";
@@ -59,9 +60,12 @@ export function parseLogosXmlSelection(xml: string): {
     const cell = (header: string) => cells[headers.indexOf(header)] ?? "";
     if (!cell("Resource ID")) continue;
     total++;
-    // Use the exact Logos Resource Type, not title keywords or an inferred genre.
-    if (!LOGOS_INCLUDED_TYPES.some((type) => type === cell("Resource Type")))
-      continue;
+    // Use the exact exported Logos category, never infer book/non-book from
+    // a title. Unknown types need a classification update before any import.
+    const resourceType = cell("Resource Type");
+    if (LOGOS_EXCLUDED_TYPES.some((type) => type === resourceType)) continue;
+    if (!LOGOS_BOOK_RESOURCE_TYPES.some((type) => type === resourceType))
+      throw Error("분류되지 않은 Logos 자료 유형을 확인해 주세요: " + resourceType);
     const licenseText = cell("License");
     const license =
       licenseText === "영구 소유"
@@ -76,7 +80,7 @@ export function parseLogosXmlSelection(xml: string): {
       publisher: cell("Publishers"),
       license,
       series: cell("Series"),
-      resourceType: cell("Resource Type"),
+      resourceType,
       language: cell("Languages"),
       publicationDate: cell("Publication Date"),
       edition: cell("Edition"),
@@ -87,7 +91,7 @@ export function parseLogosXmlSelection(xml: string): {
     results.push(book);
   }
   if (!results.length)
-    throw Error("등록 대상으로 지정한 성경 주석·단행본이 없습니다.");
+    throw Error("등록 가능한 텍스트 도서·간행물이 없습니다.");
   return { items: results, total, excluded: total - results.length };
 }
 
