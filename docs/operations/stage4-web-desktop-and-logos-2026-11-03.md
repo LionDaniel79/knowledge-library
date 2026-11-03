@@ -45,3 +45,10 @@
 
 - GitHub Actions [Stage4 focused verification #41592608651](https://github.com/LionDaniel79/knowledge-library/actions/runs/41592608651): 코드 서식, TypeScript, PDF 보관·등록 및 로고스 입력 회귀시험, Next.js production build, Chromium XML 선택 브라우저 시험 **통과**.
 - 이후 추가한 격리 DB의 로고스 실제 INSERT·표지 연결 시험은 최신 전체 CI에서 별도로 검증한다. 운영 DB·실제 PDF는 시험에 사용하지 않는다.
+
+## 8. 2026-11-03 범위 변경과 Windows 소스 확보
+
+- 기존 1,511건(성경 주석·단행본만) 제한은 철회한다. 최신 원본 `서재.xml`은 2,620건/55개 자료 유형이며, 텍스트 도서·간행물 2,418건/48종, 비도서 202건/7종으로 검사했다. 서버 API와 브라우저 파서 모두 동일한 알려진 유형 목록을 적용한다. 새로운 미분류 유형은 자동으로 포함하거나 묵살하지 않고 검토 오류를 표시한다.
+- 사용자 제공 `pdf-library.zip`에는 3단계 Windows Python/WPF 소스 12개가 있다. `manifest.py`의 3단계 Python 모의 요청은 `schemaVersion`, `rootAvailable`, `uniqueCount`, `copiesById`, 행별 `contentKey`·`bibliography` 등을 가지며 현재 웹 API v2의 `rootsAvailable`, `expectedDocuments`, `copiesByRoot`와 **그대로는 호환되지 않는다**.
+- 5단계 Codex는 Python API v2 어댑터를 구현하고 서버 canonical digest(각 문서의 `[documentId,bookId,version,christianCopies,generalCopies]` 정렬된 배열)를 별도로 계산해야 한다. `bookId` 또는 `expectedBookVersion` 누락 시 전송하지 않고 사용자 검토 상태로 유지한다. 비밀 토큰·PDF 내용·OCR·파일 경로·파일 해시는 서버 전송 금지.
+- 운영 DB의 실제 2,418건 등록, 선택 PDF 4,108개 재등록, 기존 Neon 9,321건 가역 전환은 5단계에서 백업·복원 검증 후 승인 절차로 실행한다.
