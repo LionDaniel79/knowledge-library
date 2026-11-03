@@ -42,3 +42,12 @@ POST /api/logos/covers는 사용자가 판본을 확인한 Logos 도서에 한�
 ## 6. 5단계 진입 체크
 
 Windows 3단계 브랜치의 실제 코드 공유, 현재 서버 버전/manifest 충돌 처리, Neon 외부 백업 복구 시연, 미발견 PDF 3건 수동 검토, 삭제 후보의 모든 FK/다형/JSON 참조 조사, 모바일 동기화 tombstone/재접속 검수, 사용자 로그인 기반의 별도 영구 삭제 승인. 이 조건 전에는 실제 등록 및 영구 삭제 금지.
+
+## 7. 소유자 웹 검토 화면 (후속 보완)
+
+- `/desktop/connect`에서 소유자만 Windows 기기 키를 발급·철회하고, `/desktop/review`로 이동한다.
+- `GET /api/desktop/catalog/review`는 로그인 소유자에게 속한 최근 manifest 최대 50건만 반환한다. 비밀 키·기기 토큰 해시와 원본 PDF 경로는 반환하지 않는다.
+- `POST /api/desktop/catalog/review`는 소유자가 제출한 manifest의 수량·충돌·제외 상태와 연관 기록 건수만 읽는 dry-run이다. 다른 소유자의 manifest는 404로 차단한다.
+- 웹 화면은 등록과 삭제 버튼을 제공하지 않는다. 3단계 Windows의 로컬 mock 요청은 서버에 제출되지 않았으므로 목록에 나타나지 않는 것이 정상이다.
+- `tests/desktop-auth.test.ts`에서 기기 인증키의 서버 해시 저장, 읽기/쓰기 범위, 다른 소유자의 철회 차단, 철회 후 인증 차단을 검사한다.
+- 운영 `db/035` 미적용 상태에서는 이 신규 화면을 배포하지 않는다. 최종 코드·테스트 검증과 main 병합은 운영 데이터 반영 계획과 분리한다.
