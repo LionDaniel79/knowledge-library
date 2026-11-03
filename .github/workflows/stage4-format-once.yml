@@ -1,0 +1,38 @@
+name: Stage4 format new Logos policy once
+on:
+  push:
+    branches:
+      - feat/stage4-desktop-logos-web
+    paths:
+      - .github/workflows/stage4-format-once.yml
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/stage4-desktop-logos-web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Format four updated source/test files
+        run: >
+          npx prettier --write
+          src/app/logos/import/page.tsx
+          src/lib/logos-xml.ts
+          tests/desktop-catalog-contract.test.ts
+          e2e/logos-import-selection.spec.ts
+      - name: Commit formatted source
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/app/logos/import/page.tsx src/lib/logos-xml.ts tests/desktop-catalog-contract.test.ts e2e/logos-import-selection.spec.ts
+            git commit -m "style(logos): format expanded book-type selection and tests"
+            git pull --rebase origin feat/stage4-desktop-logos-web
+            git push origin HEAD:feat/stage4-desktop-logos-web
+          fi
