@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - name: Install TypeScript contract dependencies
         run: npm ci
+      - name: Exercise desktop HTTP route handlers against isolated PGlite
+        run: npx vitest run tests/desktop-http-manifest-stage5.test.ts --maxWorkers=1
       - name: Run isolated Python HTTPS contract tests
         working-directory: desktop/pdf-library
         run: python -B -m unittest -v test_api_v2
