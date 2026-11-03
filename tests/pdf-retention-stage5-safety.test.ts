@@ -162,6 +162,7 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       manualExclusions: 1,
       scopeExclusions: 35,
       protectedSelectedBooks: 36,
+      restorablePdfArchiveBooks: 1,
       archiveBooks: 41,
       unselectedBooks: 41,
       previouslyExcludedBooks: 1,
