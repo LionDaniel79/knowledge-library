@@ -21,7 +21,10 @@ export async function saveVerifiedLogosCover(
   download: typeof downloadCover = downloadCover,
 ) {
   if (process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
-    throw new LibraryError(403, "로고스 표지의 실제 등록은 5단계에서 허용됩니다.");
+    throw new LibraryError(
+      403,
+      "로고스 표지의 실제 등록은 5단계에서 허용됩니다.",
+    );
   const p = input.parse(raw);
   // Validate trusted image host and a real image before accepting a URL.
   await download(p.coverUrl);
