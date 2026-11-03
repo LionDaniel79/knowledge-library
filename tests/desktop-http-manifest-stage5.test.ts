@@ -45,7 +45,11 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
     const operationId = randomUUID();
     await fixture.db.query(
       "INSERT INTO library_books(id,owner_id,title,author,formats,source_key,source_data) VALUES($1,$2,'Stage5 synthetic PDF','QA',ARRAY['pdf'],'stage5-http-pdf',$3::jsonb)",
-      [bookId, owner, JSON.stringify({ app: "Local PDF", recordId: documentId })],
+      [
+        bookId,
+        owner,
+        JSON.stringify({ app: "Local PDF", recordId: documentId }),
+      ],
     );
     await fixture.db.query(
       "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'synthetic','test.pdf','기독도서/test.pdf',1,'1','full','book','','v1')",
@@ -76,7 +80,12 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
       copiesByRoot: { christian: 1, general: 0 },
     };
     const rejected = await itemsRoute(
-      req(url + "/items", "PUT", { items: [{ ...item, path: "E:\\private.pdf" }] }, token.token),
+      req(
+        url + "/items",
+        "PUT",
+        { items: [{ ...item, path: "E:\\private.pdf" }] },
+        token.token,
+      ),
       params(begin.manifestId),
     );
     expect(rejected.status).toBe(400);
@@ -94,7 +103,12 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
     );
     expect(await replay.json()).toMatchObject({ accepted: 1, created: 0 });
     const changed = await itemsRoute(
-      req(url + "/items", "PUT", { items: [{ ...item, expectedBookVersion: 2 }] }, token.token),
+      req(
+        url + "/items",
+        "PUT",
+        { items: [{ ...item, expectedBookVersion: 2 }] },
+        token.token,
+      ),
       params(begin.manifestId),
     );
     expect(changed.status).toBe(409);
@@ -111,7 +125,10 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
       params(begin.manifestId),
     );
     expect(sealed.status).toBe(200);
-    expect(await sealed.json()).toMatchObject({ status: "sealed", itemsDigest: digest });
+    expect(await sealed.json()).toMatchObject({
+      status: "sealed",
+      itemsDigest: digest,
+    });
 
     const preview = await previewRoute(
       req(url + "/preview", "POST", {}, token.token),
@@ -135,12 +152,22 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
       ).rows[0].version,
     ).toBe(1);
     expect(
-      (await fixture.db.query("SELECT count(*)::int AS n FROM library_pdf_registry")).rows[0].n,
+      (
+        await fixture.db.query(
+          "SELECT count(*)::int AS n FROM library_pdf_registry",
+        )
+      ).rows[0].n,
     ).toBe(0);
     expect(
-      (await fixture.db.query("SELECT count(*)::int AS n FROM library_book_exclusions")).rows[0].n,
+      (
+        await fixture.db.query(
+          "SELECT count(*)::int AS n FROM library_book_exclusions",
+        )
+      ).rows[0].n,
     ).toBe(0);
-    expect(createHash("sha256").update(token.token).digest("hex")).toMatch(/^[a-f0-9]{64}$/);
+    expect(createHash("sha256").update(token.token).digest("hex")).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
   } finally {
     fake.db = null;
     await fixture.pg.close();
