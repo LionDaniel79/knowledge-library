@@ -217,7 +217,13 @@ export async function previewDesktopManifest(
   ).rows[0];
   const d = (
     await db.query(
-      "SELECT count(*)::int AS n FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS (SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.document_id=d.id)",
+      "SELECT count(*)::int AS n FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS (SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.book_id=b.id)",
+      [who.owner, id],
+    )
+  ).rows[0];
+  const a = (
+    await db.query(
+      "SELECT count(DISTINCT b.id)::int AS n FROM library_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=b.owner_id AND i.manifest_id=$2 AND i.book_id=b.id)",
       [who.owner, id],
     )
   ).rows[0];
@@ -229,11 +235,13 @@ export async function previewDesktopManifest(
     versionConflicts: Number(c.conflicts),
     manualExclusions: Number(c.manual_exclusions),
     scopeExclusions: Number(c.scope_exclusions),
-    deleteCandidates: Number(d.n),
+    deleteCandidates: Number(d.n), // Legacy compatibility: document count, never deletion approval.
+    archiveBooks: Number(a.n),
+    archiveDocuments: Number(d.n),
     canApplySelection: false,
     canDelete: false,
     warning:
-      "5단계에서 검증한 백업과 별도 사용자 승인을 받은 후에만 실제 등록/삭제를 허용합니다.",
+      "선택되지 않은 기존 PDF는 삭제하지 않고 보관하며, 승인 후 같은 문서 ID로 재등록합니다. 5단계 백업 검증과 별도 승인 전에는 실행되지 않습니다.",
   };
 }
 export async function previewDesktopCleanup(
@@ -244,13 +252,13 @@ export async function previewDesktopCleanup(
   const p = await previewDesktopManifest(db, who, id);
   const r = (
     await db.query(
-      "WITH candidates AS (SELECT d.book_id FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.document_id=d.id)) SELECT (SELECT count(*) FROM library_catalog_reviews c JOIN candidates x ON c.book_id=x.book_id WHERE c.owner_id=$1)::int AS reviews,(SELECT count(*) FROM library_topic_memberships t JOIN candidates x ON t.source_kind='book' AND t.source_id=x.book_id::text WHERE t.owner_id=$1)::int AS topics,(SELECT count(*) FROM library_revisions v JOIN candidates x ON v.entity_id=x.book_id WHERE v.owner_id=$1)::int AS revisions,(SELECT count(*) FROM library_notes n JOIN candidates x ON n.book_id=x.book_id WHERE n.owner_id=$1)::int AS notes,(SELECT count(*) FROM library_cycles c JOIN candidates x ON c.book_id=x.book_id WHERE c.owner_id=$1)::int AS cycles,(SELECT count(*) FROM library_book_relations b JOIN candidates x ON b.left_id=x.book_id OR b.right_id=x.book_id WHERE b.owner_id=$1)::int AS relations",
+      "WITH candidates AS (SELECT DISTINCT d.book_id FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS(SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.book_id=b.id)) SELECT (SELECT count(*) FROM library_catalog_reviews c JOIN candidates x ON c.book_id=x.book_id WHERE c.owner_id=$1)::int AS reviews,(SELECT count(*) FROM library_topic_memberships t JOIN candidates x ON t.source_kind='book' AND t.source_id=x.book_id::text WHERE t.owner_id=$1)::int AS topics,(SELECT count(*) FROM library_revisions v JOIN candidates x ON v.entity_id=x.book_id WHERE v.owner_id=$1)::int AS revisions,(SELECT count(*) FROM library_notes n JOIN candidates x ON n.book_id=x.book_id WHERE n.owner_id=$1)::int AS notes,(SELECT count(*) FROM library_cycles c JOIN candidates x ON c.book_id=x.book_id WHERE c.owner_id=$1)::int AS cycles,(SELECT count(*) FROM library_book_relations b JOIN candidates x ON b.left_id=x.book_id OR b.right_id=x.book_id WHERE b.owner_id=$1)::int AS relations",
       [who.owner, id],
     )
   ).rows[0];
   const other = (
     await db.query(
-      "WITH candidates AS (SELECT d.book_id FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS (SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.document_id=d.id)) SELECT " +
+      "WITH candidates AS (SELECT DISTINCT d.book_id FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND b.source_data->>'app'='Local PDF' AND NOT EXISTS (SELECT 1 FROM library_desktop_manifest_items i WHERE i.owner_id=d.owner_id AND i.manifest_id=$2 AND i.book_id=b.id)) SELECT " +
         "(SELECT count(*) FROM library_reference_sources r JOIN candidates x ON r.source_kind='book' AND r.source_id=x.book_id::text WHERE r.owner_id=$1)::int AS reference_sources," +
         "(SELECT count(*) FROM library_book_exclusions e JOIN candidates x ON e.id=x.book_id WHERE e.owner_id=$1)::int AS exclusions," +
         "(SELECT count(*) FROM library_book_introductions d JOIN candidates x ON d.book_id=x.book_id WHERE d.owner_id=$1)::int AS introductions," +
