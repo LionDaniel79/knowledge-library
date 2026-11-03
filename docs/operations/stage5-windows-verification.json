@@ -23,6 +23,12 @@
   "unitTestsPassed": 18,
   "wpfSmokePassed": true,
   "stage4TypescriptDigestCrossCheck": "passed-201-synthetic-items",
-  "handoffDigestVector": "expected digest supplied without input rows",
+  "handoffDigestVector": {
+    "pythonAndStage4Sha256": "8dfc96abeb31e943e8f362ab72724ff4f4cf77ababae6ac3cd8492ce9f72d9ca",
+    "items": 2,
+    "canonicalUtf8Bytes": 173,
+    "status": "passed",
+    "fixture": "desktop/pdf-library/manifest-v2-test-vector.json"
+  },
   "httpsTestServer": "pending isolated origin, test device credential and current owner version export"
 }
