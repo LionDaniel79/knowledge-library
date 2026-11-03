@@ -45,16 +45,32 @@ it("keeps offline phone and second device consistent across a protected desktop 
     for (const [name, id] of Object.entries(ids)) {
       await f.db.query(
         "INSERT INTO library_books(id,owner_id,title,author,formats,source_key,source_data) VALUES($1,$2,$3,'QA',ARRAY['pdf'],$4,$5::jsonb)",
-        [id, owner, "Fixture " + name, "stage5-mobile-" + name, JSON.stringify({ app: "Local PDF" })],
+        [
+          id,
+          owner,
+          "Fixture " + name,
+          "stage5-mobile-" + name,
+          JSON.stringify({ app: "Local PDF" }),
+        ],
       );
       await f.db.query(
         "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,material_kind,processing_scope,scope_reason,scope_version) VALUES($1,$2,$3,'qa',$4,$5,100,'1',$6,$7,'','v1')",
-        [documents[name as keyof typeof ids], owner, id, name + ".pdf", "qa/" + name + ".pdf",
+        [
+          documents[name as keyof typeof ids],
+          owner,
+          id,
+          name + ".pdf",
+          "qa/" + name + ".pdf",
           name === "research" ? "review" : "book",
-          name === "research" ? "metadata_only" : "full"],
+          name === "research" ? "metadata_only" : "full",
+        ],
       );
     }
-    for (const [name, kind] of [["manual", "book"], ["scope", "paper"], ["archived", "pdf_archive"]] as const)
+    for (const [name, kind] of [
+      ["manual", "book"],
+      ["scope", "paper"],
+      ["archived", "pdf_archive"],
+    ] as const)
       await f.db.query(
         "INSERT INTO library_book_exclusions(id,owner_id,kind,reason,batch_id,state) VALUES($1,$2,$3,'Existing owner decision',$4,'excluded')",
         [ids[name], owner, kind, randomUUID()],
@@ -100,13 +116,20 @@ it("keeps offline phone and second device consistent across a protected desktop 
     }));
     await putDesktopItems(f.db, who, started.manifestId, { items });
     const digest = desktopItemsDigest(items);
-    await sealDesktopManifest(f.db, who, started.manifestId, { itemsDigest: digest });
+    await sealDesktopManifest(f.db, who, started.manifestId, {
+      itemsDigest: digest,
+    });
     const preview = await previewDesktopManifest(f.db, who, started.manifestId);
     expect(preview).toMatchObject({
-      manualExclusions: 1, scopeExclusions: 1,
-      restorablePdfArchiveBooks: 1, heldUnselectedBooks: 2,
-      heldReviewBooks: 1, heldOtherBooks: 1, automaticallyArchivableBooks: 0,
-      canApplySelection: false, canDelete: false,
+      manualExclusions: 1,
+      scopeExclusions: 1,
+      restorablePdfArchiveBooks: 1,
+      heldUnselectedBooks: 2,
+      heldReviewBooks: 1,
+      heldOtherBooks: 1,
+      automaticallyArchivableBooks: 0,
+      canApplySelection: false,
+      canDelete: false,
     });
 
     await bootstrapReplica({ owner, storage: phone, transport });
@@ -119,7 +142,9 @@ it("keeps offline phone and second device consistent across a protected desktop 
       expect(before).not.toContain(ids.manual);
       expect(before).not.toContain(ids.scope);
       expect(before).not.toContain(ids.archived);
-      expect(before).toEqual(expect.arrayContaining([ids.active, ids.research, ids.mergedSource]));
+      expect(before).toEqual(
+        expect.arrayContaining([ids.active, ids.research, ids.mergedSource]),
+      );
     }
     expect((await pr.reading({ book: ids.archived })).total).toBe(0);
     expect((await tr.reading({ book: ids.archived })).total).toBe(0);
@@ -142,18 +167,30 @@ it("keeps offline phone and second device consistent across a protected desktop 
     });
     expect(await phone.listOutbox()).toHaveLength(1);
     expect((await pr.notes({ book: ids.active })).items).toHaveLength(1);
-    const beforeDocs = (await f.db.query(
-      "SELECT id,book_id,path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows;
-    const beforeRelation = (await f.db.query(
-      "SELECT * FROM library_book_relations WHERE owner_id=$1", [owner],
-    )).rows;
-    const beforeNotes = (await f.db.query(
-      "SELECT id,book_id,content FROM library_notes WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows;
-    const beforeCycles = (await f.db.query(
-      "SELECT id,book_id,status,current_page FROM library_cycles WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows;
+    const beforeDocs = (
+      await f.db.query(
+        "SELECT id,book_id,path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 ORDER BY id",
+        [owner],
+      )
+    ).rows;
+    const beforeRelation = (
+      await f.db.query(
+        "SELECT * FROM library_book_relations WHERE owner_id=$1",
+        [owner],
+      )
+    ).rows;
+    const beforeNotes = (
+      await f.db.query(
+        "SELECT id,book_id,content FROM library_notes WHERE owner_id=$1 ORDER BY id",
+        [owner],
+      )
+    ).rows;
+    const beforeCycles = (
+      await f.db.query(
+        "SELECT id,book_id,status,current_page FROM library_cycles WHERE owner_id=$1 ORDER BY id",
+        [owner],
+      )
+    ).rows;
 
     process.env.LIBRARY_STAGE5_WRITE_ENABLED = "true"; // isolated PGlite only
     const applyArgs = {
@@ -161,35 +198,78 @@ it("keeps offline phone and second device consistent across a protected desktop 
       expectedArchiveBooks: 2,
       confirmation: "ARCHIVE_UNSELECTED_AND_REGISTER_SELECTED",
     };
-    const applied = await applyPdfRetention(f.db, owner, started.manifestId, applyArgs);
+    const applied = await applyPdfRetention(
+      f.db,
+      owner,
+      started.manifestId,
+      applyArgs,
+    );
     expect(applied).toMatchObject({
-      registeredDocuments: 4, restoredBooks: 1, archivedBooks: 0,
-      protectedSelectedExclusions: 2, heldUnselectedBooks: 2,
+      registeredDocuments: 4,
+      restoredBooks: 1,
+      archivedBooks: 0,
+      protectedSelectedExclusions: 2,
+      heldUnselectedBooks: 2,
       automaticallyArchivableBooks: 0,
     });
-    expect(await applyPdfRetention(f.db, owner, started.manifestId, applyArgs))
-      .toEqual(applied);
-    expect((await f.db.query(
-      "SELECT id,book_id,path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows).toEqual(beforeDocs);
-    expect((await f.db.query(
-      "SELECT * FROM library_book_relations WHERE owner_id=$1", [owner],
-    )).rows).toEqual(beforeRelation);
-    expect((await f.db.query(
-      "SELECT id,book_id,content FROM library_notes WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows).toEqual(beforeNotes);
-    expect((await f.db.query(
-      "SELECT id,book_id,status,current_page FROM library_cycles WHERE owner_id=$1 ORDER BY id", [owner],
-    )).rows).toEqual(beforeCycles);
+    expect(
+      await applyPdfRetention(f.db, owner, started.manifestId, applyArgs),
+    ).toEqual(applied);
+    expect(
+      (
+        await f.db.query(
+          "SELECT id,book_id,path,bytes,mtime_ns FROM library_documents WHERE owner_id=$1 ORDER BY id",
+          [owner],
+        )
+      ).rows,
+    ).toEqual(beforeDocs);
+    expect(
+      (
+        await f.db.query(
+          "SELECT * FROM library_book_relations WHERE owner_id=$1",
+          [owner],
+        )
+      ).rows,
+    ).toEqual(beforeRelation);
+    expect(
+      (
+        await f.db.query(
+          "SELECT id,book_id,content FROM library_notes WHERE owner_id=$1 ORDER BY id",
+          [owner],
+        )
+      ).rows,
+    ).toEqual(beforeNotes);
+    expect(
+      (
+        await f.db.query(
+          "SELECT id,book_id,status,current_page FROM library_cycles WHERE owner_id=$1 ORDER BY id",
+          [owner],
+        )
+      ).rows,
+    ).toEqual(beforeCycles);
 
-    const remoteChanges = (await f.db.query(
-      "SELECT entity,record_key,deleted FROM library_sync_row_versions WHERE owner_id=$1 AND entity IN ('library_books','library_book_exclusions') AND record_key IN ($2,$3)",
-      [owner, JSON.stringify([ids.archived]), JSON.stringify([ids.manual])],
-    )).rows;
-    expect(remoteChanges.some((r) => r.entity === "library_book_exclusions" &&
-      r.record_key === JSON.stringify([ids.archived]) && r.deleted === false)).toBe(true);
-    expect(remoteChanges.some((r) => r.entity === "library_books" &&
-      r.record_key === JSON.stringify([ids.archived]) && r.deleted === false)).toBe(true);
+    const remoteChanges = (
+      await f.db.query(
+        "SELECT entity,record_key,deleted FROM library_sync_row_versions WHERE owner_id=$1 AND entity IN ('library_books','library_book_exclusions') AND record_key IN ($2,$3)",
+        [owner, JSON.stringify([ids.archived]), JSON.stringify([ids.manual])],
+      )
+    ).rows;
+    expect(
+      remoteChanges.some(
+        (r) =>
+          r.entity === "library_book_exclusions" &&
+          r.record_key === JSON.stringify([ids.archived]) &&
+          r.deleted === false,
+      ),
+    ).toBe(true);
+    expect(
+      remoteChanges.some(
+        (r) =>
+          r.entity === "library_books" &&
+          r.record_key === JSON.stringify([ids.archived]) &&
+          r.deleted === false,
+      ),
+    ).toBe(true);
 
     // Interrupted reconnection: the pending local memo must remain in the outbox.
     const changes = transport.changes;
@@ -201,13 +281,24 @@ it("keeps offline phone and second device consistent across a protected desktop 
       }
       return changes(...args);
     };
-    const phoneCoordinator = createReplicaCoordinator({ owner, storage: phone, transport });
-    await expect(phoneCoordinator.syncReplica({ reason: "online" }))
-      .rejects.toThrow("simulated network disconnect");
+    const phoneCoordinator = createReplicaCoordinator({
+      owner,
+      storage: phone,
+      transport,
+    });
+    await expect(
+      phoneCoordinator.syncReplica({ reason: "online" }),
+    ).rejects.toThrow("simulated network disconnect");
     expect(await phone.listOutbox()).toHaveLength(1);
-    expect((await pr.books({ limit: 50 })).items.map((b) => b.id)).not.toContain(ids.archived);
+    expect(
+      (await pr.books({ limit: 50 })).items.map((b) => b.id),
+    ).not.toContain(ids.archived);
     await phoneCoordinator.syncReplica({ reason: "reconnected" });
-    const tabletCoordinator = createReplicaCoordinator({ owner, storage: tablet, transport });
+    const tabletCoordinator = createReplicaCoordinator({
+      owner,
+      storage: tablet,
+      transport,
+    });
     await tabletCoordinator.syncReplica({ reason: "online" });
     await phoneCoordinator.syncReplica({ reason: "repeat" });
     await tabletCoordinator.syncReplica({ reason: "repeat" });
@@ -221,39 +312,65 @@ it("keeps offline phone and second device consistent across a protected desktop 
       expect(current).toContain(ids.research);
       expect(current).toContain(ids.mergedSource);
       expect((await repo.reading({ book: ids.archived })).total).toBe(1);
-      expect((await repo.notes({ book: ids.archived })).items.map((n: { id: string }) => n.id))
-        .toContain(seedNoteIds[0]);
-      expect((await repo.notes({ book: ids.active })).items.map((n: { id: string }) => n.id))
-        .toContain(queued.id);
-      expect((await repo.books({ limit: 50 })).items.filter((b) => b.id === ids.archived))
-        .toHaveLength(1);
+      expect(
+        (await repo.notes({ book: ids.archived })).items.map(
+          (n: { id: string }) => n.id,
+        ),
+      ).toContain(seedNoteIds[0]);
+      expect(
+        (await repo.notes({ book: ids.active })).items.map(
+          (n: { id: string }) => n.id,
+        ),
+      ).toContain(queued.id);
+      expect(
+        (await repo.books({ limit: 50 })).items.filter(
+          (b) => b.id === ids.archived,
+        ),
+      ).toHaveLength(1);
     }
     expect(await phone.listOutbox()).toHaveLength(0);
     expect(await tablet.listOutbox()).toHaveLength(0);
-    expect((await f.db.query(
-      "SELECT count(*)::int AS n FROM library_notes WHERE owner_id=$1 AND id=$2",
-      [owner, queued.id],
-    )).rows[0].n).toBe(1);
-    expect((await f.db.query(
-      "SELECT kind,state FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
-      [owner, ids.archived],
-    )).rows[0]).toMatchObject({ kind: "pdf_archive", state: "restored" });
+    expect(
+      (
+        await f.db.query(
+          "SELECT count(*)::int AS n FROM library_notes WHERE owner_id=$1 AND id=$2",
+          [owner, queued.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await f.db.query(
+          "SELECT kind,state FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
+          [owner, ids.archived],
+        )
+      ).rows[0],
+    ).toMatchObject({ kind: "pdf_archive", state: "restored" });
     for (const id of [ids.manual, ids.scope])
-      expect((await f.db.query(
-        "SELECT state FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
-        [owner, id],
-      )).rows[0].state).toBe("excluded");
-    expect((await f.db.query(
-      "SELECT document_id,state FROM library_pdf_registry WHERE owner_id=$1 AND document_id=$2",
-      [owner, documents.research],
-    )).rows).toEqual([{ document_id: documents.research, state: "registered" }]);
+      expect(
+        (
+          await f.db.query(
+            "SELECT state FROM library_book_exclusions WHERE owner_id=$1 AND id=$2",
+            [owner, id],
+          )
+        ).rows[0].state,
+      ).toBe("excluded");
+    expect(
+      (
+        await f.db.query(
+          "SELECT document_id,state FROM library_pdf_registry WHERE owner_id=$1 AND document_id=$2",
+          [owner, documents.research],
+        )
+      ).rows,
+    ).toEqual([{ document_id: documents.research, state: "registered" }]);
     const laterSync = await f.db.query(
       "SELECT count(*)::int AS n FROM library_notes WHERE owner_id=$1 AND title='Offline phone thought'",
       [owner],
     );
     expect(laterSync.rows[0].n).toBe(1);
   } finally {
-    if (flagBefore === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+    if (flagBefore === undefined)
+      delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
     else process.env.LIBRARY_STAGE5_WRITE_ENABLED = flagBefore;
     pr.close();
     tr.close();
