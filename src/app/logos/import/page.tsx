@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parseLogosXmlSelection } from "@/lib/logos-xml";
 import type { LogosRow } from "@/lib/logos-contract";
 type Result = {
@@ -18,6 +18,15 @@ export default function LogosImportPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [summary, setSummary] = useState<Result | null>(null);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [created, setCreated] = useState<number | null>(null);
+  useEffect(() => {
+    void fetch("/api/logos", { credentials: "same-origin" })
+      .then(async (r) => r.ok ? r.json() : { registrationEnabled: false })
+      .then((v) => setRegistrationEnabled(v.registrationEnabled === true))
+      .catch(() => setRegistrationEnabled(false));
+  }, []);
   const permanent = rows.filter((x) => x.license === "permanent").length;
   const temporary = rows.filter((x) => x.license === "temporary").length;
   async function preview() {
@@ -25,6 +34,8 @@ export default function LogosImportPage() {
     setError("");
     setProgress(0);
     setSummary(null);
+    setCreated(null);
+    setConfirmed(false);
     const total: Result = {
       received: 0,
       alreadyImported: 0,
@@ -57,12 +68,7 @@ export default function LogosImportPage() {
           "temporary",
         ] as const)
           total[key] += part[key];
-        total.needsReview.push(
-          ...part.needsReview.slice(
-            0,
-            Math.max(0, 20 - total.needsReview.length),
-          ),
-        );
+        total.needsReview.push(...part.needsReview);
         setProgress(Math.min(rows.length, n + 100));
       }
       setSummary(total);
@@ -70,6 +76,36 @@ export default function LogosImportPage() {
       setError(e instanceof Error ? e.message : "검토 실패");
     } finally {
       setBusy(false);
+    }
+  }
+  async function register() {
+    if (!registrationEnabled || !confirmed || !summary) return;
+    const conflicts = new Set(summary.needsReview.map((r) => r.resourceId));
+    const eligible = rows.filter((r) => !conflicts.has(r.resourceId));
+    setBusy(true);
+    setError("");
+    setCreated(0);
+    let added = 0;
+    try {
+      for (let i = 0; i < eligible.length; i += 100) {
+        const response = await fetch("/api/logos", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "apply", batch: { items: eligible.slice(i, i + 100) } }),
+        });
+        const part = await response.json();
+        if (!response.ok) throw Error(part.error ?? "등록에 실패했습니다.");
+        added += Number(part.created ?? 0);
+        setCreated(added);
+      }
+      setSummary(null);
+    } catch (e) {
+      setError((e instanceof Error ? e.message : "등록 실패") +
+        " 이미 반영된 " + added + "건은 그대로 보존됩니다. 중복 검사 후 다시 진행하세요.");
+    } finally {
+      setBusy(false);
+      setConfirmed(false);
     }
   }
   return (
@@ -94,6 +130,8 @@ export default function LogosImportPage() {
             setRows([]);
             setTotalInFile(0);
             setSummary(null);
+            setCreated(null);
+            setConfirmed(false);
             setProgress(0);
             const file = e.target.files?.[0];
             if (!file) return;
@@ -161,19 +199,30 @@ export default function LogosImportPage() {
           </p>
           {summary.needsReview.length > 0 && (
             <ul>
-              {summary.needsReview.map((x) => (
+              {summary.needsReview.slice(0, 20).map((x) => (
                 <li key={x.resourceId}>
                   {x.title} ({x.resourceId})
                 </li>
               ))}
             </ul>
           )}
-          <p>
-            <strong>실제 등록은 5단계에서 진행합니다.</strong> 현재 서버에는
-            변경 사항이 없습니다.
-          </p>
+          {registrationEnabled ? (
+            <section>
+              <p>기존 판본 충돌 {summary.possibleExistingEdition}건은 제외합니다. 실제 등록 전 대상과 백업을 확인하세요.</p>
+              <label>
+                <input type="checkbox" checked={confirmed} disabled={busy} onChange={(e) => setConfirmed(e.target.checked)} />
+                새 도서의 실제 등록을 승인합니다. 기존 도서는 자동 병합하지 않습니다.
+              </label>
+              <button disabled={busy || !confirmed} onClick={() => void register()}>
+                중복·판본 충돌 자료를 제외하고 도서 등록
+              </button>
+            </section>
+          ) : (
+            <p><strong>실제 등록은 운영 데이터 이전 승인 이후에만 활성화됩니다.</strong> 현재는 미리보기 전용입니다.</p>
+          )}
         </section>
       )}
+      {created !== null && <p role="status">등록 성공: {created.toLocaleString()}건 (기존 도서·충돌 자료는 별도 검토)</p>}
       {error && (
         <p role="alert" style={{ color: "crimson" }}>
           {error}
