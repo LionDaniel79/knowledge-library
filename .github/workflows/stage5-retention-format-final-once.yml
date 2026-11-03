@@ -1,0 +1,33 @@
+name: Stage5 final one-time prettier
+on:
+  push:
+    branches:
+      - feat/stage5-windows-https-v2
+    paths:
+      - ".github/workflows/stage5-retention-format-final-once.yml"
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/stage5-windows-https-v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --write tests/pdf-retention-stage5-safety.test.ts src/server/desktop-catalog.ts
+      - name: Commit clean formatting
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add tests/pdf-retention-stage5-safety.test.ts src/server/desktop-catalog.ts
+            git commit -m "style(stage5): finalize format of retention safety assertions"
+            git pull --rebase origin feat/stage5-windows-https-v2
+            git push origin HEAD:feat/stage5-windows-https-v2
+          fi
