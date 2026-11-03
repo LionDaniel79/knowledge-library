@@ -4,7 +4,6 @@ import { validateWriteOrigin } from "@/server/access";
 import { previewLogos, applyLogos } from "@/server/logos-import";
 import { failure } from "@/server/http";
 import { z } from "zod";
-import { LOGOS_INCLUDED_TYPES } from "@/lib/logos-contract";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
