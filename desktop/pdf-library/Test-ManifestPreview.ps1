@@ -10,7 +10,8 @@ param(
     [Parameter(Mandatory)][string]$Python,
     [switch]$Enroll,
     [switch]$VercelProtected,
-    [switch]$EnrollBypass
+    [switch]$EnrollBypass,
+    [switch]$RefreshVersionExport
 )
 $ErrorActionPreference = 'Stop'
 
@@ -64,6 +65,9 @@ try {
         '--root', $Root,
         '--directory', $Directory)
 
+    if ($RefreshVersionExport) {
+        $arguments += '--refresh-version-export'
+    }
     if ($VercelProtected) {
         $bypassSecure = Import-Clixml -LiteralPath $bypassFile
         $bypassKey = [Net.NetworkCredential]::new('', $bypassSecure).Password
