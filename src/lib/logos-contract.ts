@@ -1,4 +1,5 @@
 import { z } from "zod";
+export const LOGOS_INCLUDED_TYPES = ["성경 주석", "단행본"] as const;
 export const logosRow = z
   .object({
     resourceId: z
@@ -12,7 +13,7 @@ export const logosRow = z
     publisher: z.string().trim().max(300).default(""),
     license: z.enum(["permanent", "temporary", "unknown"]),
     series: z.string().trim().max(300).default(""),
-    resourceType: z.string().trim().max(120).default(""),
+    resourceType: z.enum(LOGOS_INCLUDED_TYPES),
     language: z.string().trim().max(80).default(""),
     publicationDate: z.string().trim().max(80).default(""),
     edition: z.string().trim().max(160).default(""),
