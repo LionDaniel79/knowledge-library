@@ -1,53 +1,42 @@
-# 4단계 웹앱 통합: 연동 규격과 안전한 배포
+# 지식서재 4단계: 웹앱 로고스 등록·표지, 지정 PDF 동기화, 기존 PDF 보관·재등록
 
-> 이 단계는 코드와 검증을 준비한다. 운영 PDF/SQLite/Neon 데이터는 수정·삭제하지 않는다.
+> 개발 단계는 기능 구현과 테스트를 포함한다. 운영 Neon에 실제 1,511건을 등록하거나 PDF를 자동 보관·삭제하지 않는다.
 
-## 1. 고정된 범위
+## 1. 확정 범위 및 실자료 검산
 
-Windows 로컬 검색: E:\전자도서관 전체 PDF 9,319개.
+- 로고스 XML: `서재.xml` 2,620건. `Resource Type`의 **정확한 값** `성경 주석` 967건, `단행본` 544건만 등록 대상이다. 합계 **1,511건**(영구 소유 1,470, 임시 소유 41); 다른 종류 1,109건은 제외한다. `주석`, `설교`, `성경`, `조직 신학` 등은 유사한 제목이어도 자동 포함하지 않는다.
+- 로고스 XML에는 ISBN과 표지 이미지가 없다. 기존 제목·저자 충돌은 자동 병합하지 않고 검토 목록에 보존한다. 두 자료 유형은 클라이언트 필터뿐 아니라 서버 스키마에서도 강제한다.
+- 기존 Windows PDF 검색 대상: E:\\전자도서관 전체 9,319개. 웹 등록·동기화 선택 루트: `기독도서` 3,598개, `일반도서` 511개(하위 폴더 포함), 합계 4,109개 물리 파일, 4,108개 고유 기존 문서 ID. 새 파일/제외 파일/소실 파일을 자동으로 병합·제거하지 않는다.
+- 원본 PDF·OCR·SQLite·기존 도서 ID·메모·독서 기록을 보존한다.
 
-웹 PDF 등록 범위: E:\전자도서관\기독도서 및 E:\전자도서관\일반도서, **각각 하위 폴더 포함**. 선택 4,109개 물리 파일, 4,108개 고유 기존 문서 ID. 추가 사본 1개는 새 도서가 아니다. 기존 9,321 중 삭제 후보 5,213개는 5단계 별도 승인 전 제거 금지.
+## 2. 웹앱 로고스 도서·표지 등록
 
-## 2. DB와 배포
+- `/logos/import`: 브라우저에서 Excel 2003 XML 파싱, DTD 차단, 등록 대상만 표시하고 제외 1,109건을 따로 표시. 100건씩 서버 기존 Neon 도서·판본 충돌 미리보기.
+- `POST /api/logos`: `preview`와 `apply` 계약. `apply`는 소유자 인증·쓰기 출처 검사·서버 유형 allowlist·기존 동일 판본 보호·안정 Resource ID를 사용한다. `LIBRARY_STAGE5_WRITE_ENABLED=true` 없이는 실제 INSERT를 403으로 거부한다. 화면의 등록 버튼 역시 이 권한이 열린 경우에만 보이며 별도 확인을 요구한다.
+- `/logos/covers`: 사용자가 확인한 도서 표지 HTTPS 이미지 URL을 판본 검토 후 연결한다. 원래 저장된 표지를 무단 덮어쓰지 않는다. 공식 Logos CDN을 포함한 허용 호스트, 크기·형식 검사, 소유자별 읽기 보호를 적용한다.
+- 외부 URL 프록시를 영구 오브젝트 저장으로 오해하지 않는다. 외부 호스트가 이미지를 지우면 재현할 수 없으므로 대규모 영구 표지 저장이 필요한 경우 별도 오브젝트 저장소 검증이 필요하다.
 
-- db/035_desktop_catalog_and_logos.sql: 등록 manifest, 기기 토큰, Logos 출처, 선택 PDF registry, 표지 참조 테이블만 생성. 기존 PDF 도서·문서·메모·동기화 기록은 그대로 둔다.
-- scripts/migrate.ts에서 새 마이그레이션을 호출한다. 승인된 테스트 DB에서 먼저 복원/시험한 뒤 운영 DB에 적용한다.
-- 이번 PR은 기본 브랜치 병합/운영 배포를 하지 않는다. 마이그레이션과 배포를 별도 검수한다.
-- 5단계 이전 apply-selection 및 cleanup/apply-batch는 HTTP 501, Logos apply는 환경변수 LIBRARY_STAGE5_WRITE_ENABLED=true 없이는 403.
+## 3. 지정 PDF 폴더 동기화 API v2
 
-## 3. Windows HTTPS API v2
+- `/desktop/connect`: 30일 만료 소유자 기기 토큰 발급·폐기, SHA-256 해시만 DB에 저장. 실제 Windows 프로그램은 DPAPI 등 보호된 저장소를 사용한다.
+- `POST /api/desktop/catalog/manifests`: `{operationId,scanComplete:true,rootsAvailable:true,physicalByRoot:{christian,general},expectedDocuments}`를 받는다.
+- `PUT /api/desktop/catalog/manifests/:id/items`: 최대 200건씩 `{legacyDocumentId,bookId,expectedBookVersion,copiesByRoot:{christian,general}}`를 받는다.
+- `POST /api/desktop/catalog/manifests/:id/seal`: 물리 파일 수와 sorted canonical JSON UTF-8 SHA-256 `itemsDigest`를 검산한다. `/preview`와 `/desktop/review`는 충돌·누락 및 보관 후보를 읽기 전용으로 보여 준다.
+- 미완료 스캔, ID 소유자 불일치, 파일 개수/지문 불일치, 버전 충돌은 거부한다. 원본 파일·OCR 내용·절대 경로는 서버에 전송하지 않는다.
+- Windows 3단계 클라이언트는 현재 mock outbox 방식이다. 실제 Windows HTTPS 전송 통합시험은 로컬 소스·인증키가 준비되어야 한다.
 
-로그인한 서재 소유자가 /desktop/connect에서 30일 제한된 기기 키를 발급하고 철회한다. DB에는 키의 SHA-256만 저장한다. Windows에는 DPAPI 등을 이용해 비밀을 보호한다.
+## 4. 기존 PDF의 보관·재등록
 
-- POST /api/desktop/catalog/manifests: JSON {operationId,scanComplete:true,rootsAvailable:true,physicalByRoot:{christian,general},expectedDocuments}
-- PUT /api/desktop/catalog/manifests/:id/items: JSON {items:[{legacyDocumentId,bookId,expectedBookVersion,copiesByRoot:{christian,general}}]}, 최대 200개.
-- POST /api/desktop/catalog/manifests/:id/seal: JSON {itemsDigest}.
-- POST /api/desktop/catalog/manifests/:id/preview: 조회 전용; 버전 충돌/등록 상태/삭제 후보 개수.
-- POST /api/desktop/catalog/cleanup/preview: JSON {manifestId}. 참조 건수만 조회.
+- 원본 `library_books`, `library_documents`, OCR·PDF 파일·메모·읽기 이력은 **삭제하지 않는다**.
+- `library_book_exclusions.kind='pdf_archive'`는 기존 PDF 도서를 논리적 보관 상태로 표시하고 `library_pdf_registry.state`는 `registered`/`archived` 상태를 구분한다. 이미 수동으로 삭제·제외된 다른 종류는 덮어쓰지 않는다.
+- 확정된 manifest의 선택 문서를 동일 `document_id`/`book_id`로 재등록하고, 이전에 보관된 도서는 `restored` 상태로 복원한다. 선택되지 않은 기존 PDF만 논리적으로 보관한다. 버전 충돌·소유자 충돌·보관 후보 수 불일치면 전체 작업을 거부한다.
+- `POST /api/desktop/catalog/manifests/:id/apply-selection`은 서버 승인용 플래그와 정확한 `itemsDigest`·보관 후보 수·확인 문구를 모두 요구한다. 4단계 기본 상태에서 HTTP 403이므로 대량 데이터가 실수로 변경되지 않는다.
+- 최종 영구 삭제를 위한 `/api/desktop/catalog/cleanup/apply-batch`는 계속 HTTP 501로 잠근다. 보관은 삭제가 아니다.
+- 기존 PDF를 재등록해도 OCR 재생성이나 사용자 노트의 새로운 도서로의 자동 이전을 하지 않는다.
 
-itemsDigest는 UUID 오름차순으로 정렬한 각 행의 [legacyDocumentId_lowercase,bookId_lowercase,expectedBookVersion,christianCopies,generalCopies] 배열들의 JSON을 공백 없이 직렬화한 다음 UTF-8 SHA-256 hex를 계산한다. Python: json.dumps(data,ensure_ascii=False,separators=(',',':')). 3단계 모의 전송기는 physicalByRoot 및 copiesById 값을 위 규격으로 변환하고 실제 HTTP 호출/기기 인증을 5단계에서 검증해야 한다.
+## 5. 검증과 운영 경계
 
-루트 연결 실패, 스캔 미완료, 수량 불일치, 알 수 없는 PDF ID, 소유권 오류, 다른 본문의 작업 ID 재사용은 거부한다. 원본 PDF, OCR 본문, 파일 SHA, 절대/상대 디스크 경로는 서버에 보낼 수 없다.
-
-## 4. Logos
-
-/logos/import 페이지에서 Excel 2003 XML을 브라우저 파싱한다. DTD/ENTITY는 차단한다. Resource ID로 중복 방지, License 영구/임시 구분, 최대 100건씩 서버 미리보기. 중복 도서 판본은 자동 병합하지 않는다. ISBN/표지는 XML에 없으므로 추측해서 저장하지 않는다. 실제 추가는 5단계 게이트를 명시적으로 열 때만 허용한다.
-
-## 5. 표지
-
-POST /api/logos/covers는 사용자가 판본을 확인한 Logos 도서에 한하여 외부 HTTPS 표지 URL을 연결한다. 출처/확인 상태는 library_cover_locations에 둔다. 사용자 기존 표지는 자동 덮어쓰지 않는다. 이미 검증된 외부 이미지는 최적화한 WebP 프록시를 통해 표시하므로 기존 Neon base64 표지 저장소의 5,000 슬롯을 추가로 소비하지 않는다. 이미지 출처 도메인 검증·다운로드 크기 제한을 적용한다.
-
-전체 Logos 2,620종에 대한 이미지 자동 확보/확정과 선택 PDF의 기존 로컬 표지 이전은 아직 수행하지 않았다. 대량 Neon Storage 오브젝트 업로드도 활성화하지 않았다. 해당 작업은 실제 서지 등록 및 양쪽 프로그램 검증 때 단계적으로 처리한다.
-
-## 6. 5단계 진입 체크
-
-Windows 3단계 브랜치의 실제 코드 공유, 현재 서버 버전/manifest 충돌 처리, Neon 외부 백업 복구 시연, 미발견 PDF 3건 수동 검토, 삭제 후보의 모든 FK/다형/JSON 참조 조사, 모바일 동기화 tombstone/재접속 검수, 사용자 로그인 기반의 별도 영구 삭제 승인. 이 조건 전에는 실제 등록 및 영구 삭제 금지.
-
-## 7. 소유자 웹 검토 화면 (후속 보완)
-
-- `/desktop/connect`에서 소유자만 Windows 기기 키를 발급·철회하고, `/desktop/review`로 이동한다.
-- `GET /api/desktop/catalog/review`는 로그인 소유자에게 속한 최근 manifest 최대 50건만 반환한다. 비밀 키·기기 토큰 해시와 원본 PDF 경로는 반환하지 않는다.
-- `POST /api/desktop/catalog/review`는 소유자가 제출한 manifest의 수량·충돌·제외 상태와 연관 기록 건수만 읽는 dry-run이다. 다른 소유자의 manifest는 404로 차단한다.
-- 웹 화면은 등록과 삭제 버튼을 제공하지 않는다. 3단계 Windows의 로컬 mock 요청은 서버에 제출되지 않았으므로 목록에 나타나지 않는 것이 정상이다.
-- `tests/desktop-auth.test.ts`에서 기기 인증키의 서버 해시 저장, 읽기/쓰기 범위, 다른 소유자의 철회 차단, 철회 후 인증 차단을 검사한다.
-- 운영 `db/035` 미적용 상태에서는 이 신규 화면을 배포하지 않는다. 최종 코드·테스트 검증과 main 병합은 운영 데이터 반영 계획과 분리한다.
+- `db/035_desktop_catalog_and_logos.sql`은 기존 스키마를 보존하면서 기기·로고스·PDF 등록·보관 상태를 추가한다. `scripts/migrate.ts`는 테스트 DB에서 먼저 적용·복원 시험한다.
+- 코드에는 XML 타입 제한, 기기 인증·소유자 경계, manifest 수량/지문 검산, 보관·재등록 기본 차단 및 왕복 회귀 테스트가 포함된다.
+- 4단계 PR 초안 상태를 유지하며 실제 운영 Neon 마이그레이션·자료 등록·PDF 보관·삭제·main 병합·Vercel 배포는 자동 진행하지 않는다.
+- 실기기 HTTPS 및 운영 데이터 검증, 외부 백업 복원, 표지 영구 저장 전략, 오래된 참조와 모바일 재접속 검사는 배포 승인 전에 별도로 완료해야 한다.
