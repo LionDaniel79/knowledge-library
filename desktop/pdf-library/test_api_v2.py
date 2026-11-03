@@ -47,6 +47,37 @@ class Contract(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'allowlist'):
                 api.transport('https://production.example', 'klw_'+'a'*43)
 
+    def test_protected_qa_adds_separate_header(self):
+        conn = Mock()
+        response = Mock(status=200)
+        response.read.return_value = b'{"ok":true}'
+        conn.getresponse.return_value = response
+        token = 'klw_' + 'a' * 43
+        bypass = 'B' * 32
+        with patch.dict(api.os.environ, {'KL_STAGE5_TEST_ORIGIN':'https://test.invalid'}), \
+             patch.object(api.http.client, 'HTTPSConnection', return_value=conn):
+            result = api.transport('https://test.invalid', token, bypass)('POST', api.BASE, {})
+        self.assertEqual(result, {'ok': True})
+        sent = conn.request.call_args.args[3]
+        self.assertEqual(sent.get('Authorization'), 'Bearer ' + token)
+        self.assertEqual(sent.get('x-vercel-protection-bypass'), bypass)
+        self.assertEqual(conn.request.call_count, 1)
+
+    def test_bypass_rejected_before_network_and_never_sent_by_default(self):
+        token = 'klw_' + 'a' * 43
+        with patch.dict(api.os.environ, {'KL_STAGE5_TEST_ORIGIN':'https://test.invalid'}):
+            for invalid in ('', 'short', 'x'*31, 'x'*33, 'x' * 31 + '\\n', 'a' * 31 + '-'):
+                with self.subTest(invalid_length=len(invalid)), self.assertRaisesRegex(ValueError, 'protected-deployment'):
+                    api.transport('https://test.invalid', token, invalid)
+            conn = Mock()
+            response = Mock(status=200)
+            response.read.return_value = b'{"ok":true}'
+            conn.getresponse.return_value = response
+            with patch.object(api.http.client, 'HTTPSConnection', return_value=conn):
+                api.transport('https://test.invalid', token)('POST', api.BASE, {})
+            headers = conn.request.call_args.args[3]
+            self.assertNotIn('x-vercel-protection-bypass', headers)
+
     def test_tls_failure(self):
         conn = Mock()
         conn.request.side_effect = ssl.SSLCertVerificationError()
