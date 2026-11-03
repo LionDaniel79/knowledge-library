@@ -1,0 +1,24 @@
+name: One-time Logos 2418 scope validation
+on:
+  push:
+    branches:
+      - feat/stage4-desktop-logos-web
+    paths:
+      - .github/workflows/logos-2418-scope-once.yml
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/desktop-catalog-contract.test.ts tests/logos-stage4.test.ts tests/logos-apply-stage4.test.ts --maxWorkers=2
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test e2e/logos-import-selection.spec.ts
