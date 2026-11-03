@@ -73,6 +73,45 @@ def check_snapshot(snapshot, origin, rows):
             (r['bookId'],r['expectedBookVersion']) for r in rows), 'Version or identity mismatch')
 
 
+
+def fetch_version_snapshot(rows, origin, send):
+    """Verify current owner-scoped document IDs, book IDs and versions over HTTPS.
+
+    Never adopt changed identity/version data silently. Only server-confirmed
+    mappings matching the local offline catalog are accepted.
+    """
+    require(len(rows) > 0, 'Empty local scan')
+    ids = [row['legacyDocumentId'] for row in rows]
+    require(len(ids) == len(set(ids)), 'Duplicate local document ID')
+    expected = {row['legacyDocumentId']: (row['bookId'], row['expectedBookVersion'])
+                for row in rows}
+    verified = []
+    timestamps = []
+    for offset in range(0, len(ids), 200):
+        chunk = ids[offset:offset+200]
+        result = send('POST', '/api/desktop/catalog/versions',
+                      {'documentIds': chunk})
+        items = result.get('items')
+        stamp = result.get('verifiedAtUnix')
+        require(type(stamp) is int and 0 <= time.time()-stamp <= 3600,
+                'Untrusted server version export timestamp')
+        require(isinstance(items, list) and len(items) == len(chunk),
+                'Incomplete owner-scoped version export')
+        by_id = {r.get('legacyDocumentId'): r for r in items
+                 if isinstance(r, dict)}
+        require(len(by_id) == len(chunk) and set(by_id) == set(chunk),
+                'Unexpected server document IDs')
+        for doc in chunk:
+            entry = by_id[doc]
+            require(set(entry) == {'legacyDocumentId','bookId','expectedBookVersion'},
+                    'Unapproved version export fields')
+            require((entry['bookId'], entry['expectedBookVersion']) == expected[doc],
+                    'Stale local book mapping or version; review before upload')
+            verified.append(entry)
+        timestamps.append(stamp)
+    return {'origin': origin, 'verifiedAtUnix': min(timestamps), 'items': verified}
+
+
 def transport(origin, token, protection_bypass=None):
     require(re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]+)?', origin), 'HTTPS test origin required')
     # A preview still writes manifests to a database. Require an explicit,
@@ -153,13 +192,24 @@ if __name__ == '__main__':
         parser.add_argument('--'+key, required=True)
     parser.add_argument('--vercel-protected', action='store_true',
                         help='Read a separate 32-character Vercel QA bypass from stdin')
+    parser.add_argument('--refresh-version-export', action='store_true',
+                        help='Query fresh owner-scoped book IDs/versions before submitting')
     args = parser.parse_args()
     try:
         rows = inventory(args.index,args.root,args.directory)
-        check_snapshot(json.loads(Path(args.version_export).read_bytes()),args.test_origin,rows)
         token = sys.stdin.readline().strip()
         bypass = sys.stdin.readline().strip() if args.vercel_protected else None
-        print(json.dumps(submit(rows,args.operation,transport(args.test_origin,token,bypass))))
+        send = transport(args.test_origin, token, bypass)
+        if args.refresh_version_export:
+            snapshot = fetch_version_snapshot(rows, args.test_origin, send)
+            target = Path(args.version_export)
+            require(target.parent.is_dir(), 'Choose an existing private version-export directory')
+            # Metadata only (IDs and versions). Never store bearer or bypass tokens.
+            pending = target.with_suffix(target.suffix + '.pending')
+            pending.write_text(json.dumps(snapshot, separators=(',', ':')), encoding='utf-8')
+            pending.replace(target)
+        check_snapshot(json.loads(Path(args.version_export).read_bytes()),args.test_origin,rows)
+        print(json.dumps(submit(rows,args.operation,send)))
     except (OSError, KeyError, TypeError, ValueError, RuntimeError) as error:
         print(str(error) if type(error) is ValueError else 'Local verification failed',file=sys.stderr)
         sys.exit(1)
