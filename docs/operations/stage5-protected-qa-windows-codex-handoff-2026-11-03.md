@@ -52,18 +52,16 @@ Windows `api_v2.fetch_version_snapshot`은 200개씩 조회 후 로컬 catalog_h
 6. 단일 가상 문서 시험 또는 민감정보 없는 소규모 검증을 먼저 진행한다. 이후 **4,108개 고유 ID가 모두 QA 데이터베이스와 일치할 때만** 전체 manifest `start → items(≤200) → seal → preview`를 전송한다. 401/403/409/429/5xx 또는 인증·버전 불일치 시 즉시 중단·보고한다. 클라이언트는 리다이렉트를 따라가지 않고 TLS 인증서를 검증한다.
 7. 실제 `apply-selection`, PDF 보관·삭제, 운영 DB 수정, `LIBRARY_STAGE5_WRITE_ENABLED=true` 설정은 **절대 실행하지 않는다**.
 
-PowerShell 참고 (파라미터 경로는 현장 확인하여 기입):
+PowerShell 참고 (경로는 현장 확인하여 입력하며, 아래 전체 호출은 **한 줄**임):
 ```powershell
+$testOrigin = 'https://<검증된-QA-Preview-host>'
 $env:KL_STAGE5_TEST_ORIGIN = $testOrigin
 .\New-QADeviceCredential.ps1 -TestOrigin $testOrigin
-# 여기서 받은 deviceId + tokenSha256만 ChatGPT에 전달해 QA Neon 등록 요청
+# 출력된 deviceId + tokenSha256만 ChatGPT에 보내 QA Neon 해시 등록을 요청한다.
 $operation = [guid]::NewGuid()
-.\Test-ManifestPreview.ps1 -TestOrigin $testOrigin -Operation $operation \
-  -VersionExport $privateVersionExport -Index $index -Root $pdfRoot \
-  -Directory $privateState -Python $python -VercelProtected \
-  -EnrollBypass -RefreshVersionExport
+.\Test-ManifestPreview.ps1 -TestOrigin $testOrigin -Operation $operation -VersionExport $privateVersionExport -Index $index -Root $pdfRoot -Directory $privateState -Python $python -VercelProtected -EnrollBypass -RefreshVersionExport
 ```
-주의: PowerShell에서 줄 바꿈은 `\`이 아닌 백틱(` `)을 써야 하므로, 실제 실행 시 위 명령을 **한 줄**로 입력하거나 PowerShell 문법에 맞게 수정한다. Credential 파일은 Windows 사용자 DPAPI에 묶여 있어 다른 PC로 복사해도 복호화할 수 없다.
+QA 키가 이미 DPAPI에 등록된 뒤 재시도할 때는 `-EnrollBypass`를 생략한다. QA 서버에서 401/403/409나 버전 불일치가 발생하면 **우회하지 않고 중단**한다. Credential 파일은 Windows 사용자 DPAPI에 묶여 있어 다른 PC로 복사해도 복호화할 수 없다.
 
 ## 5. 완료 보고
 
