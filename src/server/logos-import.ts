@@ -58,9 +58,7 @@ export async function previewLogos(db: Database, owner: string, raw: unknown) {
     toCreate: items.length - known.size - conflicts.length,
     permanent: items.filter((i) => i.license === "permanent").length,
     temporary: items.filter((i) => i.license === "temporary").length,
-    needsReview: conflicts
-      .slice(0, 20)
-      .map((x) => ({ resourceId: x.resourceId, title: x.title })),
+    needsReview: conflicts.map((x) => ({ resourceId: x.resourceId, title: x.title })),
     applied: false,
   };
 }
