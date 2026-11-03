@@ -79,7 +79,7 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
           {
             ...data.items[0],
             resourceId: "LLS:OUT-OF-SCOPE",
-            resourceType: "설교",
+            resourceType: "인터랙티브",
           },
         ],
       }),
