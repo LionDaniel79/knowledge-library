@@ -76,8 +76,8 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
         ],
       );
       await fixture.db.query(
-        "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'qa','fake.pdf','qa/fake.pdf',1,'1',$4,$5,'','v1')",
-        [row.documentId, owner, row.bookId, row.scope, row.material],
+        "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope,material_kind,scope_reason,scope_version) VALUES($1,$2,$3,'qa',$4,$5,1,'1',$6,$7,'','v1')",
+        [row.documentId, owner, row.bookId, "fake-" + i + ".pdf", "qa/fake-" + i + ".pdf", row.scope, row.material],
       );
       if (row.kind) {
         await fixture.db.query(
