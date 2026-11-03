@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         working-directory: desktop/pdf-library
         run: |
-          foreach ($file in @('Test-ManifestPreview.ps1')) {
+          foreach ($file in @('Test-ManifestPreview.ps1', 'New-QADeviceCredential.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
