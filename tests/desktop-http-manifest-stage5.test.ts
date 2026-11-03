@@ -62,9 +62,11 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
     const versionsUrl =
       "https://stage5-test.invalid/api/desktop/catalog/versions";
     expect(
-      (await versionsRoute(
-        req(versionsUrl, "POST", { documentIds: [documentId] }),
-      )).status,
+      (
+        await versionsRoute(
+          req(versionsUrl, "POST", { documentIds: [documentId] }),
+        )
+      ).status,
     ).toBe(401);
     const currentVersions = await versionsRoute(
       req(versionsUrl, "POST", { documentIds: [documentId] }, token.token),
@@ -78,14 +80,28 @@ it("routes an authenticated desktop manifest through start/items/seal/preview wi
     expect(currentVersionsBody.verifiedAtUnix).toEqual(expect.any(Number));
     expect(JSON.stringify(currentVersionsBody)).not.toContain("test.pdf");
     expect(
-      (await versionsRoute(
-        req(versionsUrl, "POST", { documentIds: [documentId, documentId] }, token.token),
-      )).status,
+      (
+        await versionsRoute(
+          req(
+            versionsUrl,
+            "POST",
+            { documentIds: [documentId, documentId] },
+            token.token,
+          ),
+        )
+      ).status,
     ).toBe(400);
     expect(
-      (await versionsRoute(
-        req(versionsUrl, "POST", { documentIds: [randomUUID()] }, token.token),
-      )).status,
+      (
+        await versionsRoute(
+          req(
+            versionsUrl,
+            "POST",
+            { documentIds: [randomUUID()] },
+            token.token,
+          ),
+        )
+      ).status,
     ).toBe(409);
 
     const start = {
