@@ -74,6 +74,9 @@ describe("Logos preview contract", () => {
   };
   it("rejects duplicate Resource IDs and unexpected ISBN guesses", () => {
     expect(logosBatch.safeParse({ items: [logos, logos] }).success).toBe(false);
+    expect(logosBatch.safeParse({ items: [{ ...logos, resourceType: "설교" }] }).success).toBe(false);
+    expect(logosBatch.safeParse({ items: [{ ...logos, resourceType: "주석" }] }).success).toBe(false);
+    expect(logosBatch.safeParse({ items: [{ ...logos, resourceType: "단행본" }] }).success).toBe(true);
     expect(
       logosBatch.safeParse({ items: [{ ...logos, isbn: "unknown" }] }).success,
     ).toBe(false);
