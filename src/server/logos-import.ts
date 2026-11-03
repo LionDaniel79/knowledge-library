@@ -25,26 +25,16 @@ async function checks(db: Database, owner: string, items: LogosRow[]) {
     )
   ).rows;
   const known = new Set(existing.map((x) => x.source_key));
-  const titles = [
-    ...new Set(items.map((x) => x.title.toLocaleLowerCase("en"))),
-  ];
-  const matches = (
+  // Compare every incoming title/author pair in SQL; a global LIMIT 500 can
+  // silently miss duplicate-edition candidates in a large existing catalog.
+  const candidates = (
     await db.query(
-      "SELECT id,title,author,publisher,source_key FROM library_books WHERE owner_id=$1 AND lower(title)=ANY($2::text[]) LIMIT 500",
-      [owner, titles],
+      "SELECT DISTINCT x.resource_id FROM jsonb_to_recordset($2::jsonb) AS x(resource_id text,title text,author text) JOIN library_books b ON b.owner_id=$1 AND lower(b.title)=lower(x.title) AND lower(b.author)=lower(x.author)",
+      [owner,JSON.stringify(items.map(i=>({resource_id:i.resourceId,title:i.title,author:i.author})))],
     )
   ).rows;
-  const conflicts = items.filter(
-    (i) =>
-      !known.has(key(i)) &&
-      matches.some(
-        (m) =>
-          m.source_key !== key(i) &&
-          m.title.toLocaleLowerCase("en") === i.title.toLocaleLowerCase("en") &&
-          m.author.trim().toLocaleLowerCase("en") ===
-            i.author.trim().toLocaleLowerCase("en"),
-      ),
-  );
+  const potential = new Set(candidates.map(r=>r.resource_id));
+  const conflicts = items.filter(i => !known.has(key(i)) && potential.has(i.resourceId));
   return { known, conflicts };
 }
 export async function previewLogos(db: Database, owner: string, raw: unknown) {
