@@ -1,5 +1,4 @@
-import { createHash,randomUUID } from "node:crypto";
-import { z } from "zod";
+import { createHash } from "node:crypto";
 import { logosBatch,type LogosRow } from "../lib/logos-contract";
 import type { Database } from "./library-store";
 import { LibraryError } from "./library-store";
