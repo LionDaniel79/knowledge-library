@@ -10,6 +10,7 @@ const imageHosts = new Set([
   "books.google.com",
   "books.google.co.kr",
   "books.googleusercontent.com",
+  "covers.logoscdn.com",
 ]);
 function imageUrl(source: string) {
   let url: URL;
