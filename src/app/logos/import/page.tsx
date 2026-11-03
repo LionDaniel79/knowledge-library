@@ -119,9 +119,7 @@ export default function LogosImportPage() {
     <main style={{ maxWidth: 900, margin: "3rem auto", padding: "1.5rem" }}>
       <h1>로고스 전자책 등록 준비</h1>
       <p>
-        Logos의 Excel 2003 XML 내보내기를 선택하세요. Resource Type이 성경
-        주석·단행본인 자료만 검토합니다. 이 화면은 서지 미리보기만 수행하며 실제
-        도서를 등록하지 않습니다.
+        Logos의 Excel 2003 XML 내보내기를 선택하세요. 주석·성경·설교집·사전·신학서·정기간행물 등 텍스트 자료는 포함하고, 미디어·인터랙티브·데이터셋 설명서 등 비도서 자료는 제외합니다. 이 화면에서는 먼저 등록 대상을 검토합니다.
       </p>
       <p>
         <a href="/">나의 서재로 돌아가기</a> ·{" "}
