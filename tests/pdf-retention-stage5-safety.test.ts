@@ -113,7 +113,7 @@ it("preserves 36 owner exclusions, holds 37 moved supplements and 3 removed PDFs
       [randomUUID(), owner, referenceBook.bookId, "c".repeat(64)],
     );
     await fixture.db.query(
-      "INSERT INTO library_reference_sources(id,owner_id,source_kind,source_id,source_version,url,provider,title,content_hash,excerpt,edition_match) VALUES($1,$2,'book',$3,'1','https://example.invalid/source','QA','Synthetic source',$4,'','verified')",
+      "INSERT INTO library_reference_sources(id,owner_id,source_kind,source_id,source_version,url,provider,title,content_hash,excerpt,edition_match) VALUES($1,$2,'book',$3,'1','https://example.invalid/source','QA','Synthetic source',$4,'','document')",
       [randomUUID(), owner, referenceBook.bookId, "d".repeat(64)],
     );
 
