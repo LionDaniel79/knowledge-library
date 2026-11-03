@@ -55,6 +55,12 @@ test("Logos Excel XML includes textual publications but excludes media, interact
   );
   expect(result).toMatchObject({ total: 8, excluded: 3 });
   expect(result.items.map((i: { resourceId: string }) => i.resourceId)).toEqual(
-    ["LLS:COMMENTARY", "LLS:MONOGRAPH", "LLS:GENERIC", "LLS:SERMON", "LLS:JOURNAL"],
+    [
+      "LLS:COMMENTARY",
+      "LLS:MONOGRAPH",
+      "LLS:GENERIC",
+      "LLS:SERMON",
+      "LLS:JOURNAL",
+    ],
   );
 });

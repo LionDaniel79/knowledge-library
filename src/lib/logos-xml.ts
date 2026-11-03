@@ -65,7 +65,9 @@ export function parseLogosXmlSelection(xml: string): {
     const resourceType = cell("Resource Type");
     if (LOGOS_EXCLUDED_TYPES.some((type) => type === resourceType)) continue;
     if (!LOGOS_BOOK_RESOURCE_TYPES.some((type) => type === resourceType))
-      throw Error("분류되지 않은 Logos 자료 유형을 확인해 주세요: " + resourceType);
+      throw Error(
+        "분류되지 않은 Logos 자료 유형을 확인해 주세요: " + resourceType,
+      );
     const licenseText = cell("License");
     const license =
       licenseText === "영구 소유"

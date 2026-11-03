@@ -90,7 +90,16 @@ describe("Logos preview contract", () => {
       logosBatch.safeParse({ items: [{ ...logos, resourceType: "학술지" }] })
         .success,
     ).toBe(true);
-    for (const nonBook of ["미디어 컬렉션", "코스웨어 미디어 컬렉션", "인터랙티브", "설명서", "구 시각화", "성경 인물 도표", "성경 장소 지도", "UNKNOWN_KIND"]) {
+    for (const nonBook of [
+      "미디어 컬렉션",
+      "코스웨어 미디어 컬렉션",
+      "인터랙티브",
+      "설명서",
+      "구 시각화",
+      "성경 인물 도표",
+      "성경 장소 지도",
+      "UNKNOWN_KIND",
+    ]) {
       expect(
         logosBatch.safeParse({ items: [{ ...logos, resourceType: nonBook }] })
           .success,
