@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 
-test("Logos Excel XML selects only exact 성경 주석 and 단행본 resource types", async ({
+test("Logos Excel XML includes textual publications but excludes media, interactive and nonbook data types", async ({
   page,
 }) => {
   const script = (
@@ -44,13 +44,17 @@ test("Logos Excel XML selects only exact 성경 주석 and 단행본 resource ty
       ${row(["LLS:MONOGRAPH", "A monograph", "Author", "Publisher", "임시 소유", "단행본"])}
       ${row(["LLS:GENERIC", "Other commentary", "Author", "Publisher", "영구 소유", "주석"])}
       ${row(["LLS:SERMON", "Sermon", "Author", "Publisher", "영구 소유", "설교"])}
+      ${row(["LLS:JOURNAL", "Journal", "Author", "Publisher", "영구 소유", "학술지"])}
+      ${row(["LLS:MEDIA", "Audio collection", "Author", "Publisher", "영구 소유", "미디어 컬렉션"])}
+      ${row(["INTERACTIVE:TOOL", "Tool", "Author", "Publisher", "영구 소유", "인터랙티브"])}
+      ${row(["LLS:DOC", "Dataset documentation", "Author", "Publisher", "영구 소유", "설명서"])}
     </Table></Worksheet></Workbook>`;
   const result = await page.evaluate(
     (source) => (window as any).selectLogos(source),
     xml,
   );
-  expect(result).toMatchObject({ total: 4, excluded: 2 });
+  expect(result).toMatchObject({ total: 8, excluded: 3 });
   expect(result.items.map((i: { resourceId: string }) => i.resourceId)).toEqual(
-    ["LLS:COMMENTARY", "LLS:MONOGRAPH"],
+    ["LLS:COMMENTARY", "LLS:MONOGRAPH", "LLS:GENERIC", "LLS:SERMON", "LLS:JOURNAL"],
   );
 });
