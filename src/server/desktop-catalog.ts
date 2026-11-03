@@ -246,7 +246,7 @@ export async function previewDesktopManifest(
     canApplySelection: false,
     canDelete: false,
     warning:
-      "미선택 5,213건과 보관 승인은 다릅니다. 사용자 제외 36건을 자동 복원하지 않으며 미선택·미제외 자료는 자동 보관하지 않습니다. 기존 도서 ID·메모·독서 기록을 유지하고 별도 검토·백업·승인이 필요합니다.",
+      "미선택 문서 수와 보관 승인은 다릅니다. 사용자 제외 36건을 자동 복원하지 않으며 미선택·미제외 자료는 자동 보관하지 않습니다. 기존 도서 ID·메모·독서 기록을 유지하고 별도 검토·백업·승인이 필요합니다.",
   };
 }
 export async function previewDesktopCleanup(
