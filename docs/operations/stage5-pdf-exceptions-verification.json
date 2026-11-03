@@ -887,16 +887,17 @@
   "appliedActions": 0,
   "ownerClarification": {
     "capturedDate": "2026-11-04",
-    "provenance": "Library owner's direct clarification in conversation; not a Windows file-content verification",
+    "provenance": "Library owner's explicit confirmation on 2026-11-04; merge relationship is owner-confirmed, not independently verified by PDF page-by-page comparison",
     "originalScanPreserved": true,
     "missingPhysicalFilesStillUnverified": 3,
     "reportedActions": [
       {
         "legacyDocumentId": "553c6aea-b65e-5441-ac7e-301420f5fc4a",
-        "title": "나사2",
-        "disposition": "intentionally_deleted_as_separate_pdf",
-        "nuance": "Owner also reports portions of NASA book had been merged; exact combination of source files not remembered",
-        "notAnAccidentalFileLoss": true
+        "title": "나사2.pdf",
+        "disposition": "source_file_merged_into_selected_pdf_then_deleted_as_separate_file",
+        "notAnAccidentalFileLoss": true,
+        "confirmedMergedIntoDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "confirmedBy": "owner_explicit_statement"
       },
       {
         "legacyDocumentId": "60be9144-136e-59a8-9ec9-4096ed382454",
@@ -907,9 +908,10 @@
       {
         "legacyDocumentId": "0fd012e3-e212-53dc-bf01-0cf4fa10729d",
         "title": "나사, 그들만의 방식 1.pdf",
-        "disposition": "superseded_in_owner_reported_merge_or_reorganization",
-        "exactMergeInputs": "unknown",
-        "notAnAccidentalFileLoss": true
+        "disposition": "source_file_merged_into_selected_pdf_then_superseded",
+        "notAnAccidentalFileLoss": true,
+        "confirmedMergedIntoDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "confirmedBy": "owner_explicit_statement"
       }
     ],
     "existingSelectedRecord": {
@@ -917,8 +919,30 @@
       "title": "나사 그들만의 방식.pdf",
       "selectedInSealedManifest": true,
       "verifiedContentsIncludeAllSourceParts": false,
-      "note": "QA DB verifies a selected PDF under this name; the owner remembers combining a multi-part work but is uncertain which original files made the merged PDF"
+      "note": "Owner confirms this is the merged output of 나사, 그들만의 방식 1.pdf and 나사2.pdf. Existing QA selection and document ID were verified; separate byte-level reconstruction not performed."
     },
-    "safetyPolicy": "Preserve historical document/book IDs and all references. Do not treat owner-directed deletion as an accidental missing-file error, and do not automatically restore, erase or merge any DB records. Require separate reversible retention policy and explicit approval for live status changes."
+    "safetyPolicy": "Retain the selected merged output and historical document IDs and relationships. Do not flag the two superseded NASA files as unexplained losses, recreate them, or automatically restore them. Preserve the independently owner-deleted MLK speech as a separate deletion case. Do not mutate QA or production book/exclusion states without a separate reversible policy and approval.",
+    "missingFilesPhysicalEvidenceNote": "Three historical source PDFs were not located by Windows scanning; a confirmed source-to-merged-output relationship explains the two NASA files, and the owner confirmed direct deletion of the separate MLK speech PDF. This does not retroactively turn SHA checks of missing files into verified matches.",
+    "confirmedMerge": {
+      "verificationLevel": "owner_explicit_confirmation",
+      "sourceFiles": [
+        {
+          "fileName": "나사, 그들만의 방식 1.pdf",
+          "legacyDocumentId": "0fd012e3-e212-53dc-bf01-0cf4fa10729d"
+        },
+        {
+          "fileName": "나사2.pdf",
+          "legacyDocumentId": "553c6aea-b65e-5441-ac7e-301420f5fc4a"
+        }
+      ],
+      "mergedOutput": {
+        "fileName": "나사 그들만의 방식.pdf",
+        "legacyDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "listedIn4108Selected": true,
+        "preservationPriority": "retain_current_merged_pdf"
+      },
+      "doesNotRequireRecreatingSeparateSourcePdfs": true,
+      "caveat": "The merge relationship is conclusively confirmed by the owner; byte-level composition of the merged PDF was not independently re-audited."
+    }
   }
 }
