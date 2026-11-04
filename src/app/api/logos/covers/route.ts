@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       return new Response(null, { status: 400 });
     const items = (
       await database.query(
-        "SELECT b.id,b.title,b.author,b.version FROM library_books b JOIN library_book_sources s ON s.owner_id=b.owner_id AND s.book_id=b.id AND s.source_kind='Logos' WHERE b.owner_id=$1 AND b.cover_url='' ORDER BY b.title,b.id LIMIT 51 OFFSET $2",
+        "SELECT b.id,b.title,b.author,b.publisher,b.version,b.source_data->'raw'->>'edition' AS edition,b.source_data->'raw'->>'publicationDate' AS publication_date,coalesce(b.enrichment->'logosCompletion'->'candidates','[]'::jsonb) AS candidates FROM library_active_books b JOIN library_book_sources s ON s.owner_id=b.owner_id AND s.book_id=b.id AND s.source_kind='Logos' WHERE b.owner_id=$1 AND b.cover_url='' AND coalesce(b.enrichment->>'coverRemoved','false')<>'true' ORDER BY b.title,b.id LIMIT 51 OFFSET $2",
         [owner, offset],
       )
     ).rows;

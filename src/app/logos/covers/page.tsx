@@ -1,6 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
-type Book = { id: string; title: string; author: string; version: number };
+type Book = {
+  id: string;
+  title: string;
+  author: string;
+  publisher?: string;
+  edition?: string;
+  publication_date?: string;
+  version: number;
+  candidates?: {
+    isbn: string;
+    publicationYear?: string;
+    edition?: string;
+    format?: string;
+    facts: {
+      title: string;
+      author: string;
+      publisher: string;
+      coverUrl: string;
+    };
+  }[];
+};
 export default function LogosCoversPage() {
   const [items, setItems] = useState<Book[]>([]);
   const [offset, setOffset] = useState<number | null>(0);
@@ -40,7 +60,8 @@ export default function LogosCoversPage() {
       </p>
       <p>
         로고스 XML에는 표지가 없습니다. 정확한 책·판본인지 직접 확인한 이미지
-        주소만 등록하세요. 기존 표지는 덮어쓰지 않습니다.
+        주소만 등록하세요. 저장한 이미지는 서재에 보관됩니다. 기존 표지는
+        덮어쓰지 않습니다.
       </p>
       {items.map((book) => (
         <section
@@ -49,6 +70,46 @@ export default function LogosCoversPage() {
         >
           <h3>{book.title}</h3>
           <p>{book.author}</p>
+          <p>
+            {[book.publisher, book.publication_date, book.edition]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          {!!book.candidates?.length && (
+            <fieldset>
+              <legend>같은 판본인지 확인할 후보</legend>
+              {book.candidates
+                .filter((c) => c.facts.coverUrl)
+                .map((candidate, index) => (
+                  <label key={index} style={{ display: "block" }}>
+                    <input
+                      type="radio"
+                      name={book.id}
+                      checked={urls[book.id] === candidate.facts.coverUrl}
+                      onChange={() => {
+                        setUrls((old) => ({
+                          ...old,
+                          [book.id]: candidate.facts.coverUrl,
+                        }));
+                        setApproved((old) => ({ ...old, [book.id]: false }));
+                      }}
+                    />
+                    {candidate.facts.title} · {candidate.facts.author} ·{" "}
+                    {candidate.facts.publisher} · ISBN {candidate.isbn}
+                    {[
+                      candidate.publicationYear,
+                      candidate.edition,
+                      candidate.format === "digital"
+                        ? "전자책"
+                        : "자료 형태 확인 필요",
+                    ]
+                      .filter(Boolean)
+                      .map((v) => " · " + v)
+                      .join("")}
+                  </label>
+                ))}
+            </fieldset>
+          )}
           <label>
             확인된 표지 이미지 URL
             <input
@@ -93,7 +154,7 @@ export default function LogosCoversPage() {
                 const data = await r.json();
                 if (!r.ok) throw Error(data.error ?? "표지 저장 실패");
                 setItems((old) => old.filter((x) => x.id !== book.id));
-                setNotice(book.title + " 표지 주소를 등록했습니다.");
+                setNotice(book.title + " 표지 이미지를 저장했습니다.");
               } catch (e) {
                 setError(e instanceof Error ? e.message : "표지 저장 실패");
               } finally {
@@ -101,7 +162,7 @@ export default function LogosCoversPage() {
               }
             }}
           >
-            표지 연결
+            표지 저장
           </button>
         </section>
       ))}

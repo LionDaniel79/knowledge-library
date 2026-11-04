@@ -1,5 +1,3 @@
-import sharp from "sharp";
-import { createHash } from "node:crypto";
 import { syncQuery } from "./sync/write";
 import { LibraryError, type Database, type Executor } from "./library-store";
 import type { Book } from "../lib/domain";
@@ -66,42 +64,14 @@ export async function readStoredBookCover(
       [owner, bookId],
     )
   ).rows[0];
+  const managed = /^\/api\/book-covers\/([a-f0-9-]{36})$/i.exec(
+    book?.cover_url ?? "",
+  );
+  if (managed)
+    return createCoverStore(db).readConditional(owner, managed[1], etag);
   if (!book?.cover_url?.startsWith("https://"))
     throw new LibraryError(404, "저장할 표지가 없습니다.");
-  // For owner-verified Logos image URLs, proxy an optimized image without
-  // occupying the legacy 5,000-row base64 asset store.
-  const location = (
-    await db.query(
-      "SELECT storage_kind,object_key FROM library_cover_locations WHERE owner_id=$1 AND book_id=$2",
-      [owner, bookId],
-    )
-  ).rows[0];
-  if (
-    location?.storage_kind === "external" &&
-    location.object_key === book.cover_url
-  ) {
-    const raw = await downloadCover(book.cover_url);
-    const bytes = await sharp(raw, {
-      limitInputPixels: 24000000,
-      failOn: "error",
-    })
-      .rotate()
-      .resize({
-        width: 800,
-        height: 1200,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 78 })
-      .toBuffer();
-    const checksum =
-      '"' + createHash("sha256").update(bytes).digest("hex") + '"';
-    return {
-      bytes: etag === checksum ? null : bytes,
-      mime: "image/webp",
-      etag: checksum,
-    };
-  }
+  // Repair legacy external URLs once; subsequent reads use the stored mirror.
   const asset = await mirrorCover(db, owner, book.cover_url);
   return createCoverStore(db).readConditional(owner, asset.id, etag);
 }
@@ -132,7 +102,11 @@ export async function attachStoredCovers(
     rows.map((r) => [r.source, assetUrl(r.asset_id).url]),
   );
   for (const book of books) {
-    book.storedCoverUrl = book.coverUrl ? urls.get(book.coverUrl) : undefined;
+    book.storedCoverUrl = book.coverUrl?.startsWith("/api/book-covers/")
+      ? book.coverUrl
+      : book.coverUrl
+        ? urls.get(book.coverUrl)
+        : undefined;
     book.storedImportedCoverUrl = urls.get(source(book) ?? "");
     if (book.catalogCoverUrl)
       book.catalogCoverUrl = urls.get(book.catalogCoverUrl);

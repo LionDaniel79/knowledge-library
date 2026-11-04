@@ -69,8 +69,5 @@ test("displays collected covers, preserves imported covers and falls back after 
   await img.dispatchEvent("error");
   await expect(img).toHaveAttribute("src", "/api/book-covers/catalog");
   await img.dispatchEvent("error");
-  await expect(img).toHaveAttribute("src", "/api/pdf/document/cover");
-  await expect(img).toHaveAttribute("title", "PDF 첫 페이지 미리보기");
-  await img.dispatchEvent("error");
   await expect(page.locator(".book-cover strong")).toHaveText("책");
 });

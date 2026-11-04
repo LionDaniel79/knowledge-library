@@ -184,7 +184,6 @@ for (const width of [390, 1280])
       "사유의 지도",
       "독서 달력",
       "독서 통계",
-      "PDF 원문 검색",
     ]) {
       await navigate(page, screen);
       const button = page

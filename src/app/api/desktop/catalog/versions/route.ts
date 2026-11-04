@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const requestSchema = z
   .object({
     documentIds: z.array(z.string().uuid()).min(1).max(200),
+    allowPartial: z.literal(true).optional(),
   })
   .strict()
   .refine(
@@ -36,24 +37,52 @@ export async function POST(request: Request) {
     const byId = new Map(
       result.rows.map((row) => [String(row.document_id).toLowerCase(), row]),
     );
-    if (byId.size !== input.documentIds.length)
+    const hasBlocks =
+      input.allowPartial &&
+      Boolean(
+        (
+          await database.query(
+            "SELECT to_regclass('public.library_desktop_document_blocks') IS NOT NULL AS ready",
+          )
+        ).rows[0]?.ready,
+      );
+    if (hasBlocks) {
+      const blocked = (
+        await database.query(
+          "SELECT document_id FROM library_desktop_document_blocks WHERE owner_id=$1 AND document_id=ANY($2::uuid[])",
+          [who.owner, input.documentIds],
+        )
+      ).rows;
+      for (const row of blocked)
+        byId.delete(String(row.document_id).toLowerCase());
+    }
+    if (!input.allowPartial && byId.size !== input.documentIds.length)
       throw new LibraryError(
         409,
         "문서 ID·소유자·자료 유형이 시험 서버와 일치하지 않습니다.",
       );
 
-    const items = input.documentIds.map((id) => {
-      const found = byId.get(id.toLowerCase());
-      if (!found || !Number.isSafeInteger(Number(found.book_version)))
-        throw new LibraryError(409, "도서 버전을 검증할 수 없습니다.");
-      return {
-        legacyDocumentId: id.toLowerCase(),
-        bookId: String(found.book_id).toLowerCase(),
-        expectedBookVersion: Number(found.book_version),
-      };
-    });
+    const unresolvedDocumentIds = input.documentIds
+      .filter((id) => !byId.has(id.toLowerCase()))
+      .map((id) => id.toLowerCase());
+    const items = input.documentIds
+      .filter((id) => byId.has(id.toLowerCase()))
+      .map((id) => {
+        const found = byId.get(id.toLowerCase());
+        if (!found || !Number.isSafeInteger(Number(found.book_version)))
+          throw new LibraryError(409, "도서 버전을 검증할 수 없습니다.");
+        return {
+          legacyDocumentId: id.toLowerCase(),
+          bookId: String(found.book_id).toLowerCase(),
+          expectedBookVersion: Number(found.book_version),
+        };
+      });
     return Response.json(
-      { verifiedAtUnix: Math.floor(Date.now() / 1000), items },
+      {
+        verifiedAtUnix: Math.floor(Date.now() / 1000),
+        items,
+        ...(input.allowPartial ? { unresolvedDocumentIds } : {}),
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

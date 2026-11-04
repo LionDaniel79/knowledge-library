@@ -5,12 +5,17 @@ import { atomicWriteJson } from "../atomic-json";
 import { lookupCollectedBook, type CollectedBook } from "./catalog";
 import { parseYes24Records, readYes24Response } from "./yes24-batch";
 import { reserveCatalogRequest } from "./api-quota";
-export function supplementLookup(dir: string, fetcher = fetch) {
+export function supplementLookup(
+  dir: string,
+  fetcher = fetch,
+  keys: { library?: string; yes24?: string } = {},
+) {
   return async (
     provider: "yes24" | "library",
     isbn: string,
   ): Promise<CollectedBook[]> => {
     const key =
+      keys[provider] ??
       process.env[provider === "yes24" ? "YES24_API_KEY" : "DATA4LIBRARY_KEY"];
     if (!key) throw Error("Catalog credential unavailable.");
     const path = join(
@@ -47,7 +52,7 @@ export function supplementLookup(dir: string, fetcher = fetch) {
       );
       records = json ? parseYes24Records(json, isbn) : [];
     } else {
-      const r = await lookupCollectedBook(isbn, provider, key);
+      const r = await lookupCollectedBook(isbn, provider, key, fetcher);
       records = r ? [r] : [];
     }
     await mkdir(dir, { recursive: true });

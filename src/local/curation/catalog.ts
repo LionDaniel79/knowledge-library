@@ -66,11 +66,12 @@ export async function lookupCollectedBook(
   isbn: string,
   provider: "google" | "library",
   key: string,
+  fetcher: typeof fetch = fetch,
 ): Promise<CollectedBook | null> {
   if (!key) throw Error("서지 API 인증키가 설정되지 않았습니다.");
   if (!isbn13(isbn)) return null;
   if (provider === "library") {
-    const r = await lookupLibrary(isbn, key);
+    const r = await lookupLibrary(isbn, key, fetcher);
     return r
       ? {
           provider: "도서관 정보나루",
@@ -98,7 +99,7 @@ export async function lookupCollectedBook(
   reserveCatalogRequest("google", key);
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetcher(url, {
       signal: AbortSignal.timeout(15000),
       redirect: "error",
     });

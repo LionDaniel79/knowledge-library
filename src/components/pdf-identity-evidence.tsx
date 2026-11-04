@@ -23,13 +23,7 @@ export function PdfIdentityEvidence({ value }: { value: unknown }) {
       <p>ISBN {identity.isbn}</p>
       {identity.evidence.map((e) => (
         <div key={e.pageNumber}>
-          <a
-            href={`/reader/${identity.documentId}?page=${e.pageNumber}&signature=${encodeURIComponent(identity.signature)}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            PDF {e.pageNumber}쪽에서 확인
-          </a>
+          <span>PDF {e.pageNumber}쪽에서 확인</span>
           <blockquote>{e.quote}</blockquote>
         </div>
       ))}

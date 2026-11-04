@@ -1,11 +1,23 @@
 import json
 import sys
-from reader import search,render
 
 def dispatch(request):
+    request=dict(request)
     action=request.pop('action')
-    if action=='search':return search(**request)
-    if action=='render':return render(**request)
+    if action.startswith('library-'):
+        import management
+        actions={name:getattr(management,name.replace('-','_')) for name in
+                 ('scan','status','ocr-step','pause','retry','search','render','audit','prepare-web','pending-web','sync-web')}
+        operation=actions.get(action[8:])
+        if operation is None:raise ValueError('지원하지 않는 관리 작업입니다.')
+        if action=='library-prepare-web' and request.pop('summary',False):
+            return {'pending':len(operation(**request)['requests'])}
+        if action=='library-scan':
+            request['progress']=lambda n,h:print(f'{n}개 확인 · 해시 {h}개',file=sys.stderr,flush=True)
+        return operation(**request)
+    if action in ('search','render'):
+        from reader import search,render
+        return (search if action=='search' else render)(**request)
     if action=='scan':
         from registry import scan
         return scan(**request,progress=lambda n,h:print(f'{n}개 확인 · 해시 {h}개',file=sys.stderr,flush=True))

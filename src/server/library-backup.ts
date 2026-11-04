@@ -6,6 +6,14 @@ import { boardSchema, WHITEBOARD_ID } from "../lib/whiteboard";
 import { z } from "zod";
 
 // Dependency order. Never accept table names, SQL, or credentials from a backup.
+const desktopTables = [
+  "library_book_sources",
+  "library_cover_locations",
+  "library_pdf_registry",
+  "library_desktop_resources",
+  "library_desktop_document_blocks",
+  "library_desktop_scan_status",
+] as const;
 const optionalTables = [
   "library_memo_bundles",
   "library_bundle_links",
@@ -19,6 +27,7 @@ const optionalTables = [
   "library_catalog_reviews",
   "library_book_introductions",
   "library_book_exclusions",
+  ...desktopTables,
 ] as const;
 const tables = [
   "library_books",
@@ -85,6 +94,7 @@ async function schema(tx: Executor, included: readonly string[] = tables) {
     tables.some(
       (table) =>
         table !== "library_whiteboards" &&
+        !(desktopTables as readonly string[]).includes(table) &&
         !rows.some(
           (r: any) => r.table_name === table && r.column_name === "owner_id",
         ),
@@ -227,6 +237,26 @@ function validateReferences(b: LibraryBackup) {
   for (const r of b.tables.library_notes) ref("library_books", r.book_id, true);
   for (const r of b.tables.library_note_trash ?? []) ref("library_notes", r.id);
   for (const r of b.tables.library_documents) ref("library_books", r.book_id);
+  for (const r of b.tables.library_book_sources ?? [])
+    ref("library_books", r.book_id);
+  for (const r of b.tables.library_cover_locations ?? []) {
+    ref("library_books", r.book_id);
+    if (
+      r.storage_kind === "managed_asset" &&
+      !coverIds.has(String(r.object_key))
+    )
+      invalid("백업 안의 로고스 표지 이미지가 누락되었습니다.");
+  }
+  for (const r of b.tables.library_pdf_registry ?? []) {
+    ref("library_books", r.book_id);
+    ref("library_documents", r.document_id);
+  }
+  for (const r of b.tables.library_desktop_resources ?? []) {
+    if (r.state !== "blocked") {
+      ref("library_books", r.book_id);
+      ref("library_documents", r.document_id);
+    }
+  }
   for (const r of b.tables.library_book_relations ?? []) {
     ref("library_books", r.left_id);
     ref("library_books", r.right_id);
@@ -335,9 +365,26 @@ export async function createLibraryBackup(
     const current = await schema(tx);
     const rows = {} as LibraryBackup["tables"];
     for (const table of tables) {
-      if (table === "library_whiteboards" && !current.columns[table].length)
+      if (
+        (optionalTables as readonly string[]).includes(table) &&
+        !current.columns[table].length
+      )
         continue;
-      const order = table === "library_annual_metrics" ? "year" : "id";
+      const order =
+        table === "library_annual_metrics"
+          ? "year"
+          : table === "library_book_sources"
+            ? "source_kind,resource_id"
+            : table === "library_cover_locations"
+              ? "book_id"
+              : table === "library_pdf_registry" ||
+                  table === "library_desktop_document_blocks"
+                ? "document_id"
+                : table === "library_desktop_scan_status"
+                  ? "device_id"
+                  : table === "library_desktop_resources"
+                    ? "device_id,resource_id"
+                    : "id";
       rows[table] = (
         await tx.query(
           `SELECT to_jsonb(t)-'owner_id' AS row FROM ${table} t WHERE owner_id=$1 ORDER BY ${order}`,

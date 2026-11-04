@@ -26,29 +26,29 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 const open = (query: Record<string, string | string[] | undefined>) =>
   Page({ searchParams: Promise.resolve(query) });
-it("opens PDF search and its processing panel from a direct link rather than the home view", async () => {
+it("retires the PDF search/processing entry and opens the normal metadata library shell", async () => {
   const pdf = await open({ view: "pdf" });
-  expect(pdf.props.initialView).toBe("pdf");
+  expect(pdf.props.initialView).toBeUndefined();
   const operations = await open({ view: "pdf", panel: "operations" });
-  expect(operations.props.initialOperationsOpen).toBe(true);
+  expect(operations.props.initialOperationsOpen).toBeUndefined();
   const home = await open({ view: ["pdf", "home"] });
-  expect(home.props.initialView).toBe("home");
+  expect(home.props.initialView).toBeUndefined();
 });
-it("keeps the PDF destination when sign-in is needed without reading private book data", async () => {
+it("does not restore a retired PC PDF sign-in destination or read private book data", async () => {
   state.authenticated = false;
   const page = await open({ view: "pdf", panel: "operations" });
-  expect(page.props.returnPath).toBe("/?view=pdf&panel=operations");
+  expect(page.props.returnPath).toBeUndefined();
   expect(state.reads).toBe(0);
 });
-it("defers automatic device sync only for a confirmed private PC PDF entry", async () => {
+it("ignores old private PC connection configuration when opening the web shell", async () => {
   vi.stubEnv("LIBRARY_PC_ORIGIN", "https://library.example.ts.net");
   vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "true");
   vi.stubEnv("APP_ORIGIN", "https://library.example.ts.net");
-  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(true);
-  expect((await open({})).props.deferPdfAutoSync).toBe(false);
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBeUndefined();
+  expect((await open({})).props.deferPdfAutoSync).toBeUndefined();
   vi.stubEnv("APP_ORIGIN", "https://public-library.test");
-  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(false);
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBeUndefined();
   vi.stubEnv("APP_ORIGIN", "https://library.example.ts.net");
   vi.stubEnv("LIBRARY_PC_PRIVATE_CONFIRMED", "false");
-  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBe(false);
+  expect((await open({ view: "pdf" })).props.deferPdfAutoSync).toBeUndefined();
 });

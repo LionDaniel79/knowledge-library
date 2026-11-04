@@ -76,7 +76,11 @@ export function secureImage(value: unknown) {
     return "";
   }
 }
-export async function lookupLibrary(isbn: string, key: string) {
+export async function lookupLibrary(
+  isbn: string,
+  key: string,
+  fetcher: typeof fetch = fetch,
+) {
   const normalized = isbn13(isbn);
   if (!normalized) return null;
   const url = new URL("https://data4library.kr/api/srchDtlList");
@@ -86,7 +90,7 @@ export async function lookupLibrary(isbn: string, key: string) {
   reserveCatalogRequest("library", key);
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetcher(url, {
       signal: AbortSignal.timeout(15000),
       cache: "no-store",
       redirect: "error",

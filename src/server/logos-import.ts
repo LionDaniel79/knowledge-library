@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { logosBatch, type LogosRow } from "../lib/logos-contract";
-import type { Database } from "./library-store";
+import type { Database, Executor } from "./library-store";
 import { LibraryError } from "./library-store";
 import { withSyncWrite } from "./sync/write";
 const key = (r: LogosRow) => JSON.stringify(["Logos", r.resourceId]);
@@ -16,7 +16,7 @@ const deterministicId = (owner: string, sourceKey: string) => {
     h.slice(20, 32),
   ].join("-");
 };
-async function checks(db: Database, owner: string, items: LogosRow[]) {
+async function checks(db: Executor, owner: string, items: LogosRow[]) {
   const keys = items.map(key);
   const existing = (
     await db.query(
@@ -73,13 +73,13 @@ export async function applyLogos(db: Database, owner: string, raw: unknown) {
       "5단계 서지 이전 승인 전에는 등록할 수 없습니다.",
     );
   const { items } = logosBatch.parse(raw);
-  const result = await checks(db, owner, items);
-  if (result.conflicts.length)
-    throw new LibraryError(
-      409,
-      "동일 판본일 수 있는 기존 도서가 있습니다. 먼저 중복을 검토해 주세요.",
-    );
   return withSyncWrite(db, owner, async (tx) => {
+    const result = await checks(tx, owner, items);
+    if (result.conflicts.length)
+      throw new LibraryError(
+        409,
+        "동일 판본일 수 있는 기존 도서가 있습니다. 먼저 중복을 검토해 주세요.",
+      );
     const rows = items.map((x) => ({
       id: deterministicId(owner, key(x)),
       source_key: key(x),

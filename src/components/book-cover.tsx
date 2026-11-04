@@ -12,8 +12,6 @@ export function BookCover({
   small?: boolean;
 }) {
   const replica = useReplicaOptional();
-  const pdfId =
-    book.sourceData?.app === "Local PDF" ? book.sourceData.recordId : undefined;
   const failureKey = JSON.stringify([
     book.id,
     book.coverUrl,
@@ -21,7 +19,6 @@ export function BookCover({
     book.storedImportedCoverUrl,
     book.catalogCoverUrl,
     book.sourceData?.cover?.sha256,
-    pdfId,
     replica?.revision,
   ]);
   const [failure, setFailure] = useState({ key: "", urls: [] as string[] });
@@ -61,10 +58,6 @@ export function BookCover({
         : undefined,
     },
     { src: book.catalogCoverUrl },
-    {
-      src: pdfId ? "/api/pdf/" + pdfId + "/cover" : undefined,
-      title: "PDF 첫 페이지 미리보기",
-    },
   ];
   const selected = sources.find(
     (source) =>
@@ -72,8 +65,7 @@ export function BookCover({
       !failed.includes(source.src) &&
       (!replica?.ready ||
         source.src.startsWith("/api/book-covers/") ||
-        (source.src.startsWith("/api/books/") && navigator.onLine) ||
-        (source.src.startsWith("/api/pdf/") && navigator.onLine)),
+        (source.src.startsWith("/api/books/") && navigator.onLine)),
   );
   const assetId = selected?.src?.match(
     /^\/api\/book-covers\/([a-f0-9-]{36})$/i,
@@ -101,7 +93,6 @@ export function BookCover({
       >
         <img
           src={src}
-          title={selected.title}
           referrerPolicy="no-referrer"
           alt=""
           loading="lazy"
