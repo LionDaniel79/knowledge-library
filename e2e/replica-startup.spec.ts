@@ -1,3 +1,4 @@
+import { openIntegratedSearch } from "./helpers/notes-navigation";
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { build } from "esbuild";
 let bundle: string;
@@ -270,11 +271,14 @@ test("loads book matches when searching from the home screen", async ({
     return r.fulfill({ json: { items: [f.book], total: 1, nextCursor: null } });
   });
   await f.session().fulfill({ json: { ownerId: "startup-owner" } });
+  await openIntegratedSearch(page);
   await page
     .getByPlaceholder("책, 저자, 내 생각을 검색하세요")
     .fill("지금 읽는");
   await expect.poll(() => searches).toBeGreaterThan(0);
   await expect(
-    page.locator(".shelf-card").filter({ hasText: f.book.title }),
+    page
+      .getByTestId("search-results")
+      .getByRole("button", { name: new RegExp(f.book.title) }),
   ).toBeVisible();
 });

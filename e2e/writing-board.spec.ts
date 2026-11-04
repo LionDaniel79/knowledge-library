@@ -264,16 +264,17 @@ for (const width of [390, 1280])
     await expect
       .poll(() => saves.at(-1)?.data.writing?.viewport?.zoom)
       .toBeCloseTo(savedZoom, 5);
-    await page.locator(".assist-launcher > summary").click();
     await page
-      .getByRole("combobox", { name: "AI 도움 방향", exact: true })
+      .locator(".assist-launcher > summary")
+      .getByText("AI 도움", { exact: true })
+      .click();
+    await page
+      .getByRole("combobox", { name: "도움방향", exact: true })
       .selectOption("titles");
     await page
       .getByRole("combobox", { name: "대상 목차", exact: true })
       .selectOption({ label: "1. 나의 결론" });
-    await page
-      .getByRole("button", { name: "분석할 기록 확인", exact: true })
-      .click();
+    await page.getByRole("button", { name: "분석", exact: true }).click();
     await expect.poll(() => assistCalls.length).toBe(1);
     expect(assistCalls[0].action).toBe("preview");
     expect(assistCalls[0].payload.writingContext).toMatchObject({

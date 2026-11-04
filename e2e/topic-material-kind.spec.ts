@@ -100,32 +100,43 @@ async function mount(page: Page) {
   return { requests, topics };
 }
 
+async function applyFilters(page: Page) {
+  await page
+    .locator(".topic-material-filters")
+    .getByRole("button", { name: "검색", exact: true })
+    .click();
+}
+async function toggleChoice(page: Page, group: string, choice: string) {
+  await page
+    .getByRole("button", { name: group + " 선택", exact: true })
+    .click();
+  await page.getByRole("checkbox", { name: choice, exact: true }).click();
+  await page
+    .getByRole("button", { name: group + " 선택 완료", exact: true })
+    .click();
+  await applyFilters(page);
+}
 test("my notes reset pagination when record kind or library field changes", async ({
   page,
 }) => {
   const f = await mount(page);
   await expect(
-    page.getByRole("combobox", { name: "종류", exact: true }),
-  ).toHaveValue("all");
+    page.getByRole("button", { name: "종류 선택", exact: true }),
+  ).toContainText("전체");
   await expect(page.locator(".thought-card")).toHaveCount(15);
   await page.getByRole("button", { name: "2페이지", exact: true }).click();
   await expect(page.locator(".thought-card")).toHaveCount(3);
-  await page
-    .getByRole("combobox", { name: "도서 분야", exact: true })
-    .selectOption("200");
+  await toggleChoice(page, "도서 분야", "종교");
   await expect(page.locator(".thought-card")).toHaveCount(2);
   await expect(page.locator(".topic-material-count")).toHaveText("내 기록 2개");
   expect(f.requests.at(-1)?.get("offset")).toBe("0");
-  await page
-    .getByRole("combobox", { name: "종류", exact: true })
-    .selectOption("note");
+  await toggleChoice(page, "종류", "독서 메모");
   await expect(page.locator(".thought-card")).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "종류", exact: true })
-    .selectOption("thought");
+  await toggleChoice(page, "종류", "독서 메모");
+  await toggleChoice(page, "종류", "나의 생각");
   await expect(page.locator(".thought-card")).toHaveCount(2);
   expect(f.requests.at(-1)?.get("kind")).toBe("note");
-  expect(f.requests.at(-1)?.get("noteType")).toBe("thought");
+  expect(f.requests.at(-1)?.get("noteTypes")).toBe(JSON.stringify(["thought"]));
 });
 test("new search narrows the full note list and resets its page while preserving other filters", async ({
   page,
@@ -135,6 +146,7 @@ test("new search narrows the full note list and resets its page while preserving
   await page
     .getByPlaceholder("제목·내용 검색", { exact: true })
     .fill("내 생각 1");
+  await applyFilters(page);
   await expect(page.locator(".thought-card")).toHaveCount(10);
   expect(f.requests.at(-1)?.get("offset")).toBe("0");
   expect(f.requests.at(-1)?.get("q")).toBe("내 생각 1");
@@ -147,6 +159,7 @@ test("new search narrows the full note list and resets its page while preserving
   await page
     .getByPlaceholder("제목·내용 검색", { exact: true })
     .fill("전혀없는검색어");
+  await applyFilters(page);
   await expect(page.locator(".thought-card")).toHaveCount(0);
 });
 
@@ -154,18 +167,15 @@ test("topic filter and five global sort options apply with kind and category", a
   page,
 }) => {
   const f = await mount(page);
-  await page
-    .getByRole("combobox", { name: "주제", exact: true })
-    .selectOption(f.topics[0].id);
+  await toggleChoice(page, "주제", f.topics[0].name);
   await expect(page.locator(".thought-card")).toHaveCount(1);
-  await page
-    .getByRole("combobox", { name: "도서 분야", exact: true })
-    .selectOption("200");
+  await toggleChoice(page, "도서 분야", "종교");
   await expect(page.locator(".topic-material-count")).toHaveText("내 기록 1개");
   for (const sort of ["oldest", "newest", "category", "topic", "book"]) {
     await page
       .getByRole("combobox", { name: "정렬", exact: true })
       .selectOption(sort);
+    await applyFilters(page);
     await expect.poll(() => f.requests.at(-1)?.get("sort")).toBe(sort);
     await expect(page.locator(".thought-card")).toHaveCount(1);
   }
@@ -186,11 +196,12 @@ test("compact topic management is last and its order survives reopening", async 
     .getByRole("button", { name: "독서 주제 0 아래로", exact: true })
     .click();
   await expect(page.locator(".topic-row").first()).toContainText("독서 주제 1");
-  const optionNames = await page
-    .getByRole("combobox", { name: "주제", exact: true })
-    .locator("option")
-    .allTextContents();
-  expect(optionNames.slice(2, 4)).toEqual(["독서 주제 1", "독서 주제 0"]);
+  await page.getByRole("button", { name: "주제 선택", exact: true }).click();
+  const options = page
+    .getByRole("listbox", { name: "주제 목록" })
+    .getByRole("checkbox");
+  await expect(options.nth(2)).toHaveAccessibleName("독서 주제 1");
+  await expect(options.nth(3)).toHaveAccessibleName("독서 주제 0");
   await page.evaluate(() => (window as any).remountTopics());
   await page.getByRole("button", { name: "주제 관리", exact: true }).click();
   await expect(page.locator(".topic-row").first()).toContainText("독서 주제 1");
@@ -209,7 +220,9 @@ for (const width of [390, 1440])
     await page.setViewportSize({ width, height: 844 });
     await mount(page);
     await expect(page.locator(".thought-card")).toHaveCount(15);
-    const controls = page.locator(".topic-material-filters select");
+    const controls = page.locator(
+      ".note-kind-filter .wb-facet-toggle, .note-category-filter .wb-facet-toggle, .topic-filter .wb-facet-toggle, .note-sort-filter select",
+    );
     await expect(controls).toHaveCount(4);
     const heights = await controls.evaluateAll((es) =>
       es.map((e) => e.getBoundingClientRect().height),
@@ -260,12 +273,8 @@ for (const width of [390, 1440])
     await expect(
       page.getByRole("button", { name: "독서 주제 39", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page
-      .getByRole("combobox", { name: "주제", exact: true })
-      .selectOption("all");
-    await page
-      .getByRole("combobox", { name: "도서 분야", exact: true })
-      .selectOption("200");
+    await toggleChoice(page, "주제", "독서 주제 39");
+    await toggleChoice(page, "도서 분야", "종교");
     await expect(page.locator(".thought-card")).toHaveCount(2);
     const first = (await page.locator(".thought-card").first().boundingBox())!;
     const filter = (await page

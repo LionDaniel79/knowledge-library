@@ -1,9 +1,15 @@
+import { previewLibrary } from "../src/lib/preview-data";
+import {
+  chooseNoteTags,
+  openMyNotes,
+  mountPreviewFixture,
+} from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 test("left drawer opens, traps navigation and returns focus when dismissed", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   await expect(page.getByRole("navigation", { name: "주 메뉴" })).toHaveCount(
     0,
   );
@@ -32,7 +38,7 @@ test("left drawer opens, traps navigation and returns focus when dismissed", asy
 test("book sorting, editor and shelves preserve existing bibliographic fields", async ({
   page,
 }) => {
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: /^소장 도서/ }).click();
   await page.getByLabel("도서 정렬").selectOption("title");
@@ -71,7 +77,7 @@ test("book sorting, editor and shelves preserve existing bibliographic fields", 
 test("calendar previews fill fixed cells and note filters remain usable with search", async ({
   page,
 }) => {
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   const cell = page.getByRole("button", { name: "2026-10-09", exact: true }),
     cover = cell.locator(".calendar-cover");
   const cb = await cell.boundingBox(),
@@ -79,18 +85,21 @@ test("calendar previews fill fixed cells and note filters remain usable with sea
   expect(ib!.height).toBeGreaterThan(cb!.height - 6);
   expect(ib!.height).toBeLessThanOrEqual(cb!.height);
   await page.getByRole("button", { name: "메뉴 열기" }).click();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).click();
+  await openMyNotes(page, previewLibrary);
+  await page.getByRole("button", { name: "종류 선택", exact: true }).click();
+  await page.getByRole("checkbox", { name: "나의 생각", exact: true }).check();
   await page
-    .getByRole("combobox", { name: "종류", exact: true })
-    .selectOption("thought");
-  await page.getByRole("textbox", { name: "서재 검색" }).fill("질문");
-  await expect(page.getByLabel("기록 태그 필터")).toBeVisible();
-  await expect(page.getByTestId("search-results")).toContainText(
+    .getByRole("button", { name: "종류 선택 완료", exact: true })
+    .click();
+  await page.getByPlaceholder("제목·내용 검색").fill("질문");
+  await page
+    .locator(".topic-material-filters")
+    .getByRole("button", { name: "검색", exact: true })
+    .click();
+  await expect(page.locator(".thought-card")).toContainText(
     "답보다 오래 남는 질문",
   );
   await page.getByRole("button", { name: "새 기록", exact: true }).click();
-  await page.getByLabel("태그", { exact: true }).fill("질문, 독서");
-  await expect(page.getByLabel("태그", { exact: true })).toHaveValue(
-    "질문, 독서",
-  );
+  await chooseNoteTags(page, ["질문", "독서"]);
+  await expect(page.locator("input[name=tags]")).toHaveValue("질문, 독서");
 });
