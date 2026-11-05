@@ -1,5 +1,5 @@
 {
-  "status": "READY_FOR_FINAL_CUTOVER_APPROVAL",
+  "status": "APPROVED_CUTOVER_IN_PROGRESS",
   "date": "2026-11-05",
   "installedNativeCommit": "fe6b983472e95ca4ccd98103766f63e7f2f52380",
   "deployedMainCommit": "afafa5e7184c85014d5f5656f3766720a43ded39",

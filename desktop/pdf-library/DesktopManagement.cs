@@ -242,13 +242,24 @@ partial class PdfDesktop {
         if(webOrigin.Length==0||!File.Exists(credentialFile)){ConfigureWeb();if(webOrigin.Length==0||!File.Exists(credentialFile))return;}
         webSyncQueued=true;nextWebAttempt=DateTime.UtcNow;backgroundStatus.Text="현재 쪽을 마친 뒤 웹 서지를 일괄 등록합니다.";
     }
+    void NotifyCatalog(int applied){
+        if(applied<=0)return;
+        var target=Path.Combine(data,"catalog-request.json");
+        var temporary=Path.Combine(data,".catalog-"+Guid.NewGuid().ToString("N")+".tmp");
+        try{
+            File.WriteAllText(temporary,json.Serialize(new Dictionary<string,object>{{"requestId",Guid.NewGuid().ToString()},{"requestedAt",DateTime.UtcNow.ToString("o")}}),new UTF8Encoding(false));
+            if(File.Exists(target))File.Replace(temporary,target,null);else File.Move(temporary,target);
+        }finally{if(File.Exists(temporary))File.Delete(temporary);}
+    }
     async Task SendWeb(){
         Dictionary<string,object> req=null;
         try{
             await RunWorker(PrepareRequest(),300,1);
             backgroundStatus.Text="선택 폴더의 서지 등록 전송 중…";
             req=Request("sync-web");req["origin"]=webOrigin;req["token"]=ReadCredential();
-            var result=await RunWorker(req,86400,1);connectionStatus.Text="웹 등록 반영 "+Val(result,"applied")+" · 남은 요청 "+Val(result,"pending")+(Val(result,"scanPending")=="True"?" · 마지막 완료 검사 전송 대기":"")+(Val(result,"state")=="offline"?" · 연결 후 재시도하세요.":"");await RefreshLibrary();
+            var result=await RunWorker(req,86400,1);connectionStatus.Text="웹 등록 반영 "+Val(result,"applied")+" · 남은 요청 "+Val(result,"pending")+(Val(result,"scanPending")=="True"?" · 마지막 완료 검사 전송 대기":"")+(Val(result,"state")=="offline"?" · 연결 후 재시도하세요.":"");
+            try{NotifyCatalog(Convert.ToInt32(result["applied"]));}catch{connectionStatus.Text+=" · 서지 보완 알림을 저장하지 못했습니다. 보완 대기 정보는 보존됩니다.";}
+            await RefreshLibrary();
         }catch{connectionStatus.Text="웹 등록을 완료하지 못했습니다. 연결과 기기 인증을 확인한 뒤 다시 시도하세요. 대기 목록은 보존됩니다.";}
         finally{if(req!=null)req.Remove("token");}
     }

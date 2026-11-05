@@ -171,6 +171,15 @@ the eligible root key/relative path and the last scan confirmation timestamp.
 
 ## Isolated verification
 
+After a web sync applies items, the desktop writes only a new opaque request ID
+and UTC timestamp to private `catalog-request.json`. No-op syncs leave it alone.
+The optional operator-owned `desktop/windows/catalog-detached.mjs` watches that
+notification and runs the existing collector in finite passes without an HTTP
+listener or idle database polling. It reuses a DPAPI restricted-role profile,
+removes login/AI secrets from the child environment, drains only successful
+progress up to a fixed limit, and waits for a new notification after failure or
+no progress. Device-only installations do not require an administrator DB profile.
+
 ```powershell
 Set-Location C:/Users/admin/kl-stage5-e2e-1104/desktop/pdf-library
 & 'E:/지식서재 작업/private-data/runtime/ocr-quality-20261022/Scripts/python.exe' -m unittest test_management -v

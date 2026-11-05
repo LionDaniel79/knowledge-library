@@ -11,6 +11,17 @@ partial class PdfDesktop {
         if(!Title.Contains("PDF 서재"))throw new Exception("Standalone management UI is missing.");
         if(File.Exists(credentialFile) && ReadCredential()!="klw_"+new string('a',43))throw new Exception("Synthetic DPAPI key could not be read by desktop app.");
         backgroundTimer.Stop();await SetPaused(true);
+        var catalogNotice=Path.Combine(data,"catalog-request.json");
+        NotifyCatalog(0);
+        if(File.Exists(catalogNotice))throw new Exception("No-op web sync must not wake the collector.");
+        NotifyCatalog(1);
+        var notice=File.ReadAllText(catalogNotice);
+        var fields=json.Deserialize<Dictionary<string,object>>(notice);Guid requestId;
+        if(fields.Count!=2 || !fields.ContainsKey("requestedAt") || !Guid.TryParse(Val(fields,"requestId"),out requestId))throw new Exception("Collector notice must contain only opaque ID and timestamp.");
+        NotifyCatalog(0);
+        if(File.ReadAllText(catalogNotice)!=notice)throw new Exception("No-op rewrote the collector notice.");
+        NotifyCatalog(2);
+        if(File.ReadAllText(catalogNotice)==notice || Directory.GetFiles(data,".catalog-*.tmp").Length!=0)throw new Exception("Collector notice was not atomically replaced.");
         var req=Request("scan");req["root"]=root;AddIndex(req);
         var scanning=RunWorker(req,40,1);Cancel();
         var registered=await scanning;

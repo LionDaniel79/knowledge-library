@@ -16,6 +16,8 @@ Implementation branch: `feat/desktop-library-completion`, base `c09137bfad05e63f
 - Installed native code `fe6b983472e95ca4ccd98103766f63e7f2f52380`: actual schema3 upgrade retained8451 content resources,9900 generated pages,207152 queue rows,9319 physical locations and31 immutable request bodies. The original legacy index size/mtime stayed unchanged. Background processing resumed and six real source pages had the quality profile at the subsequent observation.
 - Independent identity review found two issues with attempted no-legacy bindings and weak location inference; both have dedicated passing regressions. The quality-helper integration regression was observed failing before wiring and passing afterward.
 - Approved PRs9→8→7 merged; main `afafa5e7184c85014d5f5656f3766720a43ded39` deployed READY. Production home200 and unauthenticated private APIs401. The newer split changes remain separately reviewable in PR10.
+- Subsequent full cutover approval received2026-11-05. A fresh production archive restored with all59 table fingerprints matching; migrations035–040 applied with nine protected personal table fingerprints unchanged. Later registration/purge steps remain in progress.
+- Detached catalog supervision plus existing launcher contracts17 passed. Native WPF regressions verify atomic opaque notifications for applied changes and no notification for no-op syncs. Provider work can run without the old HTTP launcher or idle DB polling.
 
 ## Implemented
 - Native whole-library inventory, content identity, read-only legacy OCR reuse, new private OCR/FTS queue, pause/retry/resume and incremental HTTPS bibliography/location updates.
@@ -38,7 +40,7 @@ Implementation branch: `feat/desktop-library-completion`, base `c09137bfad05e63f
 
 ## NOT_RUN / remaining
 - PR10 release and production schema changes; real selected-PDF/Logos registration and live provider coverage.
-- Current production revalidation of exact cleanup targets, final destructive approval and execution. The PR9→8→7 merge/deployment approval explicitly excluded PDF/DB data transition.
+- Current production revalidation of exact cleanup targets and approved execution. Final full cutover approval supersedes the earlier PR9→8→7 approval that excluded PDF/DB data transition.
 - Legacy server retirement only after replacement validation; real mobile acceptance of released web code.
 - Catalog collection must run independently before removing its old HTTP-launcher dependency. The existing one-shot `scripts/catalog-supplement-worker.ts` and finite `scripts/complete-logos.ts` can run without an HTTP server; live scheduling/provider completion remains a cutover task.
 - Remote GitHub Actions remain allowance-blocked. Local checks do not imply a remote CI pass.
