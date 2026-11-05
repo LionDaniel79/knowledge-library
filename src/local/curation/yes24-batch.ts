@@ -30,6 +30,7 @@ export function parseYes24Toc(value: unknown): string[] {
 export function parseYes24Records(
   json: any,
   requestedIsbn = "",
+  includeTextualPeriodicals = false,
 ): CollectedBook[] {
   if (json?.success !== true || !Array.isArray(json?.data?.items))
     throw Error("예스24 응답 형식을 확인해야 합니다.");
@@ -51,7 +52,8 @@ export function parseYes24Records(
       !providerText(b.title) ||
       !isbn ||
       (requested && requested !== isbn) ||
-      /잡지|간행물|논문|magazine|journal|periodical|thesis/i.test(kind)
+      (!includeTextualPeriodicals &&
+        /잡지|간행물|논문|magazine|journal|periodical|thesis/i.test(kind))
     )
       return [];
     return [

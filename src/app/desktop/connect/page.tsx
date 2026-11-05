@@ -42,8 +42,8 @@ export default function ConnectDesktop() {
         <a href="/desktop/review">등록·정리 사전 검토</a>
       </p>
       <p>
-        이 기기 인증키는 PDF 원본이나 OCR 본문 전송 권한이 없습니다. 서버에서
-        등록 대상 문서 ID만 검토합니다.
+        Windows PDF 서재에서 기독도서·일반도서의 도서 정보와 상대 보관 위치를
+        등록할 수 있습니다. PDF 원본과 OCR 본문은 전송하지 않습니다.
       </p>
       <label>
         기기 이름{" "}
@@ -80,9 +80,9 @@ export default function ConnectDesktop() {
         >
           <strong>한 번만 표시되는 인증키</strong>
           <p>
-            Windows 프로그램의 보호된 기기 설정에 붙여 넣으세요. 현재 3단계
-            검수판은 네트워크 연결 기능이 없으므로 5단계 연동 전까지 사용하지
-            않습니다.
+            Windows PDF 서재의 ‘웹 연결 설정’에 이 웹사이트 주소와 함께 붙여
+            넣으세요. 인증키는 이 Windows 사용자만 열 수 있도록 보호하여
+            저장됩니다.
           </p>
           <code style={{ overflowWrap: "anywhere" }}>{secret}</code>
           <p>

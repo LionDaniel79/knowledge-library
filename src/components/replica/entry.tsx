@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthPanel } from "../auth-panel";
 import { LibraryApp } from "../library-app";
 import { ReplicaProvider } from "./provider";
@@ -20,18 +20,13 @@ export function ReplicaEntry({
   initialView = "home",
   initialOperationsOpen = false,
   returnPath = "/",
-  deferPdfAutoSync = false,
 }: {
   available: boolean;
   today?: string;
   initialView?: "home" | "pdf";
   initialOperationsOpen?: boolean;
   returnPath?: string;
-  deferPdfAutoSync?: boolean;
 }) {
-  const automaticSyncDeferred = useRef(
-    deferPdfAutoSync && initialView === "pdf",
-  );
   const [screen, setScreen] = useState<{
       runtime: LibraryRuntime | null;
       owner: string;
@@ -53,7 +48,6 @@ export function ReplicaEntry({
       Object.fromEntries(new URLSearchParams(location.search)),
     );
     setClientEntry(entry);
-    automaticSyncDeferred.current = deferPdfAutoSync && entry.view === "pdf";
     let cancelled = false,
       accountChanged = false,
       hasScreen = false,
@@ -251,10 +245,7 @@ export function ReplicaEntry({
         try {
           localStorage.setItem(offlineOwnerKey, verified.owner);
         } catch {}
-        // A private PDF search needs its online index, not a second full
-        // business-data copy in this origin's separate browser storage.
-        if (!automaticSyncDeferred.current)
-          void current.sync({ reason: "startup" }).catch(() => {});
+        void current.sync({ reason: "startup" }).catch(() => {});
         if (!current.getSnapshot().ready) {
           loadingOnlineOverview = true;
           const response = await fetch("/api/library", {
@@ -378,8 +369,7 @@ export function ReplicaEntry({
     let lastInteraction = Date.now();
     const syncOnResume = () => {
       setClientToday(todayInSeoul());
-      if (runtime && !automaticSyncDeferred.current)
-        void runtime.sync({ reason: "resume" }).catch(() => {});
+      if (runtime) void runtime.sync({ reason: "resume" }).catch(() => {});
     };
     const resume = () => {
       lastInteraction = Date.now();
@@ -443,7 +433,7 @@ export function ReplicaEntry({
       for (const event of activityEvents)
         window.removeEventListener(event, activity, true);
     };
-  }, [available, deferPdfAutoSync]);
+  }, [available]);
   if (screen) {
     const content = (
       <>
@@ -459,11 +449,6 @@ export function ReplicaEntry({
           ownerId={screen.owner}
           initialView={clientEntry.view}
           initialOperationsOpen={clientEntry.operations}
-          onLibraryView={() => {
-            if (!automaticSyncDeferred.current) return;
-            automaticSyncDeferred.current = false;
-            void screen.runtime?.sync({ reason: "resume" }).catch(() => {});
-          }}
         />
       </>
     );

@@ -7,7 +7,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {ReplicaEntry} from './src/components/replica/entry';window.mount=()=>createRoot(document.getElementById('root')).render(<ReplicaEntry available={true} initialView="pdf" deferPdfAutoSync={true}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {ReplicaEntry} from './src/components/replica/entry';window.mount=()=>createRoot(document.getElementById('root')).render(<ReplicaEntry available={true} initialView="pdf"/>);`,
         loader: "tsx",
         resolveDir: process.cwd(),
       },
@@ -58,32 +58,28 @@ async function openPdf(page: Page) {
   await page.addScriptTag({ content: bundle });
   await page.evaluate(() => (window as any).mount());
   await expect(page.locator(".workspace")).toBeVisible();
-  await expect
-    .poll(() => requests.some((p) => p.startsWith("/api/pdf?")))
-    .toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "PDF 원문 검색", exact: true }),
+  ).toHaveCount(0);
   return requests;
 }
 
-test("private PDF entry and focus/online resume do not start a full library download", async ({
+test("an old PDF bookmark opens the metadata library without original-search or PC requests", async ({
   page,
 }) => {
   const requests = await openPdf(page);
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
-    window.dispatchEvent(new Event("online"));
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
   await expect(
     page.getByRole("button", { name: "동기화", exact: true }),
   ).toBeEnabled();
   expect(
-    requests.filter((p) =>
-      /^\/api\/sync\/(meta|scan|changes|coverage)/.test(p),
-    ),
+    requests.filter((p) => p.startsWith("/api/pdf") || p.startsWith("/api/pc")),
   ).toEqual([]);
+  await expect
+    .poll(() => requests.some((p) => p.startsWith("/api/sync/meta?")))
+    .toBe(true);
 });
 
-test("manual sync remains available from a private PDF entry", async ({
+test("ordinary manual sync remains available after opening an old PDF bookmark", async ({
   page,
 }) => {
   const requests = await openPdf(page);
@@ -91,15 +87,5 @@ test("manual sync remains available from a private PDF entry", async ({
   await expect
     .poll(() => requests.some((p) => p.startsWith("/api/sync/meta?")))
     .toBe(true);
-});
-
-test("leaving the private PDF entry starts normal automatic library sync", async ({
-  page,
-}) => {
-  const requests = await openPdf(page);
-  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: "나의 서재", exact: true }).click();
-  await expect
-    .poll(() => requests.some((p) => p.startsWith("/api/sync/meta?")))
-    .toBe(true);
+  expect(requests.filter((p) => p.startsWith("/api/pdf"))).toEqual([]);
 });

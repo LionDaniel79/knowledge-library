@@ -53,7 +53,55 @@ try {
   await client.query(
     await readFile("db/035_desktop_catalog_and_logos.sql", "utf8"),
   );
+  await client.query(await readFile("db/036_desktop_library.sql", "utf8"));
+  await client.query(
+    await readFile("db/037_managed_cover_locations.sql", "utf8"),
+  );
+  await client.query(await readFile("db/038_desktop_pdf_purge.sql", "utf8"));
+  await client.query(await readFile("db/039_desktop_scan_status.sql", "utf8"));
+  await client.query(
+    await readFile("db/040_desktop_pdf_purge_scope_evidence.sql", "utf8"),
+  );
   if (role) {
+    await client.query(
+      'REVOKE ALL ON library_desktop_purge_scope_evidence FROM "' + role + '"',
+    );
+    await client.query(
+      'GRANT SELECT ON library_desktop_purge_scope_evidence TO "' + role + '"',
+    );
+    await client.query(
+      'GRANT DELETE ON library_revisions,library_topic_memberships,library_book_exclusions TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_desktop_resources,library_desktop_scan_status TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT SELECT,INSERT ON library_desktop_document_blocks TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'REVOKE ALL ON library_desktop_purge_backups FROM "' + role + '"',
+    );
+    await client.query(
+      'GRANT SELECT,UPDATE(consumed_request_id) ON library_desktop_purge_backups TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT EXECUTE ON FUNCTION public.library_desktop_pdf_purge_lock() TO "' +
+        role +
+        '"',
+    );
+    await client.query(
+      'GRANT DELETE ON library_books,library_documents,library_pdf_registry,library_cover_locations TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_desktop_tokens,library_desktop_manifests,library_desktop_manifest_items,library_book_sources,library_pdf_registry,library_cover_locations TO "' +
         role +

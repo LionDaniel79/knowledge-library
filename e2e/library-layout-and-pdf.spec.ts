@@ -118,7 +118,7 @@ async function mount(
   await page.addScriptTag({ content: bundle });
   return bundle;
 }
-test("book detail has one PDF entry instead of a duplicate PC link", async ({
+test("book detail retains bibliography without a retired PDF original link", async ({
   page,
 }) => {
   const doc = "11111111-1111-4111-8111-111111111111";
@@ -153,8 +153,8 @@ test("book detail has one PDF entry instead of a duplicate PC link", async ({
   const dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("link", { name: "PDF 원문 열기", exact: true }),
-  ).toHaveAttribute("href", `/reader/${doc}`);
-  await expect(dialog.locator('a[href*="/reader/"]')).toHaveCount(1);
+  ).toHaveCount(0);
+  await expect(dialog.locator('a[href*="/reader/"]')).toHaveCount(0);
 });
 test("reading progress closes promptly during initial download and stays at the same position through later refreshes", async ({
   page,
@@ -392,114 +392,4 @@ test("cover/list preference survives reload and list opens the same book on a na
   ).toHaveValue("list");
   await page.locator(".book-list-row").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
-});
-
-test("cloud PDF reader offers a pinned PC link without requesting unavailable original pages", async ({
-  page,
-}) => {
-  let originalRequests = 0;
-  await page.route("https://library.test/api/pc-access", (r) =>
-    r.fulfill({
-      json: {
-        local: false,
-        pcOrigin: "https://knowledge-library-pc.tail83cf39.ts.net",
-      },
-    }),
-  );
-  await page.route("https://library.test/api/pdf**", (r) => {
-    originalRequests++;
-    return r.fulfill({ status: 503, json: { error: "PDF unavailable" } });
-  });
-  await mount(
-    page,
-    `import {createRoot} from 'react-dom/client';import {PdfReader} from './src/components/pdf-reader';createRoot(document.getElementById('root')).render(<PdfReader id="00000000-0000-4000-a000-000000000001" title="원문 책" initialPage={5} localAvailable={false}/>);`,
-  );
-  await expect(
-    page.getByRole("link", {
-      name: "내 PC의 서재에서 이 페이지 열기",
-      exact: true,
-    }),
-  ).toHaveAttribute("href", /page=5/);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  expect(originalRequests).toBe(0);
-});
-
-test("legacy PC links select PDF search without restoring removed maintenance controls", async ({
-  page,
-}) => {
-  await page.route("https://library.test/api/pc-access", (r) =>
-    r.fulfill({
-      json: {
-        local: false,
-        pcOrigin: "https://knowledge-library-pc.tail83cf39.ts.net",
-      },
-    }),
-  );
-  await mount(
-    page,
-    `import {createRoot} from 'react-dom/client';import {PcAccess} from './src/components/pc-access';createRoot(document.getElementById('root')).render(<PcAccess/>);`,
-  );
-  await expect(
-    page.getByRole("link", { name: "PC의 PDF 원문 검색 열기", exact: true }),
-  ).toHaveAttribute(
-    "href",
-    "https://knowledge-library-pc.tail83cf39.ts.net/?view=pdf",
-  );
-  let readStatus = false;
-  await page.route("https://library.test/api/pc-access", (r) =>
-    r.fulfill({ json: { local: true, pcOrigin: null } }),
-  );
-  await page.route("https://library.test/api/library-operations", (r) => {
-    readStatus = true;
-    return r.fulfill({
-      json: {
-        localAvailable: true,
-        rootConnected: true,
-        canControl: false,
-        ocr: { status: "completed" },
-        collections: [],
-        issues: [],
-        issuesAvailable: true,
-      },
-    });
-  });
-  await page.route("https://library.test/api/pdf**", (r) =>
-    r.fulfill({ json: { documents: [], total: 0, summary: null } }),
-  );
-  await mount(
-    page,
-    `import {createRoot} from 'react-dom/client';import {LibraryApp} from './src/components/library-app';import {previewLibrary} from './src/lib/preview-data';createRoot(document.getElementById('root')).render(<LibraryApp initial={previewLibrary} today="2026-10-17" initialView="pdf" initialOperationsOpen/>);`,
-  );
-  await expect(
-    page.getByRole("heading", { name: "PDF 원문 검색", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "PDF 문자 인식", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.getByText("PDF 관리", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "PDF 보관 폴더 설정", exact: true }),
-  ).toBeVisible();
-  expect(readStatus).toBe(false);
-});
-test("a disconnected PDF drive on the PC shows a connection message instead of linking back to itself", async ({
-  page,
-}) => {
-  const pc = "https://knowledge-library-pc.tail83cf39.ts.net";
-  await page.route(pc + "/api/pc-access", (r) =>
-    r.fulfill({ json: { local: false, pcOrigin: pc } }),
-  );
-  await mount(
-    page,
-    `import {createRoot} from 'react-dom/client';import {PcAccess} from './src/components/pc-access';createRoot(document.getElementById('root')).render(<PcAccess operations/>);`,
-    pc,
-  );
-  await expect(
-    page.getByRole("link", { name: "PC 작업 현황 보기", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(
-      "이 PC에서 PDF 원본에 연결할 수 없습니다. 외장하드 연결을 확인해 주세요.",
-    ),
-  ).toBeVisible();
 });

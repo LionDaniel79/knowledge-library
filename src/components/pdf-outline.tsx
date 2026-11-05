@@ -39,17 +39,10 @@ export function PdfOutlineView({
                 paddingInlineStart: `${Math.min(entry.level, 4) * 0.75}rem`,
               }}
             >
-              {entry.page && !stale ? (
-                <a
-                  href={`/reader/${outline.documentId}?page=${entry.page}&signature=${encodeURIComponent(outline.signature)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {entry.title} <small>PDF {entry.page}쪽</small>
-                </a>
-              ) : (
-                <span>{entry.title}</span>
-              )}
+              <span>
+                {entry.title}
+                {entry.page ? <small> · PDF {entry.page}쪽</small> : null}
+              </span>
             </li>
           ))}
         </ol>

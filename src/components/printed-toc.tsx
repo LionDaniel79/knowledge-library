@@ -29,23 +29,13 @@ export function PrintedTocView({
           </details>
         )}
         <p className="form-hint">
-          아래 링크는 목차가 있는 PDF 쪽입니다. 목차에 적힌 장의 시작 쪽과는
-          다를 수 있습니다.
+          아래는 목차가 있는 PDF 쪽수입니다. 원문은 Windows PDF 서재에서 확인할
+          수 있습니다.
         </p>
         <ul>
           {toc.pages.map((page) => (
             <li key={page.page}>
-              {stale ? (
-                `PDF ${page.page}쪽`
-              ) : (
-                <a
-                  href={`/reader/${toc.documentId}?page=${page.page}&signature=${encodeURIComponent(toc.signature)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  목차 원문 · PDF {page.page}쪽
-                </a>
-              )}
+              {`PDF ${page.page}쪽`}
               {" · "}
               {page.method === "ocr_unverified"
                 ? "문자 인식 결과 · 확인 전"

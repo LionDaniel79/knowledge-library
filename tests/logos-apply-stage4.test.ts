@@ -1,7 +1,10 @@
 import { expect, it } from "vitest";
+import sharp from "sharp";
+import { createCoverStore } from "../src/server/book-covers";
 import { testDatabase } from "./helpers/database";
 import { applyLogos, previewLogos } from "../src/server/logos-import";
 import { saveVerifiedLogosCover } from "../src/server/logos-cover";
+import { randomUUID } from "node:crypto";
 
 it("imports only eligible Logos books by stable Resource ID and saves confirmed covers when Stage 5 is explicitly enabled", async () => {
   const fixture = await testDatabase();
@@ -95,7 +98,12 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
 
     const book = sources.find((s) => s.resource_id === "LLS:STAGE4-BOOK")!;
     const coverUrl = "https://covers.logoscdn.com/sample/test.jpg";
-    const validImage = async () => Buffer.from("validated-image-fixture");
+    const validImage = async () =>
+      sharp({
+        create: { width: 100, height: 150, channels: 3, background: "orange" },
+      })
+        .png()
+        .toBuffer();
     const cover = await saveVerifiedLogosCover(
       fixture.db,
       owner,
@@ -108,7 +116,12 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
       },
       validImage,
     );
-    expect(cover).toMatchObject({ bookId: book.id, version: 2, coverUrl });
+    expect(cover).toMatchObject({ bookId: book.id, version: 2 });
+    expect(cover.coverUrl).toMatch(/^\/api\/book-covers\//);
+    const assetId = cover.coverUrl.split("/").at(-1)!;
+    expect(
+      (await createCoverStore(fixture.db).read(owner, assetId)).bytes.length,
+    ).toBeGreaterThan(0);
     const saved = (
       await fixture.db.query(
         "SELECT storage_kind,object_key,verification_status FROM library_cover_locations WHERE owner_id=$1 AND book_id=$2",
@@ -116,8 +129,8 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
       )
     ).rows[0];
     expect(saved).toMatchObject({
-      storage_kind: "external",
-      object_key: coverUrl,
+      storage_kind: "managed_asset",
+      object_key: assetId,
       verification_status: "manual",
     });
     await expect(
@@ -161,5 +174,41 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
     if (previous === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
     else process.env.LIBRARY_STAGE5_WRITE_ENABLED = previous;
     await fixture.pg.close();
+  }
+});
+
+it("checks duplicate editions again under the owner sync transaction", async () => {
+  const f = await testDatabase();
+  const previous = process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+  process.env.LIBRARY_STAGE5_WRITE_ENABLED = "true";
+  try {
+    const db = {
+      query: f.db.query,
+      transaction: async <T>(fn: Parameters<typeof f.db.transaction<T>>[0]) =>
+        f.db.transaction(async (tx) => {
+          await tx.query(
+            "INSERT INTO library_books(id,owner_id,title,author,formats) VALUES($1,'race-owner','Late existing edition','Author',ARRAY['paper'])",
+            [randomUUID()],
+          );
+          return fn(tx);
+        }),
+    };
+    await expect(
+      applyLogos(db, "race-owner", {
+        items: [
+          {
+            resourceId: "LLS:RACE",
+            title: "Late existing edition",
+            author: "Author",
+            license: "permanent",
+            resourceType: "단행본",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  } finally {
+    if (previous === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+    else process.env.LIBRARY_STAGE5_WRITE_ENABLED = previous;
+    await f.pg.close();
   }
 });

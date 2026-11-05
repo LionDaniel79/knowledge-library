@@ -2,7 +2,7 @@ import { it, expect } from "vitest";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
-import { createCoverStore } from "../src/server/book-covers";
+import { createCoverStore, readCoverCapacity } from "../src/server/book-covers";
 import { createLibraryStore } from "../src/server/library-store";
 import {
   createLibraryBackup,
@@ -21,6 +21,12 @@ it("normalizes uploads, isolates owners, rejects unsafe data, preserves covers i
     const a = await store.upload("me", png),
       b = await store.upload("me", png);
     expect(a).toEqual(b);
+    expect(await readCoverCapacity(f.db, "me")).toMatchObject({
+      assets: 1,
+      maxAssets: 20000,
+      remainingAssets: 19999,
+      maxBytes: 200 * 1024 * 1024,
+    });
     expect(a.url).toMatch(/^\/api\/book-covers\/[a-f0-9-]+$/);
     const read = await store.read("me", a.id);
     expect(read.mime).toBe("image/webp");

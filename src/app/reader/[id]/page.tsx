@@ -1,78 +1,14 @@
-import { requireOwner, configured } from "@/server/auth";
-import { LibraryError } from "@/server/library-store";
-import { AuthPanel } from "@/components/auth-panel";
-import { database } from "@/server/db";
-import { PdfReader } from "@/components/pdf-reader";
-import { z } from "zod";
-import { existsSync } from "node:fs";
-import { redirect } from "next/navigation";
-import { pcDocumentUrl, privatePcOrigin } from "@/lib/pc-access";
-export const dynamic = "force-dynamic";
-export default async function Reader({
-  params,
-  searchParams,
-}: {
+export default async function Reader(_props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ page?: string; signature?: string }>;
 }) {
-  let destination: string;
-  let returnPath = "/";
-  try {
-    const id = z
-        .string()
-        .uuid()
-        .parse((await params).id),
-      query = await searchParams;
-    const page = Math.max(
-        1,
-        Math.min(100000, Math.trunc(Number(query.page)) || 1),
-      ),
-      signature = z.string().max(500).optional().parse(query.signature);
-    returnPath = `/reader/${id}?page=${page}${signature ? `&signature=${encodeURIComponent(signature)}` : ""}`;
-    const owner = await requireOwner();
-    const doc = (
-      await database.query(
-        "SELECT b.title FROM library_active_documents d JOIN library_active_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=$2",
-        [owner, id],
-      )
-    ).rows[0];
-    if (!doc) return <p>PDF를 찾을 수 없습니다.</p>;
-    const localAvailable = !!(
-        process.env.LIBRARY_PDF_ROOT &&
-        process.env.LIBRARY_PYTHON &&
-        existsSync(process.env.LIBRARY_PYTHON)
-      ),
-      pcOrigin =
-        process.env.LIBRARY_PC_PRIVATE_CONFIRMED === "true"
-          ? privatePcOrigin(process.env.LIBRARY_PC_ORIGIN)
-          : null;
-    if (
-      !localAvailable &&
-      pcOrigin &&
-      privatePcOrigin(process.env.APP_ORIGIN) !== pcOrigin
-    ) {
-      // Every original link (books, search, notes and contents) uses this owner-checked entry point.
-      destination = pcDocumentUrl(pcOrigin, id, page, signature);
-    } else
-      return (
-        <PdfReader
-          id={id}
-          title={doc.title}
-          initialPage={page}
-          signature={signature}
-          localAvailable={localAvailable}
-        />
-      );
-  } catch (error) {
-    if (error instanceof LibraryError && error.status === 401)
-      return <AuthPanel available={configured()} returnPath={returnPath} />;
-    return (
-      <main className="reader">
-        <p>PDF 원문을 열지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
-        <a href={returnPath}>다시 시도</a>
-      </main>
-    );
-  }
-  // Next's redirect throws; keep it outside the login/error handler.
-  redirect(destination);
+  return (
+    <main className="reader">
+      <h1>PDF 원문은 Windows PDF 서재에서 열어 주세요.</h1>
+      <p>
+        웹 지식서재에서는 도서 정보 검색과 독서 기록을 계속 이용할 수 있습니다.
+      </p>
+      <a href="/">지식서재로</a>
+    </main>
+  );
 }

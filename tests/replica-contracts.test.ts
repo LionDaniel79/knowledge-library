@@ -44,6 +44,11 @@ it("includes every owner application table and its complete safe column set", as
     "library_book_sources",
     "library_pdf_registry",
     "library_cover_locations",
+    "library_desktop_resources",
+    "library_desktop_document_blocks",
+    "library_desktop_purge_backups",
+    "library_desktop_scan_status",
+    "library_desktop_purge_scope_evidence",
   ]);
   const tables = [...new Set(rows.map((r) => String(r.table_name)))].filter(
     (t) => !serverOnly.has(t) && !t.startsWith("library_sync_"),

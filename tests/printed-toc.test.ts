@@ -39,7 +39,7 @@ it("validates printed contents in backups while preserving unknown historical me
     }),
   ).toBeNull();
 });
-it("renders source-page links only, separates edited wording, and disables replaced-file links", () => {
+it("preserves source page numbers and edited wording without retired web reader links", () => {
   const value = {
     ...buildPrintedToc(document, [page(8, contents, "ocr_unverified")])!,
     editedText: "내 목차 정리",
@@ -51,8 +51,9 @@ it("renders source-page links only, separates edited wording, and disables repla
   expect(current).toContain("문자 인식");
   expect(current).toContain("내 목차 정리");
   expect(current).toContain("당시 원문 발췌");
-  expect(current).toContain("page=8");
-  expect(current).not.toContain("page=21");
+  expect(current).toContain("PDF 8쪽");
+  expect(current).not.toContain("href=");
+  expect(current).not.toContain("PDF 21쪽");
   const stale = renderToStaticMarkup(
     createElement(PrintedTocView, { value, stale: true }),
   );

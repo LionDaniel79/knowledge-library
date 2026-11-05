@@ -26,7 +26,6 @@ import {
   Feather,
   History,
   RefreshCw,
-  FileText,
 } from "lucide-react";
 import {
   readingStats,
@@ -60,6 +59,7 @@ import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
 import { BookDelete } from "./book-delete";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
+import { PdfStorageLocations } from "./pdf-storage-locations";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
 import { containsSearchField } from "@/lib/search-fields";
@@ -80,9 +80,6 @@ const CatalogReviewPanel = lazy(() =>
     default: m.CatalogReviewPanel,
   })),
 );
-const PdfLibraryPanel = lazy(() =>
-  import("./pdf-library-panel").then((m) => ({ default: m.PdfLibraryPanel })),
-);
 const KnowledgePanel = lazy(() =>
   import("./knowledge-panel").then((m) => ({ default: m.KnowledgePanel })),
 );
@@ -91,13 +88,11 @@ const LibrarySearchPanel = lazy(() =>
     default: m.LibrarySearchPanel,
   })),
 );
-type View =
-  "home" | "books" | "calendar" | "stats" | "pdf" | "knowledge" | "search";
+type View = "home" | "books" | "calendar" | "stats" | "knowledge" | "search";
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
   { id: "search", label: "통합 검색", icon: Search },
-  { id: "pdf", label: "PDF 원문 검색", icon: FileText },
   { id: "knowledge", label: "사유의 지도", icon: Feather },
   { id: "calendar", label: "독서 달력", icon: CalendarDays },
   { id: "stats", label: "독서 통계", icon: ChartNoAxesCombined },
@@ -118,7 +113,6 @@ export function LibraryApp({
   preview = false,
   ownerId = "",
   initialView = "home",
-  initialOperationsOpen = false,
   onLibraryView,
 }: {
   initial: Library;
@@ -178,7 +172,9 @@ export function LibraryApp({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [data, ownerId, preview]);
-  const [view, setView] = useState<View>(initialView);
+  const [view, setView] = useState<View>(
+    initialView === "pdf" ? "books" : initialView,
+  );
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [readingIndex, setReadingIndex] = useState(0);
@@ -367,7 +363,7 @@ export function LibraryApp({
 
   const matchedCount = remote ? catalog.total : matchedBooks.length;
   const navigate = (next: View | "notes") => {
-    if (next !== "pdf") onLibraryView?.();
+    onLibraryView?.();
     setView(next === "notes" ? "knowledge" : next);
     setMenuOpen(false);
     setCategory("all");
@@ -618,14 +614,7 @@ export function LibraryApp({
         ))}
       </div>
       {note.sourceData?.app === "PDF" && (
-        <a
-          className="text-button"
-          href={`/reader/${note.sourceData.recordId}?page=${note.sourceData.raw.pdfPage}&signature=${encodeURIComponent(String(note.sourceData.raw.signature))}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          원문 PDF {String(note.sourceData.raw.pdfPage)}페이지 열기
-        </a>
+        <span>PDF {String(note.sourceData.raw.pdfPage)}페이지</span>
       )}
       <div className="note-source">
         <span>
@@ -1290,19 +1279,6 @@ export function LibraryApp({
                     />
                   </Suspense>
                 ))}
-              {view === "pdf" &&
-                (preview ? (
-                  <div className="notice">
-                    내 서재에 로그인하면 등록한 PDF를 검색할 수 있습니다.
-                  </div>
-                ) : (
-                  <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
-                    <PdfLibraryPanel
-                      onSaved={refresh}
-                      initialOperationsOpen={initialOperationsOpen}
-                    />
-                  </Suspense>
-                ))}
             </>
           )}
           {remote && view === "books" && catalog.error && (
@@ -1377,6 +1353,12 @@ export function LibraryApp({
                   >
                     기기 저장·동기화
                   </button>
+                  <a className="text-button" href="/desktop/connect">
+                    Windows PDF 서재 연결
+                  </a>
+                  <a className="text-button" href="/logos/import">
+                    로고스 도서 가져오기
+                  </a>
                 </>
               )}
             </div>
@@ -1617,30 +1599,13 @@ export function LibraryApp({
             />
           )}
           <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
+          <PdfStorageLocations book={detailBook} />
           {!preview && (
             <BookRelations
               key={detailBook.id + ":relations"}
               book={detailBook}
               library={data}
             />
-          )}
-          {detailBook.sourceData?.app === "Local PDF" && (
-            <>
-              <a
-                className="primary"
-                href={`/reader/${detailBook.sourceData.recordId}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                PDF 원문 열기
-              </a>
-              <Suspense fallback={<p role="status">화면을 여는 중…</p>}>
-                <PdfLibraryPanel
-                  documentId={detailBook.sourceData.recordId}
-                  onSaved={refresh}
-                />
-              </Suspense>
-            </>
           )}
           {!preview && remote ? (
             <BookRecords
