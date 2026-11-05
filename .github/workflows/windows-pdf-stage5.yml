@@ -1,0 +1,72 @@
+name: Windows PDF stage 5 contracts
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop/pdf-library/**"
+      - "src/lib/desktop-catalog-contract.ts"
+      - "src/server/desktop-catalog.ts"
+      - "tests/desktop-http-manifest-stage5.test.ts"
+      - ".github/workflows/windows-pdf-stage5.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "desktop/pdf-library/**"
+      - "src/lib/desktop-catalog-contract.ts"
+      - "src/server/desktop-catalog.ts"
+      - "tests/desktop-http-manifest-stage5.test.ts"
+      - ".github/workflows/windows-pdf-stage5.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-manifest:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install TypeScript contract dependencies
+        run: npm ci
+      - name: Exercise desktop HTTP route handlers against isolated PGlite
+        run: npx vitest run tests/desktop-http-manifest-stage5.test.ts --maxWorkers=1
+      - name: Run isolated Python HTTPS contract tests
+        working-directory: desktop/pdf-library
+        run: python -B -m unittest -v test_api_v2
+      - name: Cross-check 201 synthetic items against server TypeScript
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          $payload = & python -B -c "import json; from test_api_v2 import rows; from api_v2 import items_digest; r=rows(201)[::-1]; print(json.dumps({'rows':r,'digest':items_digest(r)}))"
+          if ($LASTEXITCODE -ne 0) { throw "Python digest fixture failed" }
+          $payload | node verify-digest.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Server/Python digest mismatch" }
+      - name: Parse Windows QA enrollment and HTTPS preview scripts
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          foreach ($file in @('Test-ManifestPreview.ps1', 'New-QADeviceCredential.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell syntax invalid: $file"
+            }
+          }
+      - name: Compile Windows WPF searcher
+        shell: pwsh
+        working-directory: desktop/pdf-library
+        run: |
+          .\Build.ps1 -Output "$env:RUNNER_TEMP\pdf-stage5.exe"

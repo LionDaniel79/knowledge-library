@@ -1,0 +1,34 @@
+{
+  "scanComplete": true,
+  "rootsAvailable": true,
+  "allPhysicalFiles": 9319,
+  "physicalByRoot": {
+    "christian": 3598,
+    "general": 511
+  },
+  "physicalFiles": 4109,
+  "uniqueDocuments": 4108,
+  "extraCopies": 1,
+  "missingOldDocuments": 3,
+  "legacyDocuments": 9321,
+  "unresolvedFileMatches": 0,
+  "serverManifestId": null,
+  "acceptedItems": 0,
+  "versionConflicts": null,
+  "serverApplied": false,
+  "itemsDigest": "b4790ec251650e29ce237177c6aea07d7cdd5a9b4a54d4efe6f800fc4b0ed8e5",
+  "localContractValid": true,
+  "newContentHashes": 0,
+  "sourceCommit": "d5c57c8dce81226669154d9cd3e8c6ff995e8679",
+  "unitTestsPassed": 18,
+  "wpfSmokePassed": true,
+  "stage4TypescriptDigestCrossCheck": "passed-201-synthetic-items",
+  "handoffDigestVector": {
+    "pythonAndStage4Sha256": "8dfc96abeb31e943e8f362ab72724ff4f4cf77ababae6ac3cd8492ce9f72d9ca",
+    "items": 2,
+    "canonicalUtf8Bytes": 173,
+    "status": "passed",
+    "fixture": "desktop/pdf-library/manifest-v2-test-vector.json"
+  },
+  "httpsTestServer": "pending isolated origin, test device credential and current owner version export"
+}

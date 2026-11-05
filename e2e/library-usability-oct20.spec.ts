@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -74,9 +75,7 @@ for (const width of [390, 1440]) {
     );
     await mount(page);
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-    await page
-      .getByRole("button", { name: "기록과 생각", exact: true })
-      .click();
+    await openMyNotes(page, { ...previewLibrary, notes });
     await page.getByRole("button", { name: "새 기록", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "새로운 기록" });
     await expect(
@@ -96,29 +95,32 @@ for (const width of [390, 1440]) {
     await expect(dialog).toHaveCount(0);
     expect(created.payload.title).toBe("");
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-    await page
-      .getByRole("button", { name: "기록과 생각", exact: true })
-      .click();
+    await openMyNotes(page, { ...previewLibrary, notes });
     await expect(page.getByLabel("작성일 시작")).toHaveCount(0);
     await expect(page.getByLabel("작성일 끝")).toHaveCount(0);
-    await page.getByLabel(/^종류/).selectOption("unclassified");
+    await page.getByRole("button", { name: "종류 선택", exact: true }).click();
+    await page
+      .getByRole("checkbox", { name: "미분류 메모", exact: true })
+      .check();
+    await page
+      .getByRole("button", { name: "종류 선택 완료", exact: true })
+      .click();
+    await page
+      .locator(".topic-material-filters")
+      .getByRole("button", { name: "검색", exact: true })
+      .click();
     await expect(
       page.getByRole("button", { name: "미분류 메모", exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page.getByRole("button", { name: "통합 검색", exact: true }).click();
-    await page
-      .getByRole("button", { name: "도서 상세 검색", exact: true })
-      .click();
-    const bookSearch = page.getByRole("dialog", { name: "도서 상세 검색" });
+    await page.getByRole("tab", { name: "도서 검색", exact: true }).click();
+    const bookSearch = page.locator(".advanced-search");
     await bookSearch.getByLabel("출판사", { exact: true }).fill("김영사");
     await bookSearch.getByRole("button", { name: "검색", exact: true }).click();
     await expect(bookSearch.getByRole("status")).toHaveText("1개 결과");
-    await bookSearch.getByRole("button", { name: "닫기", exact: true }).click();
-    await page
-      .getByRole("button", { name: "메모 상세 검색", exact: true })
-      .click();
-    const memoSearch = page.getByRole("dialog", { name: "메모 상세 검색" });
+    await page.getByRole("tab", { name: "메모 검색", exact: true }).click();
+    const memoSearch = page.locator(".advanced-search");
     await memoSearch
       .getByLabel("메모 내용", { exact: true })
       .fill("오늘의 질문");
@@ -132,7 +134,7 @@ for (const width of [390, 1440]) {
       ),
     ).toBe(true);
   });
-  test(`topic edit opens a visible window, removal restores and timeline has device page-size at ${width}px`, async ({
+  test(`topic edit opens a visible window, removal restores and notes keep device page-size at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -204,10 +206,7 @@ for (const width of [390, 1440]) {
     await page
       .getByRole("button", { name: "사유의 지도", exact: true })
       .click();
-    if (width <= 760)
-      await page
-        .getByRole("button", { name: "주제 관리", exact: true })
-        .click();
+    await page.getByRole("button", { name: "주제 관리", exact: true }).click();
     await page
       .getByRole("button", { name: "독서 주제 수정", exact: true })
       .click();
@@ -228,14 +227,12 @@ for (const width of [390, 1440]) {
     await expect(
       page.getByRole("button", { name: "독서와 기억 주제 수정", exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "메모 상자", exact: true }).click();
     await page
-      .getByRole("button", { name: "생각의 흐름", exact: true })
-      .click();
-    await page
-      .getByLabel("사유의 지도 기록 표시 개수", { exact: true })
+      .getByLabel("내 기록 표시 개수", { exact: true })
       .selectOption("10");
     await expect(
-      page.getByLabel("사유의 지도 기록 표시 개수", { exact: true }),
+      page.getByLabel("내 기록 표시 개수", { exact: true }),
     ).toHaveValue("10");
   });
 }

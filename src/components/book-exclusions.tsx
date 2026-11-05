@@ -116,9 +116,11 @@ export function BookExclusions({
                 {item.author || "저자 미입력"} ·{" "}
                 {item.kind === "book"
                   ? "소장 도서"
-                  : item.kind === "paper"
-                    ? "논문"
-                    : "간행물"}
+                  : item.kind === "pdf_archive"
+                    ? "보관된 PDF"
+                    : item.kind === "paper"
+                      ? "논문"
+                      : "간행물"}
               </p>
               <p>{item.reason}</p>
               <small>{item.relativePath}</small>

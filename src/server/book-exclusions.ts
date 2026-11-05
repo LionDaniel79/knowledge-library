@@ -30,7 +30,7 @@ export interface BookExclusionPage {
     id: string;
     title: string;
     author: string;
-    kind: "book" | "paper" | "periodical";
+    kind: "book" | "paper" | "periodical" | "pdf_archive";
     reason: string;
     relativePath: string;
     excludedAt: string;

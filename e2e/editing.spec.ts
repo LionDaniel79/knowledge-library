@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -71,7 +72,7 @@ test("deletes only after confirmation and restores from the notes trash", async 
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(deletes).toBe(1);
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).click();
+  await openMyNotes(page, state);
   await page.getByText("휴지통 · 1개", { exact: true }).click();
   await page.getByRole("button", { name: "복원", exact: true }).click();
   await expect(page.getByText("휴지통 · 0개", { exact: true })).toBeVisible();

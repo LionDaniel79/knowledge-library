@@ -1,3 +1,4 @@
+import { openMyNotes, mountPreviewFixture } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import sharp from "sharp";
@@ -92,14 +93,14 @@ for (const width of [390, 1440])
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/preview");
+    await mountPreviewFixture(page);
     await nav(page, "독서 통계");
     await expect(page.getByText(/기존앱 독서량/)).toHaveCount(0);
     expect(await page.locator(".main-content").innerText()).not.toMatch(
       /\d+회/,
     );
-    await nav(page, "기록과 생각");
-    await expect(page.locator(".heading-line h1")).toHaveText("기록과 생각");
+    await openMyNotes(page, previewLibrary);
+    await expect(page.locator(".heading-line h1")).toHaveText("사유의 지도");
     await expect(
       page.getByText("MY READING LIFE", { exact: true }),
     ).toHaveCount(0);
@@ -107,14 +108,15 @@ for (const width of [390, 1440])
       date = await page.locator(".heading-line time").boundingBox();
     expect(heading!.x).toBeGreaterThan(date!.x);
     expect(
-      (await page.locator(".note-card").first().boundingBox())!.height,
-    ).toBeLessThan(220);
+      (await page.locator(".thought-card").first().boundingBox())!.height,
+    ).toBeLessThan(250);
     await nav(page, "소장 도서");
     await page.locator(".shelf-card").first().click();
     await expect(page.locator(".detail-actions button")).toHaveText([
       /읽기 시작/,
       "기록",
       "수정",
+      "삭제",
     ]);
     await expect(
       page.getByRole("button", { name: "책 정보 수정 이력" }),
@@ -159,8 +161,8 @@ test("tag deletion updates existing note tags and keeps their content", async ({
     });
   });
   await open(page, state);
-  await nav(page, "기록과 생각");
-  await page.getByLabel("기록 태그 필터 · 태그 관리").click();
+  await openMyNotes(page, state);
+  await page.getByLabel("태그 선택").click();
   await page
     .getByRole("button", { name: "태그 삭제 삭제할태그", exact: true })
     .click();
@@ -221,7 +223,7 @@ test("barcode photo searches a checksum-valid ISBN, selection fills a new book, 
     return r.fulfill({ json: state });
   });
   await page.getByRole("button", { name: "책 추가", exact: true }).click();
-  await page.getByLabel("바코드 사진 선택").setInputFiles({
+  await page.getByLabel("바코드 이미지 등록").setInputFiles({
     name: "barcode.png",
     mimeType: "image/png",
     buffer: barcode,
@@ -277,13 +279,15 @@ test("tag deletion retries reuse the committed request after a lost response", a
     });
   });
   await open(page, state);
-  await nav(page, "기록과 생각");
-  await page.getByLabel("기록 태그 필터 · 태그 관리").click();
+  await openMyNotes(page, state);
+  await page.getByLabel("태그 선택").click();
   await page
     .getByRole("button", { name: "태그 삭제 재시도태그", exact: true })
     .click();
   await page.getByRole("button", { name: "태그 삭제", exact: true }).click();
-  await expect(page.locator(".tag-filter [role=alert]")).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "태그 삭제 확인" }).getByRole("alert"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "태그 삭제", exact: true }).click();
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1]).toBe(requests[0]);

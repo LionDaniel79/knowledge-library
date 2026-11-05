@@ -50,7 +50,15 @@ try {
     await readFile("db/033_shared_thought_titles.sql", "utf8"),
   );
   await client.query(await readFile("db/034_book_deletion.sql", "utf8"));
+  await client.query(
+    await readFile("db/035_desktop_catalog_and_logos.sql", "utf8"),
+  );
   if (role) {
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_desktop_tokens,library_desktop_manifests,library_desktop_manifest_items,library_book_sources,library_pdf_registry,library_cover_locations TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_memo_bundles,library_bundle_links TO "' +
         role +

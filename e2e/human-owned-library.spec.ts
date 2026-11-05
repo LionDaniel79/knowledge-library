@@ -1,3 +1,8 @@
+import {
+  openMyNotes,
+  chooseNoteTags,
+  openIntegratedSearch,
+} from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -99,9 +104,7 @@ for (const width of [360, 1440])
     await page.addStyleTag({ path: "src/app/globals.css" });
     await page.addScriptTag({ content: bundle });
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-    await page
-      .getByRole("button", { name: "기록과 생각", exact: true })
-      .click();
+    await openMyNotes(page, state);
     await page
       .getByRole("button", { name: "새 기록", exact: true })
       .first()
@@ -115,21 +118,14 @@ for (const width of [360, 1440])
     await page
       .getByRole("textbox", { name: "내용", exact: true })
       .fill("감정은 관계 속에서 이해한다.");
-    await page.getByLabel("태그", { exact: true }).fill("감정, 관계");
+    await chooseNoteTags(page, ["감정", "관계"]);
     await page.getByRole("button", { name: "저장하기", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-    await page.getByRole("button", { name: "통합 검색", exact: true }).click();
-    await page.getByLabel("자료 검색어").fill("감정");
-    await page.getByLabel("검색 대상").selectOption("mine");
-    await page.getByRole("button", { name: "자료 찾기", exact: true }).click();
+    await openIntegratedSearch(page);
+    await page.getByRole("searchbox", { name: "통합 검색어" }).fill("감정");
     await expect(
       page.getByText("감정은 관계 속에서 이해한다.", { exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".search-hit-list details")).not.toHaveAttribute(
-      "open",
-      "",
-    );
     expect(
       await page.evaluate(() =>
         [...document.querySelectorAll("main *")]
@@ -158,58 +154,61 @@ for (const width of [360, 1440])
       .getByRole("button", { name: "닫기", exact: true })
       .last()
       .click();
-    let connection: any;
-    await page.route("https://library.test/api/knowledge", (r) =>
-      r.fulfill({ json: { connections: [], research: [], items: [] } }),
+    const connections: any[] = [];
+    await page.route("https://library.test/api/thought-boxes", (r) =>
+      r.fulfill({ json: { items: [] } }),
     );
-    await page.route("https://library.test/api/thought-map", (r) => {
-      if (r.request().method() === "POST") {
-        connection = r.request().postDataJSON();
-        return r.fulfill({ json: { id: "connection" } });
-      }
-      return r.fulfill({
+    await page.route("https://library.test/api/whiteboard", (r) =>
+      r.fulfill({
         json: {
+          board: null,
+          notes: state.notes,
+          books: state.books,
           topics: [],
           memberships: [],
-          topicLinks: [],
-          candidates: [],
-          feedback: [],
-          events: state.notes.map((n, i) => ({
-            id: n.id,
-            noteId: n.id,
-            voice: "self",
-            occurredOn: i === 0 ? "2026-10-01" : "2026-10-13",
-            dateSource: "user",
-            version: 1,
-          })),
+          bundles: [],
+          bundleLinks: [],
+          connections,
         },
+      }),
+    );
+    await page.route("https://library.test/api/knowledge", (r) => {
+      const c = r.request().postDataJSON();
+      expect(c.type).toBe("connectWhiteboardNotes");
+      connections.push({
+        id: crypto.randomUUID(),
+        source_kind: "note",
+        source_id: c.payload.sourceId,
+        target_kind: "note",
+        target_id: c.payload.targetId,
+        relation: "related",
+        reason: "화이트보드에서 직접 연결",
+        status: "accepted",
+        version: 1,
+      });
+      return r.fulfill({
+        json: { id: connections[0].id, version: 1, connection: connections[0] },
       });
     });
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page
+      .getByRole("dialog", { name: "서재 메뉴" })
       .getByRole("button", { name: "사유의 지도", exact: true })
       .click();
+    await page.getByRole("button", { name: "화이트보드", exact: true }).click();
+    const a = page.locator(`[data-note-id="${state.notes[0].id}"]`).first();
+    const b = page.locator('[data-note-id="new-note"]').first();
+    await a.focus();
+    await a.press("Enter");
     await page
-      .getByRole("button", { name: "생각의 흐름", exact: true })
+      .getByRole("button", { name: "선택한 메모 연결", exact: true })
       .click();
-    await page.getByText("내 생각의 변화를 직접 연결", { exact: true }).click();
-    await page
-      .getByRole("combobox", { name: "이전 생각", exact: true })
-      .selectOption(state.notes[0].id);
-    await page
-      .getByRole("combobox", { name: "이후 생각", exact: true })
-      .selectOption("new-note");
-    await page
-      .getByLabel("내가 판단한 이유", { exact: true })
-      .fill("관계 속에서 감정을 이해하는 쪽으로 생각이 넓어졌다.");
-    await page
-      .getByRole("button", { name: "변화 연결 확정", exact: true })
-      .click();
-    await expect(
-      page.getByText("판단과 수정 이력을 저장했습니다.", { exact: true }),
-    ).toBeVisible();
-    expect(connection.type).toBe("connectThoughts");
-    expect(connection.payload.explanation).toContain("생각이 넓어졌다");
+    await b.focus();
+    await b.press("Enter");
+    await expect.poll(() => connections.length).toBe(1);
+    expect([connections[0].source_id, connections[0].target_id]).toEqual(
+      expect.arrayContaining([state.notes[0].id, "new-note"]),
+    );
     expect(aiCalls).toBe(0);
   });
 test("new search and curation routes require an owner", async ({ request }) => {

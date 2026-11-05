@@ -270,6 +270,7 @@ test("request list is compact, details are loaded on demand and current record f
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toHaveCount(0);
+  await page.getByText("내가 요청한 도움", { exact: true }).click();
   await page.locator(".assist-request-row summary").click();
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
@@ -305,6 +306,7 @@ test("model choice is remembered and deleted history stays hidden even while the
   await expect(
     page.getByRole("combobox", { name: "AI 모델", exact: true }),
   ).toHaveValue("gpt-6.1-sol");
+  await page.getByText("내가 요청한 도움", { exact: true }).click();
   await page
     .getByRole("button", { name: "도움 요청 기록 삭제", exact: true })
     .click();
@@ -316,6 +318,7 @@ test("model choice is remembered and deleted history stays hidden even while the
   expect(f.getCount()).toBeGreaterThan(1);
   await page.context().setOffline(true);
   await page.evaluate(() => (window as any).remount());
+  await page.getByText("내가 요청한 도움", { exact: true }).click();
   await expect(
     page.getByText("요청한 기록이 없습니다.", { exact: true }),
   ).toBeVisible();
@@ -353,6 +356,7 @@ test("compact AI rows and detailed evidence fit a mobile screen", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mount(page);
+  await page.getByText("내가 요청한 도움", { exact: true }).click();
   await page.locator(".assist-request-row summary").click();
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
@@ -374,6 +378,7 @@ for (const purpose of [
 ])
   test(`legacy ${purpose} keeps source evidence readable`, async ({ page }) => {
     await mount(page, false, "0.5", purpose);
+    await page.getByText("내가 요청한 도움", { exact: true }).click();
     await page.locator(".assist-request-row summary").click();
     const evidence = page
       .locator(".assist-request-detail details")
@@ -422,6 +427,7 @@ test("adoption can retry a server failure and acknowledges a committed result wi
       },
     });
   });
+  await page.getByText("내가 요청한 도움", { exact: true }).click();
   await page.locator(".assist-request-row summary").first().click();
   const apply = page.getByRole("button", { name: "연결 확정", exact: true });
   await apply.click();

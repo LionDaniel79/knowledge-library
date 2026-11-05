@@ -234,7 +234,7 @@ test("keeps an open input and its pending edits when another tab upgrades the de
   await page.goto(origin);
   await expect(page.locator(".workspace")).toBeVisible();
   await page.evaluate(() => (window as any).queueLocal());
-  await page.getByRole("button", { name: "기록 남기기", exact: true }).click();
+  await page.getByRole("button", { name: "새 기록", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "새로운 기록", exact: true });
   await dialog
     .getByRole("textbox", { name: "내용", exact: true })

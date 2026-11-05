@@ -1,0 +1,27 @@
+{
+  "description": "Stage5 desktop catalog manifest API v2: fabricated IDs; no personal PDF data",
+  "sourceServerFile": "src/lib/desktop-catalog-contract.ts",
+  "items": [
+    {
+      "legacyDocumentId": "00000000-0000-4000-8000-000000000002",
+      "bookId": "00000000-0000-4000-8000-000000000004",
+      "expectedBookVersion": 1,
+      "copiesByRoot": {
+        "christian": 0,
+        "general": 1
+      }
+    },
+    {
+      "legacyDocumentId": "00000000-0000-4000-8000-000000000001",
+      "bookId": "00000000-0000-4000-8000-000000000003",
+      "expectedBookVersion": 3,
+      "copiesByRoot": {
+        "christian": 2,
+        "general": 0
+      }
+    }
+  ],
+  "canonicalJson": "[[\"00000000-0000-4000-8000-000000000001\",\"00000000-0000-4000-8000-000000000003\",3,2,0],[\"00000000-0000-4000-8000-000000000002\",\"00000000-0000-4000-8000-000000000004\",1,0,1]]",
+  "canonicalUtf8Bytes": 173,
+  "expectedItemsDigestSha256": "8dfc96abeb31e943e8f362ab72724ff4f4cf77ababae6ac3cd8492ce9f72d9ca"
+}
