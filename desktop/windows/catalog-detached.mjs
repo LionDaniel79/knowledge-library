@@ -118,7 +118,8 @@ function lastStats(chunks, overflow) {
       Object.keys(value).sort().join(",") !==
         "at,checked,completed,failed,pending" ||
       typeof value.at !== "string" ||
-      !Number.isFinite(Date.parse(value.at))
+      !Number.isFinite(Date.parse(value.at)) ||
+      new Date(value.at).toISOString() !== value.at
     )
       return null;
     for (const field of ["checked", "completed", "pending", "failed"])

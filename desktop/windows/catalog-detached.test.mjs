@@ -259,6 +259,7 @@ test("stops draining on no progress, failures, nonzero exits, malformed stats an
     [progress(), 1],
     ["{not valid json}\n", 0],
     [JSON.stringify({ ...progress(), unexpected: "secret-token" }), 0],
+    [progress({ at: "Thu, 01 Jan 2026 00:00:00 GMT (secret-token)" }), 0],
     ["x".repeat(65537) + "\n" + JSON.stringify(progress()), 0],
   ];
   for (const [stats, code] of cases) {
