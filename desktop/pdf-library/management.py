@@ -1069,7 +1069,11 @@ def transport(origin, token):
     require(target.hostname and '..' not in target.hostname and (target.port is None or 1 <= target.port <= 65535), 'HTTPS 웹 주소가 올바르지 않습니다.')
     context = ssl.create_default_context()
     def request(path, payload):
-        conn = http.client.HTTPSConnection(target.hostname, target.port, timeout=25, context=context)
+        # Bulk writes may still be committing after a cold start. Keep their
+        # immutable request retryable without applying the longer budget to
+        # lightweight version/scan requests. UI cancellation owns this process.
+        timeout = 120 if path == '/api/desktop/library' else 25
+        conn = http.client.HTTPSConnection(target.hostname, target.port, timeout=timeout, context=context)
         try:
             conn.request('POST', path, _canonical(payload).encode('utf-8'),
                          {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})

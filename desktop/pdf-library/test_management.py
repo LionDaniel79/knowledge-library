@@ -861,6 +861,33 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(calls, [('POST', '/api/desktop/catalog/versions', {'documentIds': [legacy_id], 'allowPartial': True}),
                                  ('POST', '/api/desktop/library/scans', heartbeat)])
 
+    def test_bulk_transport_waits_for_bounded_transaction_without_relaxing_tls(self):
+        budgets = {}
+        class Response:
+            status = 200
+            def read(self, *_): return b'{}'
+        class Connection:
+            def __init__(inner, *args, **kwargs):
+                inner.timeout = kwargs['timeout']
+                self.assertTrue(kwargs['context'].check_hostname)
+                self.assertEqual(kwargs['context'].verify_mode, m.ssl.CERT_REQUIRED)
+            def request(inner, method, path, body, headers):
+                inner.path = path
+                budgets[path] = inner.timeout
+            def getresponse(inner):
+                if inner.path == '/api/desktop/library' and inner.timeout < 60:
+                    raise TimeoutError('A cold 100-book transaction is still running')
+                return Response()
+            def close(self): pass
+        with patch.object(m.http.client, 'HTTPSConnection', Connection):
+            send = m.transport('https://fixture.example.invalid', 'klw_' + 'a' * 43)
+            self.assertEqual(send({'requestId': str(uuid.uuid4()), 'items': [{}] * 100}), {})
+            send.versions([str(uuid.uuid4())])
+            send.scan({})
+        self.assertLessEqual(budgets['/api/desktop/library'], 180)
+        self.assertLessEqual(budgets['/api/desktop/catalog/versions'], 30)
+        self.assertLessEqual(budgets['/api/desktop/library/scans'], 30)
+
     def test_registration_batches_fit_server_byte_limit_and_utf16_bounds(self):
         self.scan()
         items = [dict(resourceId=str(uuid.uuid4()), metadata={'title': '😀' * 150}, locations=[{'rootKey': 'christian', 'relativePath': ('한' * 980) + str(n) + '.pdf'} for n in range(32)]) for _ in range(15)]
