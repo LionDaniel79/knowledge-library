@@ -17,7 +17,7 @@ import sys
 import time
 import unicodedata
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -29,6 +29,16 @@ from registry import exclusive as _legacy_exclusive
 DB_NAME = 'management-v1.sqlite'
 APP_ID = 843028
 ROOTS = {'기독도서': 'christian', '일반도서': 'general'}
+REGISTRATIONS = """
+create table if not exists registrations(id text primary key,resource_id text not null references resources(id),
+ legacy_document_id text unique references aliases(document_id),title text not null default '',
+ book_id text,server_document_id text,book_version integer,web_state text,last_synced text);
+create index if not exists registrations_resource on registrations(resource_id);
+create trigger if not exists resources_web_au after update of book_id,server_document_id,book_version,web_state,last_synced on resources begin
+ update registrations set book_id=new.book_id,server_document_id=new.server_document_id,book_version=new.book_version,
+ web_state=new.web_state,last_synced=new.last_synced where id=new.id and resource_id=new.id;
+end;
+"""
 SCHEMA = """
 create table settings(key text primary key,value text not null);
 create table resources(id text primary key,sha256 text unique not null,title text not null,
@@ -42,7 +52,8 @@ create table scans(id text primary key,root text not null,volume text,state text
  files integer not null default 0,hashed integer not null default 0,started_at text not null,finished_at text);
 create table locations(path text primary key,root text not null,resource_id text not null references resources(id),
  size integer not null,mtime text not null,ctime text not null,inode text not null,volume text not null,
- state text not null,run text not null references scans(id),checked_at text not null);
+ state text not null,run text not null references scans(id),checked_at text not null,
+ legacy_document_id text references aliases(document_id),legacy_evidence text not null default 'schema2');
 create index locations_resource on locations(resource_id,state);
 create table pages(id integer primary key,resource_id text not null references resources(id),
  page_number integer not null,text text not null,method text not null,unique(resource_id,page_number));
@@ -128,9 +139,9 @@ def _database_open(directory):
         db.execute('pragma foreign_keys=on')
         db.execute('pragma synchronous=full')
         if not exists:
-            db.executescript('begin immediate;' + SCHEMA + f'pragma application_id={APP_ID};pragma user_version=2;commit;')
+            db.executescript('begin immediate;' + SCHEMA + REGISTRATIONS + f'pragma application_id={APP_ID};pragma user_version=3;commit;')
         version = db.execute('pragma user_version').fetchone()[0]
-        require(version in (1, 2), '관리 DB 버전을 확인하세요.')
+        require(version in (1, 2, 3), '관리 DB 버전을 확인하세요.')
         if version == 1:
             db.execute('begin immediate')
             columns = {r[1] for r in db.execute('pragma table_info(resources)')}
@@ -138,6 +149,26 @@ def _database_open(directory):
                 if name not in columns:
                     db.execute('alter table resources add column ' + name + ' ' + definition)
             db.execute('pragma user_version=2')
+            db.commit()
+            version = 2
+        if version == 2:
+            db.execute('begin immediate')
+            columns = {r[1] for r in db.execute('pragma table_info(locations)')}
+            if 'legacy_document_id' not in columns:
+                db.execute('alter table locations add column legacy_document_id text references aliases(document_id)')
+            if 'legacy_evidence' not in columns:
+                db.execute("alter table locations add column legacy_evidence text not null default 'schema2'")
+            # executescript would commit an in-progress transaction. Execute
+            # these complete statements individually to retain atomic migration.
+            script = ''
+            for line in REGISTRATIONS.splitlines(True):
+                script += line
+                if sqlite3.complete_statement(script):
+                    db.execute(script)
+                    script = ''
+            for resource in db.execute('select * from resources').fetchall():
+                _ensure_registrations(db, resource['id'], preserve_default=True)
+            db.execute('pragma user_version=3')
             db.commit()
         return db
     except BaseException:
@@ -152,6 +183,79 @@ def _setting(db, key, default=None):
 
 def _set(db, key, value):
     db.execute('insert into settings values(?,?) on conflict(key) do update set value=excluded.value', (key, str(value)))
+
+
+def _used_no_legacy_binding(db, resource):
+    for row in db.execute("select o.payload from outbox o join outbox_items i using(request_id) where i.resource_id=? and (o.attempts>0 or o.state='applied')", (resource,)):
+        if any(item['resourceId'] == resource and not item.get('legacyDocumentId') for item in json.loads(row[0])['items']):
+            return True
+    return False
+
+
+def _protected_default(db, resource):
+    row = db.execute('select legacy_document_id,book_id from registrations where id=? and resource_id=?', (resource, resource)).fetchone()
+    return bool(row and row['legacy_document_id'] is None and (row['book_id'] or _used_no_legacy_binding(db, resource)))
+
+
+def _ensure_registrations(db, resource, preserve_default=False, titles=None):
+    """Book identities are independent; pages and OCR stay content-addressed."""
+    row = db.execute('select * from resources where id=?', (resource,)).fetchone()
+    ids = [r[0] for r in db.execute('select document_id from aliases where resource_id=? order by document_id', (resource,))]
+    default = db.execute('select * from registrations where id=?', (resource,)).fetchone()
+    protected = _protected_default(db, resource) or (preserve_default and (_used_no_legacy_binding(db, resource) or (row['book_id'] and row['server_document_id'] not in ids)))
+    historical = row['server_document_id'] if row['server_document_id'] in ids else ids[0] if len(ids) == 1 else None
+    history = []
+    if preserve_default:
+        for saved in db.execute('select o.payload from outbox o join outbox_items i using(request_id) where i.resource_id=? order by o.rowid', (resource,)):
+            history.extend(item for item in json.loads(saved[0])['items'] if item['resourceId'] == resource)
+        previous_ids = {item['legacyDocumentId'] for item in history if item.get('legacyDocumentId') in ids}
+        if historical is None and len(previous_ids) == 1:
+            historical = next(iter(previous_ids))
+    if protected:
+        historical = None
+    already_bound = historical and db.execute('select 1 from registrations where legacy_document_id=?', (historical,)).fetchone()
+    if preserve_default and not default and not already_bound and (not ids or historical or row['book_id'] or history):
+        db.execute('insert into registrations(id,resource_id,legacy_document_id,book_id,server_document_id,book_version,web_state,last_synced) values(?,?,?,?,?,?,?,?)',
+                   (resource, resource, historical, row['book_id'], row['server_document_id'], row['book_version'], row['web_state'], row['last_synced']))
+        default = db.execute('select * from registrations where id=?', (resource,)).fetchone()
+        if historical and len(ids) > 1:
+            # Schema2 could have queued its formerly unique alias before a
+            # second alias was discovered. Preserve only its recorded locations.
+            approved = {(location['rootKey'], location['relativePath']) for item in history if item.get('legacyDocumentId') == historical for location in item['locations']}
+            for location in db.execute('select path,root from locations where resource_id=? and legacy_document_id is null', (resource,)).fetchall():
+                parts = Path(location['path']).relative_to(location['root']).parts
+                if len(parts) > 1 and (ROOTS.get(parts[0]), '/'.join(parts[1:])) in approved:
+                    db.execute('update locations set legacy_document_id=? where path=?', (historical, location['path']))
+    if not protected and default and default['legacy_document_id'] is None and len(ids) == 1 and not default['book_id']:
+        # An unused first-user binding may acquire its first legacy identity.
+        # Sent/attempted no-legacy bodies are never reinterpreted as another book.
+        used = db.execute("select 1 from outbox_items i join outbox o using(request_id) where i.resource_id=? and (o.attempts>0 or o.state='applied') limit 1", (resource,)).fetchone()
+        if not used:
+            db.execute('update registrations set legacy_document_id=? where id=?', (ids[0], resource))
+    for document in ids:
+        logical = str(uuid.uuid5(uuid.UUID(resource), 'legacy:' + document.lower()))
+        db.execute('insert or ignore into registrations(id,resource_id,legacy_document_id,title) values(?,?,?,?)',
+                   (logical, resource, document, (titles or {}).get(document, '')))
+        if (titles or {}).get(document):
+            db.execute('update registrations set title=? where legacy_document_id=? and resource_id=?', ((titles or {})[document], document, resource))
+    if not ids and not default:
+        db.execute('insert into registrations(id,resource_id) values(?,?)', (resource, resource))
+    if len(ids) == 1 and not protected:
+        db.execute("update locations set legacy_document_id=?,legacy_evidence='single' where resource_id=? and legacy_document_id is null", (ids[0], resource))
+
+
+def _ensure_all_registrations(db):
+    for row in db.execute('select id from resources').fetchall():
+        _ensure_registrations(db, row['id'])
+
+
+def _registration_update(db, logical, **values):
+    columns = ','.join(key + '=?' for key in values)
+    db.execute('update registrations set ' + columns + ' where id=?', (*values.values(), logical))
+    registration = db.execute('select resource_id from registrations where id=?', (logical,)).fetchone()
+    if registration and registration[0] == logical:
+        # Retain schema2 compatibility fields only for its original binding.
+        db.execute('update resources set ' + columns + ' where id=?', (*values.values(), logical))
 
 
 def _signature(path):
@@ -331,6 +435,39 @@ def _enqueue(db, resource, total, ready=()):
             db.execute("insert or ignore into queue(resource_id,page_number,state,updated_at) values(?,?,'pending',?)", (resource, page, now()))
 
 
+def _legacy_hint(path, size, mtime):
+    return (Path(path).name.casefold(), size, str(mtime))
+
+
+def _legacy_location(path, signature, candidates, paths, hints, previous=(), identities=None, evidence=False):
+    """Choose a logical book only from independent location evidence."""
+    def selected(document, proof):
+        return (document, proof) if evidence else document
+    previous = [row for row in previous if row['legacy_document_id']
+             and (os.path.normcase(row['path']) == os.path.normcase(str(path)) or os.path.normcase(row['path']) not in paths
+                  or (identities is not None and identities.get(os.path.normcase(row['path'])) != (row['volume'], row['inode'])))]
+    prior = {row['legacy_document_id'] for row in previous if row.get('legacy_evidence') in ('path', 'hint', 'inode')}
+    if prior:
+        return selected(next(iter(prior)), 'inode') if len(prior) == 1 else selected(None, 'ambiguous')
+    exact = {doc['id'] for doc in candidates if os.path.normcase(doc['path']) == os.path.normcase(str(path))
+             and doc.get('bytes') == signature[0] and str(doc.get('mtime_ns')) == signature[1]}
+    if exact:
+        return selected(next(iter(exact)), 'path') if len(exact) == 1 else selected(None, 'ambiguous')
+    ids = {doc['id'] for doc in candidates}
+    if len(ids) == 1:
+        return selected(next(iter(ids)), 'single')
+    marker = _legacy_hint(path, signature[0], signature[1])
+    if hints[marker] == 1:
+        matches = {doc['id'] for doc in candidates if os.path.normcase(doc['path']) not in paths
+                   and _legacy_hint(doc['path'], doc.get('bytes'), doc.get('mtime_ns')) == marker}
+        if len(matches) == 1:
+            return selected(next(iter(matches)), 'hint')
+    prior = {row['legacy_document_id'] for row in previous}
+    if len(prior) == 1:
+        return selected(next(iter(prior)), 'single')
+    return selected(None, 'ambiguous')
+
+
 def scan(root, directory, index=None, stop=lambda: False, progress=lambda n, h: None):
     """Initial full inventory; later stat-based incremental hashing. No source writes."""
     root = Path(root).absolute()
@@ -356,12 +493,20 @@ def scan(root, directory, index=None, stop=lambda: False, progress=lambda n, h: 
                     by_hash.setdefault(doc['sha256'].lower(), []).append(doc)
                 elif doc.get('status') not in ('error', 'locked', 'changed'):
                     without_hash.setdefault(os.path.normcase(doc['path']), []).append(doc)
+            inventory = {path: _signature(path) for path in _walk(root, stop)}
+            paths = {os.path.normcase(str(path)) for path in inventory}
+            identities = {os.path.normcase(str(path)): (stamp[4], stamp[3]) for path, stamp in inventory.items()}
+            hints = Counter(_legacy_hint(path, stamp[0], stamp[1]) for path, stamp in inventory.items())
+            prior = defaultdict(list)
+            for location in db.execute("select l.*,r.sha256 from locations l join resources r on r.id=l.resource_id where l.state='verified' and l.legacy_document_id is not null"):
+                prior[(location['sha256'], location['volume'], location['inode'])].append(dict(location))
             seen = {}
-            for path in _walk(root, stop):
+            for path, inventoried in inventory.items():
                 if stop():
                     raise InterruptedError('스캔 중단')
                 require(_safe_file(path, root), '스캔 중 PDF 경로가 변경되었습니다.')
                 signature = _signature(path)
+                require(signature == inventoried, '확인 중 PDF가 변경되었습니다.')
                 old = db.execute('select l.*,r.sha256 from locations l join resources r on r.id=l.resource_id where path=?', (str(path),)).fetchone()
                 if old and signature == tuple(old[k] for k in ('size', 'mtime', 'ctime', 'inode', 'volume')):
                     digest = old['sha256']
@@ -416,9 +561,16 @@ def scan(root, directory, index=None, stop=lambda: False, progress=lambda n, h: 
                 # Drop only work already covered by legacy OCR; preserve own completed pages.
                 for page in old_ready:
                     db.execute("delete from queue where resource_id=? and page_number=? and state in ('pending','error')", (resource, page))
+                _ensure_registrations(db, resource, titles={doc['id']: _title(doc.get('title') or path.stem) for doc in candidates})
+                allowed = {row[0] for row in db.execute('select document_id from aliases where resource_id=?', (resource,))}
+                if _protected_default(db, resource):
+                    legacy_document, legacy_evidence = None, 'retained'
+                else:
+                    legacy_document, legacy_evidence = _legacy_location(path, signature, [doc for doc in candidates if doc['id'] in allowed], paths, hints,
+                                                                        prior.get((digest, signature[4], signature[3]), ()), identities, evidence=True)
                 require(signature == _signature(path), '확인 중 PDF가 변경되었습니다.')
-                db.execute('insert into locations values(?,?,?,?,?,?,?,?,?,?,?) on conflict(path) do update set root=excluded.root,resource_id=excluded.resource_id,size=excluded.size,mtime=excluded.mtime,ctime=excluded.ctime,inode=excluded.inode,volume=excluded.volume,state=excluded.state,run=excluded.run,checked_at=excluded.checked_at',
-                           (str(path), str(root), resource, *signature, 'verified', run, now()))
+                db.execute('insert into locations values(?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(path) do update set root=excluded.root,resource_id=excluded.resource_id,size=excluded.size,mtime=excluded.mtime,ctime=excluded.ctime,inode=excluded.inode,volume=excluded.volume,state=excluded.state,run=excluded.run,checked_at=excluded.checked_at,legacy_document_id=excluded.legacy_document_id,legacy_evidence=excluded.legacy_evidence',
+                           (str(path), str(root), resource, *signature, 'verified', run, now(), legacy_document, legacy_evidence))
                 seen[str(path)] = signature
                 n += 1
                 db.execute('update scans set files=?,hashed=? where id=?', (n, hashed, run))
@@ -455,7 +607,7 @@ def scan(root, directory, index=None, stop=lambda: False, progress=lambda n, h: 
 
 
 def _resolve(db, document):
-    row = db.execute('select id from resources where id=? union select resource_id from aliases where document_id=? union select id from resources where server_document_id=?', (document, document, document)).fetchone()
+    row = db.execute('select id from resources where id=? union select resource_id from aliases where document_id=? union select resource_id from registrations where id=? or server_document_id=?', (document, document, document, document)).fetchone()
     require(row is not None, '문서를 찾을 수 없습니다.')
     return row[0]
 
@@ -476,7 +628,7 @@ def _pending_scan(db):
 
 
 def _web_pending_count(db):
-    return db.execute("select count(*) from outbox where state='pending'").fetchone()[0] + db.execute("select count(*) from resources where web_state='version_conflict'").fetchone()[0]
+    return db.execute("select count(*) from outbox where state='pending'").fetchone()[0] + db.execute("select count(*) from registrations where web_state='version_conflict'").fetchone()[0]
 
 
 def status(directory, limit=100):
@@ -505,10 +657,14 @@ def status(directory, limit=100):
             copies = sum(_available(r) for r in db.execute('select * from locations where resource_id=?', (row['id'],)))
             errors = [dict(r) for r in db.execute("select page_number as page,error,attempts from queue where resource_id=? and state='error' order by page_number limit 20", (row['id'],))]
             aliases = [r[0] for r in db.execute('select document_id from aliases where resource_id=? order by document_id', (row['id'],))]
-            web_issue = '동일한 PDF에 기존 도서 연결이 여러 개 있습니다. 연결 검토가 필요합니다.' if len(aliases) > 1 and not row['book_id'] else None
+            registrations = [dict(value) for value in db.execute('select id,legacy_document_id,book_id,book_version,web_state from registrations where resource_id=? order by id', (row['id'],))]
+            unresolved = db.execute("select count(*) from locations where resource_id=? and legacy_document_id is null and state='verified'", (row['id'],)).fetchone()[0] if aliases else 0
+            unresolved_books = db.execute("select count(*) from registrations g where g.resource_id=? and g.legacy_document_id is not null and not exists(select 1 from locations l where l.resource_id=g.resource_id and l.legacy_document_id=g.legacy_document_id and l.state='verified')", (row['id'],)).fetchone()[0]
+            web_issue = '같은 내용의 기존 도서 중 실제 파일의 연결을 확인하지 못한 도서·사본이 있습니다.' if unresolved or unresolved_books else None
+            web_state = registrations[0]['web_state'] if len(registrations) == 1 else row['web_state']
             documents.append(dict(id=_document_id(db, row['id']), resourceId=row['id'], title=row['title'], kind=row['kind'], totalPages=row['total_pages'],
                                   author=row['author'], publisher=row['publisher'], isbn=row['isbn'],
-                                  available=bool(copies), copies=copies, queue=counts, errors=errors, error=row['error'], webState=row['web_state'], legacyDocumentIds=aliases, webIssue=web_issue))
+                                  available=bool(copies), copies=copies, queue=counts, errors=errors, error=row['error'], webState=web_state, legacyDocumentIds=aliases, webIssue=web_issue, registrations=registrations, unresolvedCopies=unresolved, unresolvedRegistrations=unresolved_books))
         latest = db.execute('select id,state,files,hashed,started_at,finished_at from scans order by rowid desc limit 1').fetchone()
         active = db.execute("select q.resource_id,q.page_number,r.title from queue q join resources r on r.id=q.resource_id where q.state='running' limit 1").fetchone()
         return dict(resources=totals['resources'], availableCopies=sum(copies_by_resource.values()), queue=queue, paused=_setting(db, 'paused', '0') == '1', engineError=_setting(db, 'engine_error', ''), documents=documents,
@@ -516,7 +672,8 @@ def status(directory, limit=100):
                     completedPages=max(0, totals['pages'] - db.execute("select count(*) from queue where page_number>0 and state in ('pending','running','error')").fetchone()[0]),
                     scan=dict(latest) if latest else None, current=dict(active) if active else None,
                     lastCompletedScan=_completed_scan(db), scanPending=_pending_scan(db) is not None,
-                    webHeld=db.execute("select count(*) from resources r where web_state in ('excluded','conflict') or (r.book_id is null and (select count(*) from aliases a where a.resource_id=r.id)>1)").fetchone()[0],
+                    webHeld=db.execute("select count(*) from registrations g where g.web_state in ('excluded','conflict') or (g.legacy_document_id is not null and exists(select 1 from locations l where l.resource_id=g.resource_id and l.state='verified') and not exists(select 1 from locations l where l.resource_id=g.resource_id and l.legacy_document_id=g.legacy_document_id and l.state='verified'))").fetchone()[0],
+                    webUnresolvedCopies=db.execute("select count(*) from locations l where l.state='verified' and l.legacy_document_id is null and exists(select 1 from aliases a where a.resource_id=l.resource_id)").fetchone()[0],
                     webPending=_web_pending_count(db))
 
 
@@ -551,9 +708,6 @@ def _engine_failure(error):
 
 def ocr_step(directory, index=None, recognize=None, stop=lambda: False):
     """Commit at most one page. Abandoned running pages recover under the OS lock."""
-    if recognize is None:
-        from sandbox import candidate
-        recognize = candidate
     with exclusive(_plain_directory(directory), 'management-ocr'), closing(database(directory)) as db:
         db.execute("update queue set state='pending' where state='running'")
         db.commit()
@@ -577,6 +731,10 @@ def ocr_step(directory, index=None, recognize=None, stop=lambda: False):
             pending = db.execute("select count(*) from queue where state='pending'").fetchone()[0]
             return {'state': 'offline' if pending else 'idle'}
         resource, page = task['resource_id'], task['page_number']
+        if recognize is None:
+            from quality_recognition import candidate
+            recognize = lambda path, number: candidate(
+                path, number, cache_directory=Path(directory) / 'ocr-layout', content_key=resource)
         document = _document_id(db, resource)
         db.execute("update queue set state='running',attempts=attempts+1,updated_at=? where resource_id=? and page_number=?", (now(), resource, page))
         db.commit()
@@ -764,13 +922,16 @@ def _web_items(db, include_recoverable=False):
         return []
     latest = db.execute('select * from scans where root=? order by rowid desc limit 1', (root,)).fetchone()
     items = []
-    for row in db.execute('select * from resources order by id'):
-        if row['web_state'] in ('excluded', 'conflict'):
+    for registration in db.execute('select * from registrations order by id'):
+        if registration['web_state'] in ('excluded', 'conflict'):
             continue
-        if row['web_state'] == 'version_conflict' and not include_recoverable:
+        if registration['web_state'] == 'version_conflict' and not include_recoverable:
+            continue
+        row = db.execute('select * from resources where id=?', (registration['resource_id'],)).fetchone()
+        if registration['legacy_document_id'] is None and db.execute('select 1 from aliases where resource_id=?', (row['id'],)).fetchone() and not _protected_default(db, row['id']):
             continue
         locations = []
-        for location in db.execute("select * from locations where resource_id=? and root=? and run=? and state='verified' order by path", (row['id'], root, latest['id'])):
+        for location in db.execute("select * from locations where resource_id=? and legacy_document_id is ? and root=? and run=? and state='verified' order by path", (row['id'], registration['legacy_document_id'], root, latest['id'])):
             if not _available(location):
                 continue
             parts = Path(location['path']).relative_to(root).parts
@@ -784,20 +945,16 @@ def _web_items(db, include_recoverable=False):
             continue
         if len(locations) > 32:
             continue
-        ids = [r[0] for r in db.execute('select document_id from aliases where resource_id=?', (row['id'],))]
-        # Identical bytes may belong to different legacy books: never choose one arbitrarily.
-        if len(ids) > 1 and not row['book_id']:
-            continue
-        item = dict(resourceId=row['id'], metadata=dict(title=_title(row['title'])), locations=locations)
+        item = dict(resourceId=registration['id'], metadata=dict(title=_title(registration['title'] or row['title'])), locations=locations)
         for key in ('author', 'publisher', 'isbn'):
             if row[key]:
                 item['metadata'][key] = row[key] if key == 'isbn' else _metadata_text(row[key])
         if row['total_pages']:
             item['metadata']['totalPages'] = row['total_pages']
-        if len(ids) == 1:
-            item['legacyDocumentId'] = ids[0]
-        if row['book_id']:
-            item.update(bookId=row['book_id'], expectedBookVersion=row['book_version'])
+        if registration['legacy_document_id']:
+            item['legacyDocumentId'] = registration['legacy_document_id']
+        if registration['book_id']:
+            item.update(bookId=registration['book_id'], expectedBookVersion=registration['book_version'])
         items.append(item)
     return items
 
@@ -805,6 +962,7 @@ def _web_items(db, include_recoverable=False):
 def prepare_web(directory):
     """Persist immutable batches. Pending resource IDs block concurrent newer deltas."""
     with exclusive(_plain_directory(directory), 'management-web'), closing(database(directory)) as db:
+        _ensure_all_registrations(db)
         current_items = _web_items(db)
         current = {item['resourceId']: item for item in current_items}
         if _web_snapshot_ready(db):
@@ -874,7 +1032,8 @@ def apply_web_result(directory, request_id, result):
             require(row['response'] == _canonical(result), '완료된 등록 응답이 변경되었습니다.')
             return {'requestId': request_id, 'applied': len(received)}
         for resource, item in received.items():
-            previous = db.execute('select book_id,server_document_id from resources where id=?', (resource,)).fetchone()
+            previous = db.execute('select book_id,server_document_id from registrations where id=?', (resource,)).fetchone()
+            require(previous is not None, '등록 응답의 로컬 도서 연결을 찾을 수 없습니다.')
             retry_key = 'web_cas_retry:' + resource
             if item['state'] == 'conflict':
                 # A version race may retry once, but only after an owner-scoped
@@ -886,9 +1045,9 @@ def apply_web_result(directory, request_id, result):
                 recoverable = same_identity and _setting(db, retry_key, '0') == '0'
                 if recoverable:
                     _set(db, retry_key, '1')
-                db.execute('update resources set web_state=?,last_synced=? where id=?', ('version_conflict' if recoverable else 'conflict', now(), resource))
+                _registration_update(db, resource, web_state='version_conflict' if recoverable else 'conflict', last_synced=now())
                 continue
-            db.execute('update resources set book_id=?,server_document_id=?,book_version=?,web_state=?,last_synced=? where id=?', (item['bookId'], item['documentId'], item['bookVersion'], item['state'], now(), resource))
+            _registration_update(db, resource, book_id=item['bookId'], server_document_id=item['documentId'], book_version=item['bookVersion'], web_state=item['state'], last_synced=now())
             if item['state'] == 'excluded':
                 continue
             _set(db, retry_key, '0')
@@ -945,6 +1104,8 @@ def _scan_receipt(payload, result):
 def refresh_versions(directory, fetch):
     """Refresh changed owned mappings without altering attempted request bodies."""
     with closing(database(directory)) as db:
+        _ensure_all_registrations(db)
+        db.commit()
         attempted = {row[0] for row in db.execute("select i.resource_id from outbox_items i join outbox o using(request_id) where o.state='pending' and o.attempts>0")}
         rows = []
         for item in _web_items(db, include_recoverable=True):
@@ -954,7 +1115,7 @@ def refresh_versions(directory, fetch):
             ack = db.execute('select fingerprint from web_ack where resource_id=?', (resource,)).fetchone()
             if ack and ack[0] == hashlib.sha256(_canonical(item).encode()).hexdigest():
                 continue
-            previous = dict(db.execute('select id,book_id,server_document_id,book_version from resources where id=?', (resource,)).fetchone())
+            previous = dict(db.execute('select id,book_id,server_document_id,book_version from registrations where id=?', (resource,)).fetchone())
             document = previous['server_document_id'] or item.get('legacyDocumentId')
             if document:
                 previous['document_id'] = document
@@ -985,12 +1146,16 @@ def refresh_versions(directory, fetch):
                     verified.append((previous, item))
     with exclusive(_plain_directory(directory), 'management-web'), closing(database(directory)) as db:
         for previous, item in verified:
-            db.execute("update resources set book_id=?,server_document_id=?,book_version=?,web_state=case when web_state='version_conflict' then 'registered' else web_state end where id=? and book_id is ? and server_document_id is ? and (web_state is null or web_state not in ('excluded','conflict'))",
-                       (item['bookId'], item['legacyDocumentId'], item['expectedBookVersion'], previous['id'], previous['book_id'], previous['server_document_id']))
+            current = db.execute('select * from registrations where id=?', (previous['id'],)).fetchone()
+            if current and current['book_id'] == previous['book_id'] and current['server_document_id'] == previous['server_document_id'] and current['web_state'] not in ('excluded', 'conflict'):
+                _registration_update(db, previous['id'], book_id=item['bookId'], server_document_id=item['legacyDocumentId'], book_version=item['expectedBookVersion'],
+                                     web_state='registered' if current['web_state'] == 'version_conflict' else current['web_state'])
         for previous in unresolved:
             # An owner-scoped unresolved old ID is held for review, never retried
             # as a new PDF without its legacy identity.
-            db.execute("update resources set web_state='conflict' where id=? and book_id is ? and server_document_id is ?", (previous['id'], previous['book_id'], previous['server_document_id']))
+            current = db.execute('select book_id,server_document_id from registrations where id=?', (previous['id'],)).fetchone()
+            if current and current['book_id'] == previous['book_id'] and current['server_document_id'] == previous['server_document_id']:
+                _registration_update(db, previous['id'], web_state='conflict')
         db.commit()
     return {'verified': len(verified), 'unresolved': len(unresolved)}
 
@@ -1051,9 +1216,13 @@ def audit(directory):
         for row in db.execute('select l.*,r.title from locations l join resources r on r.id=l.resource_id order by l.path'):
             relative = Path(row['path']).relative_to(row['root']).parts
             root_key = ROOTS.get(relative[0]) if len(relative) > 1 else None
-            rows.append(dict(resourceId=row['resource_id'], documentId=_document_id(db, row['resource_id']), title=row['title'], localPath=row['path'],
+            registration = db.execute('select id,legacy_document_id,book_id from registrations where resource_id=? and legacy_document_id is ? order by id limit 1', (row['resource_id'], row['legacy_document_id'])).fetchone()
+            if registration and registration['legacy_document_id'] is None and not _protected_default(db, row['resource_id']) and db.execute('select 1 from aliases where resource_id=?', (row['resource_id'],)).fetchone():
+                registration = None
+            rows.append(dict(resourceId=row['resource_id'], registrationId=registration[0] if registration else None, documentId=row['legacy_document_id'] or _document_id(db, row['resource_id']), title=row['title'], localPath=row['path'],
                              rootKey=root_key, relativePath='/'.join(relative[1:]) if root_key else None,
                              state='available' if _available(row) else 'offline' if not Path(row['root']).is_dir() else row['state'] if row['state'] == 'missing' else 'changed',
                              lastCheckedAt=row['checked_at']))
         return dict(locations=rows, physical=len(rows), available=sum(r['state'] == 'available' for r in rows),
-                    registrationCopies=sum(r['state'] == 'available' and r['rootKey'] is not None for r in rows))
+                    registrationCopies=sum(r['state'] == 'available' and r['rootKey'] is not None and r['registrationId'] is not None for r in rows),
+                    unresolvedRegistrationCopies=sum(r['state'] == 'available' and r['rootKey'] is not None and r['registrationId'] is None for r in rows))

@@ -3,8 +3,9 @@
 `management.py` is the standalone library engine behind the `library-*` worker
 actions. It starts no HTTP listener and does not depend on the former PDF server.
 Choose a private state directory outside the PDF library. The only writable
-SQLite is `management-v1.sqlite` (application ID 843028, schema version 2;
-version 1 is upgraded transactionally while retaining IDs/pages/queue).
+SQLite is `management-v1.sqlite` (application ID 843028, schema version 3;
+versions 1 and 2 are upgraded transactionally while retaining IDs/pages/queue,
+existing book bindings, acknowledgements, and immutable pending request bodies).
 Never point this directory at the legacy index, synced project sources, or the
 original PDFs. Existing `reader.py`, `registry.py`, their SQLite files, and original
 PDFs are not migrated or modified.
@@ -52,9 +53,12 @@ Progress polling caps document details at 100 by default (up to 1000, or explici
 cap. Global `availableCopies` uses the last verified scan and checks that each
 root/volume is still connected; displayed documents revalidate current file
 signatures. `audit` performs the exhaustive physical check. This avoids statting
-an entire external library every few seconds. `webHeld` counts excluded,
-conflicted, and ambiguous legacy resources; document rows also provide
-`legacyDocumentIds` and `webIssue` when an old identity needs review.
+an entire external library every few seconds. `webHeld` counts excluded/conflicted
+or unresolved logical book registrations; `webUnresolvedCopies` counts physical
+copies whose legacy identity remains unresolved. Document rows also
+provide `legacyDocumentIds`, `registrations`, `unresolvedCopies`,
+`unresolvedRegistrations`, and `webIssue`
+when an old identity needs review.
 
 Document rows also expose `author`, `publisher`, and normalized `isbn`. An initial
 scan reads PDF Info fields and at most the first two embedded-text pages for
@@ -97,13 +101,42 @@ Moving a verified copy retains aliases, search citations, and page rendering.
 Newly managed page text takes precedence over an old page.
 
 Several distinct legacy document UUIDs may point at identical PDF bytes. Their
-aliases are retained, legacy search returns their original IDs, and automatic web
-registration is held rather than arbitrarily choosing an existing book. Searches
-accept either a resource UUID or a known old/server document UUID.
+aliases and independent book identities are retained while OCR/pages/queue remain
+shared by local content. `registrations` maps each logical web UUID to one content
+UUID and, when present, one legacy document UUID; book ID, CAS version, exclusion,
+acknowledgement, and bounded conflict retry state are independent per logical
+registration. Fresh legacy registrations use UUID5(content UUID, `legacy:` plus
+document UUID). Migrated schema2 bindings preserve their original external UUID
+and pending request bytes; a first-user resource without legacy identities keeps
+its existing single binding.
+An attempted or already applied first-user binding is never changed into a newly
+discovered legacy book. It retains its external UUID, book identity and copies;
+new legacy candidates are held until their relationship is reviewed. Only an
+unused, unattempted binding may acquire its first unambiguous legacy identity.
 
-Default recognition reuses `sandbox.candidate`, which reads embedded PDF text
-with PDFium and otherwise uses `scripts/pdf_ocr_pipeline.CachedRenderer` and
-`scripts/pdf_ocr_languages.AdaptiveWindowsOcr`. No original PDF/OCR/index is written.
+Each location stores its independently verified `legacy_document_id`. Matching
+uses the verified content digest plus one exact old path/size/mtime match, a unique
+old/new basename/size/mtime pair whose old path is absent, a sole legacy digest
+candidate, or a prior verified inode/volume identity. Prior inode evidence also
+keeps identities stable when two identical-content files exchange names. Location
+evidence provenance is retained: a sole-hash/schema2 inference stays weak through
+ordinary scans, so newly discovered exact legacy-path evidence can split books
+correctly. No
+logical book is guessed from content alone when several candidates remain.
+Unresolved locations stay managed/searchable locally and are withheld from web
+registration; resolved independent books are emitted separately with only their
+own verified copies. One legacy book with several physical copies remains one
+registration. Searches/rendering accept content, logical registration, and known
+old/server document UUIDs.
+
+Default recognition uses `quality_recognition.candidate`. Embedded PDF text is
+retained; image pages reuse the existing 300 dpi body/footnote recognition,
+deskew and repeated-margin removal with AdaptiveWindowsOcr. Bounded private
+layout caches are keyed by shared content identity, source signature and profile;
+logical registrations share OCR work. No original PDF/OCR/index is written.
+Schema2 upgrades conservatively retain ambiguous location bindings until the
+next completed cached scan resolves their legacy evidence; unresolved copies
+remain withheld from web registration.
 
 ## Outbound web queue
 

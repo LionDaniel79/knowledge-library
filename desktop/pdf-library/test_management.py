@@ -37,6 +37,29 @@ class ManagementTests(unittest.TestCase):
     def scan(self, **kwargs):
         return m.scan(self.root, self.state, **kwargs)
 
+    def test_default_ocr_uses_quality_profile_and_content_scoped_private_cache(self):
+        self.scan()
+        with patch('quality_recognition.candidate', return_value=('본문과 각주', 'body-footnotes-300dpi-v5')) as recognize:
+            result = m.ocr_step(self.state)
+        self.assertEqual(result['state'], 'done')
+        recognize.assert_called_once()
+        args, options = recognize.call_args
+        self.assertEqual(args[0], str(self.path))
+        self.assertEqual(options['cache_directory'], self.state / 'ocr-layout')
+        with closing(m.database(self.state)) as db:
+            resource = db.execute('select id from resources').fetchone()[0]
+        self.assertEqual(options['content_key'], resource)
+
+    def legacy_fixture(self, entries):
+        index = self.home / 'logical-legacy.sqlite'
+        with closing(sqlite3.connect(index)) as db:
+            db.executescript('create table documents(id text,title text,path text,root text,bytes int,mtime_ns text,sha256 text,material_kind text,status text,page_count int); create table pages(id integer primary key,document_id text,page_number int,text text,method text); create virtual table pages_fts using fts5(text,content="pages",content_rowid="id",tokenize="trigram");')
+            for document, title, path in entries:
+                stamp = path.stat()
+                db.execute('insert into documents values(?,?,?,?,?,?,?,?,?,?)', (document, title, str(path), str(self.root), stamp.st_size, str(stamp.st_mtime_ns), hashlib.sha256(path.read_bytes()).hexdigest(), 'book', 'ready', 2))
+            db.commit()
+        return index
+
     def text_pdf(self, relative, texts, metadata=None):
         # Minimal synthetic PDF with real embedded text and PDF Info fields.
         def literal(value):
@@ -367,8 +390,234 @@ class ManagementTests(unittest.TestCase):
         self.scan(index=index)
         self.assertEqual({hit['id'] for hit in m.search(self.state, '도서 본문')['hits']}, set(ids))
         self.assertEqual(m.prepare_web(self.state)['requests'], [])
+        self.assertEqual(m.status(self.state)['webHeld'], 2)
+        self.assertEqual(m.status(self.state)['webUnresolvedCopies'], 1)
+        self.assertTrue(m.status(self.state)['documents'][0]['webIssue'])
         m.ocr_step(self.state, recognize=lambda *_: ('새로 인식한 본문', 'fixture'))
         self.assertEqual({hit['id'] for hit in m.search(self.state, '인식한 본문')['hits']}, set(ids))
+
+    def test_same_bytes_legacy_books_register_independently_and_share_ocr(self):
+        second = self.root / '일반도서/second.pdf'
+        shutil.copy2(self.path, second)
+        ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        index = self.legacy_fixture([(ids[0], 'Independent A', self.path), (ids[1], 'Independent B', second)])
+        self.scan(index=index)
+        payload = m.prepare_web(self.state)['requests'][0]
+        by_doc = {item['legacyDocumentId']: item for item in payload['items']}
+        self.assertEqual(set(by_doc), set(ids))
+        content = m.status(self.state)['documents'][0]['resourceId']
+        self.assertEqual({item['resourceId'] for item in payload['items']}, {str(uuid.uuid5(uuid.UUID(content), 'legacy:' + doc)) for doc in ids})
+        self.assertEqual(by_doc[ids[0]]['locations'], [{'rootKey': 'christian', 'relativePath': 'sample.pdf'}])
+        self.assertEqual(by_doc[ids[1]]['locations'], [{'rootKey': 'general', 'relativePath': 'second.pdf'}])
+        self.assertEqual({item['metadata']['title'] for item in payload['items']}, {'Independent A', 'Independent B'})
+        books = {document: str(uuid.uuid4()) for document in ids}
+        def versions(documents):
+            return {'items': [{'legacyDocumentId': doc, 'bookId': books[doc], 'expectedBookVersion': 8} for doc in documents]}
+        def send(batch):
+            response = {'requestId': batch['requestId'], 'items': [{'resourceId': item['resourceId'], 'bookId': books[item['legacyDocumentId']], 'documentId': item['legacyDocumentId'], 'bookVersion': 9, 'state': 'registered'} for item in reversed(batch['items'])]}
+            wrong = json.loads(json.dumps(response))
+            wrong['items'][0]['documentId'] = wrong['items'][1]['documentId']
+            with self.assertRaises(ValueError):
+                m.apply_web_result(self.state, batch['requestId'], wrong)
+            with closing(m.database(self.state)) as db:
+                self.assertEqual({row[0] for row in db.execute('select book_version from registrations')}, {8})
+            return response
+        send.versions = versions
+        self.assertEqual(m.sync_web(self.state, send=send)['applied'], 2)
+        with closing(m.database(self.state)) as db:
+            self.assertEqual({row[0] for row in db.execute('select book_id from registrations')}, set(books.values()))
+            self.assertEqual(db.execute('select count(*) from resources').fetchone()[0], 1)
+        m.ocr_step(self.state, recognize=lambda *_: ('공유한 OCR 본문', 'fixture'))
+        self.assertEqual({hit['id'] for hit in m.search(self.state, '공유한 본문')['hits']}, set(ids))
+        with closing(m.database(self.state)) as db:
+            self.assertEqual(db.execute('select count(*) from pages').fetchone()[0], 1)
+
+    def test_one_legacy_book_multiple_copies_keep_one_registration(self):
+        document = str(uuid.uuid4())
+        index = self.legacy_fixture([(document, 'One book', self.path)])
+        shutil.copy2(self.path, self.root / '일반도서/copy.pdf')
+        self.scan(index=index)
+        items = m.prepare_web(self.state)['requests'][0]['items']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['legacyDocumentId'], document)
+        self.assertEqual(len(items[0]['locations']), 2)
+
+    def test_same_bytes_relocations_use_unique_hints_then_verified_inode(self):
+        second = self.root / '일반도서/second.pdf'
+        shutil.copy2(self.path, second)
+        ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        index = self.legacy_fixture([(ids[0], 'A', self.path), (ids[1], 'B', second)])
+        (self.root / '기독도서/sub').mkdir()
+        moved = self.root / '기독도서/sub/sample.pdf'
+        self.path.rename(moved)
+        self.scan(index=index)
+        initial = {item['legacyDocumentId']: item for item in m.prepare_web(self.state)['requests'][0]['items']}
+        self.assertEqual(initial[ids[0]]['locations'][0]['relativePath'], 'sub/sample.pdf')
+        moved.rename(self.root / '일반도서/renamed.pdf')
+        self.scan(index=index)
+        current = {item['legacyDocumentId']: item for request in m.prepare_web(self.state)['requests'] for item in request['items']}
+        self.assertEqual(current[ids[0]]['resourceId'], initial[ids[0]]['resourceId'])
+        self.assertEqual(current[ids[0]]['locations'], [{'rootKey': 'general', 'relativePath': 'renamed.pdf'}])
+        self.assertEqual(current[ids[1]]['locations'], initial[ids[1]]['locations'])
+
+    def test_same_bytes_filename_swap_keeps_verified_book_identity(self):
+        second = self.root / '일반도서/second.pdf'
+        shutil.copy2(self.path, second)
+        ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        index = self.legacy_fixture([(ids[0], 'A', self.path), (ids[1], 'B', second)])
+        self.scan(index=index)
+        temporary = self.root / 'swapping.pdf'
+        self.path.rename(temporary)
+        second.rename(self.path)
+        temporary.rename(second)
+        self.scan(index=index)
+        items = {item['legacyDocumentId']: item for request in m.prepare_web(self.state)['requests'] for item in request['items']}
+        self.assertEqual(items[ids[0]]['locations'], [{'rootKey': 'general', 'relativePath': 'second.pdf'}])
+        self.assertEqual(items[ids[1]]['locations'], [{'rootKey': 'christian', 'relativePath': 'sample.pdf'}])
+
+    def test_new_exact_legacy_alias_overrides_prior_sole_hash_inference(self):
+        second = self.root / '일반도서/second.pdf'
+        shutil.copy2(self.path, second)
+        first_id, second_id = str(uuid.uuid4()), str(uuid.uuid4())
+        index = self.legacy_fixture([(first_id, 'A', self.path)])
+        self.scan(index=index)
+        self.scan(index=index)  # Ordinary scans must not promote inferred proof.
+        with closing(sqlite3.connect(index)) as db:
+            old = list(db.execute('select * from documents').fetchone())
+            old[0:3] = [second_id, 'B', str(second)]
+            db.execute('insert into documents values(?,?,?,?,?,?,?,?,?,?)', old)
+            db.commit()
+        self.scan(index=index)
+        items = {item['legacyDocumentId']: item for batch in m.prepare_web(self.state)['requests'] for item in batch['items']}
+        self.assertEqual(set(items), {first_id, second_id})
+        self.assertEqual(items[first_id]['locations'], [{'rootKey': 'christian', 'relativePath': 'sample.pdf'}])
+        self.assertEqual(items[second_id]['locations'], [{'rootKey': 'general', 'relativePath': 'second.pdf'}])
+
+    def test_established_no_legacy_book_is_not_rebound_when_alias_appears(self):
+        self.scan()
+        pending = m.prepare_web(self.state)['requests'][0]
+        content = pending['items'][0]['resourceId']
+        book, server_doc, legacy_doc = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        m.apply_web_result(self.state, pending['requestId'], {'requestId': pending['requestId'], 'items': [{'resourceId': content, 'bookId': book, 'documentId': server_doc, 'bookVersion': 1, 'state': 'registered'}]})
+        index = self.legacy_fixture([(legacy_doc, 'Previously separate legacy book', self.path)])
+        self.scan(index=index)
+        self.assertEqual(m.prepare_web(self.state)['requests'], [])
+        self.path.rename(self.root / '일반도서/moved.pdf')
+        self.scan(index=index)
+        items = m.prepare_web(self.state)['requests'][0]['items']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['resourceId'], content)
+        self.assertEqual(items[0]['bookId'], book)
+        self.assertNotIn('legacyDocumentId', items[0])
+        with closing(m.database(self.state)) as db:
+            row = db.execute('select legacy_document_id,server_document_id from registrations where id=?', (content,)).fetchone()
+            self.assertEqual(tuple(row), (None, server_doc))
+
+    def test_attempted_no_legacy_request_keeps_identity_when_alias_appears(self):
+        self.scan()
+        pending = m.prepare_web(self.state)['requests'][0]
+        def fail(payload):
+            raise OSError('fixture lost response')
+        with self.assertRaises(ValueError):
+            m.sync_web(self.state, send=fail)
+        legacy_doc = str(uuid.uuid4())
+        index = self.legacy_fixture([(legacy_doc, 'Previously separate legacy book', self.path)])
+        self.scan(index=index)
+        self.assertEqual(m.prepare_web(self.state)['requests'], [pending])
+
+    def test_schema2_attempted_no_legacy_request_is_not_migrated_to_new_alias(self):
+        self.scan()
+        pending = m.prepare_web(self.state)['requests'][0]
+        content = pending['items'][0]['resourceId']
+        with closing(m.database(self.state)) as db:
+            db.execute('update outbox set attempts=1')
+            db.execute('insert into aliases values(?,?)', (str(uuid.uuid4()), content))
+            db.execute('drop trigger resources_web_au')
+            db.execute('drop table registrations')
+            db.execute('alter table locations drop column legacy_document_id')
+            db.execute('pragma user_version=2')
+            db.commit()
+        self.assertEqual(m.prepare_web(self.state)['requests'], [pending])
+        with closing(m.database(self.state)) as db:
+            self.assertIsNone(db.execute('select legacy_document_id from registrations where id=?', (content,)).fetchone()[0])
+
+    def test_same_content_books_keep_exclusion_and_version_budgets_independent(self):
+        second = self.root / '일반도서/second.pdf'
+        shutil.copy2(self.path, second)
+        ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        books = [str(uuid.uuid4()), str(uuid.uuid4())]
+        index = self.legacy_fixture([(ids[0], 'A', self.path), (ids[1], 'B', second)])
+        self.scan(index=index)
+        first = m.prepare_web(self.state)['requests'][0]
+        logical = {item['legacyDocumentId']: item['resourceId'] for item in first['items']}
+        m.apply_web_result(self.state, first['requestId'], {'requestId': first['requestId'], 'items': [
+            {'resourceId': logical[ids[0]], 'bookId': books[0], 'documentId': ids[0], 'bookVersion': 1, 'state': 'excluded'},
+            {'resourceId': logical[ids[1]], 'bookId': books[1], 'documentId': ids[1], 'bookVersion': 4, 'state': 'registered'}]})
+        second.rename(self.root / '기독도서/moved-B.pdf')
+        self.scan(index=index)
+        delta = m.prepare_web(self.state)['requests'][0]
+        self.assertEqual([item['resourceId'] for item in delta['items']], [logical[ids[1]]])
+        self.assertEqual(delta['items'][0]['bookId'], books[1])
+        self.assertEqual(delta['items'][0]['expectedBookVersion'], 4)
+        m.apply_web_result(self.state, delta['requestId'], {'requestId': delta['requestId'], 'items': [
+            {'resourceId': logical[ids[1]], 'bookId': books[1], 'documentId': ids[1], 'bookVersion': 5, 'state': 'conflict'}]})
+        with closing(m.database(self.state)) as db:
+            states = dict(db.execute('select legacy_document_id,web_state from registrations'))
+            self.assertEqual(states, {ids[0]: 'excluded', ids[1]: 'version_conflict'})
+            self.assertEqual(m._setting(db, 'web_cas_retry:' + logical[ids[0]], '0'), '0')
+            self.assertEqual(m._setting(db, 'web_cas_retry:' + logical[ids[1]], '0'), '1')
+
+    def test_schema2_pending_request_replays_original_identity_and_body(self):
+        self.scan()
+        m.ocr_step(self.state, recognize=lambda *_: ('이전 관리 본문', 'fixture'))
+        pending = m.prepare_web(self.state)['requests'][0]
+        def fail(payload):
+            raise OSError('fixture offline')
+        with self.assertRaises(ValueError):
+            m.sync_web(self.state, send=fail)
+        with closing(m.database(self.state)) as db:
+            db.execute('drop trigger if exists resources_web_au')
+            db.execute('drop table if exists registrations')
+            columns = {row[1] for row in db.execute('pragma table_info(locations)')}
+            if 'legacy_document_id' in columns:
+                db.execute('alter table locations drop column legacy_document_id')
+            db.execute('pragma user_version=2')
+            db.commit()
+        self.assertEqual(m.pending_web(self.state)['requests'], [pending])
+        self.assertEqual(len(m.search(self.state, '이전 본문')['hits']), 1)
+        def send(payload):
+            self.assertEqual(payload, pending)
+            return {'requestId': payload['requestId'], 'items': [{'resourceId': payload['items'][0]['resourceId'], 'bookId': str(uuid.uuid4()), 'documentId': str(uuid.uuid4()), 'bookVersion': 1, 'state': 'registered'}]}
+        self.assertEqual(m.sync_web(self.state, send=send)['pending'], 0)
+        with closing(m.database(self.state)) as db:
+            self.assertEqual(db.execute('pragma user_version').fetchone()[0], 3)
+
+    def test_schema2_legacy_pending_request_keeps_content_uuid_and_owned_binding(self):
+        document, book = str(uuid.uuid4()), str(uuid.uuid4())
+        index = self.legacy_fixture([(document, 'Previous book', self.path)])
+        self.scan(index=index)
+        pending = m.prepare_web(self.state)['requests'][0]
+        content = m.status(self.state)['documents'][0]['resourceId']
+        previous_logical = pending['items'][0]['resourceId']
+        pending['items'][0].update(resourceId=content, bookId=book, expectedBookVersion=3)
+        with closing(m.database(self.state)) as db:
+            db.execute('drop trigger resources_web_au')
+            db.execute('drop table registrations')
+            db.execute('alter table locations drop column legacy_document_id')
+            db.execute('update resources set book_id=?,server_document_id=?,book_version=3,web_state=? where id=?', (book, document, 'registered', content))
+            db.execute('update outbox set payload=?,attempts=1 where request_id=?', (m._canonical(pending), pending['requestId']))
+            db.execute('update outbox_items set resource_id=? where resource_id=?', (content, previous_logical))
+            db.execute('pragma user_version=2')
+            db.commit()
+        self.assertEqual(m.pending_web(self.state)['requests'], [pending])
+        def send(payload):
+            self.assertEqual(payload, pending)
+            return {'requestId': payload['requestId'], 'items': [{'resourceId': content, 'bookId': book, 'documentId': document, 'bookVersion': 4, 'state': 'registered'}]}
+        send.versions = lambda _: self.fail('Attempted schema2 body must replay before CAS refresh')
+        self.assertEqual(m.sync_web(self.state, send=send)['pending'], 0)
+        with closing(m.database(self.state)) as db:
+            row = db.execute('select id,resource_id,legacy_document_id,book_id,book_version from registrations').fetchone()
+            self.assertEqual(tuple(row), (content, content, document, book, 4))
 
     def test_excluded_registration_never_automatically_reimports(self):
         self.scan()
@@ -695,7 +944,7 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(m.search(self.state, '기존 본문')['hits'][0]['id'], document)
         self.scan()
         with closing(m.database(self.state)) as db:
-            self.assertEqual(db.execute('pragma user_version').fetchone()[0], 2)
+            self.assertEqual(db.execute('pragma user_version').fetchone()[0], 3)
             self.assertEqual(db.execute('select metadata_checked from resources').fetchone()[0], 1)
 
 

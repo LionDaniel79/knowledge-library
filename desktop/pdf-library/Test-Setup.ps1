@@ -48,10 +48,11 @@ result = management.ocr_step(state)
 assert result['state'] == 'done', 'Installed raster OCR did not finish: ' + json.dumps(result)
 hits = management.search(state, 'LIBRARY')['hits']
 assert hits and all(hit['method'] != 'PDFium' for hit in hits), 'Windows OCR did not recognize the raster fixture'
-for name in ('management', 'sandbox', 'pdf_ocr', 'pdf_ocr_languages', 'pdf_ocr_pipeline', 'pdf_library', 'pdf_job_state'):
+assert all('body-footnotes-300dpi-v5' in hit['method'] for hit in hits), 'Installed OCR bypassed the quality profile'
+for name in ('management', 'quality_recognition', 'pdf_ocr_quality', 'pdf_ocr', 'pdf_ocr_languages', 'pdf_ocr_pipeline', 'pdf_library', 'pdf_job_state'):
     assert Path(sys.modules[name].__file__).resolve().is_relative_to(app.parents[1]), 'OCR imported outside the installed bundle: ' + name
 assert not management.status(state)['paused'], 'Healthy installed engine must remain ready'
-print('PASS installed image-only PDF / Windows OCR helper / recognized search / private bundle imports')
+print('PASS installed image-only PDF / Windows OCR quality profile / recognized search / private bundle imports')
 '@
  & $config.python -B -c $rasterCheck (Split-Path -Parent $config.worker) $root $config.directory
  if($LASTEXITCODE){throw 'Installed raster OCR pipeline failed'}
