@@ -27,11 +27,18 @@ if((Test-Path -LiteralPath $install) -and !(Test-Path -LiteralPath $marker)){thr
 if(Test-Path -LiteralPath $marker){$old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json;if($old.application -ne 'KnowledgeLibrary.PdfLibrary'){throw 'PDF 서재 설치 소유 정보를 확인하지 못했습니다.'}}
 [IO.Directory]::CreateDirectory($install)|Out-Null
 # Current-user private state; never changes permissions on the PDF root or old installation.
-$acl=Get-Acl -LiteralPath $install
+# Build only the private DACL. Reapplying a descriptor read by Get-Acl can
+# attempt to write audit/owner sections and require SeSecurityPrivilege on upgrade.
+$acl=New-Object Security.AccessControl.DirectorySecurity
 $acl.SetAccessRuleProtection($true,$false)
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().User
 $rule=New-Object Security.AccessControl.FileSystemAccessRule($identity,'FullControl','ContainerInherit,ObjectInherit','None','Allow')
-$acl.SetAccessRule($rule);Set-Acl -LiteralPath $install -AclObject $acl
+$acl.SetAccessRule($rule)
+if($PSVersionTable.PSEdition -eq 'Core'){
+ [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($install),$acl)
+}else{
+ (Get-Item -LiteralPath $install -Force).SetAccessControl($acl)
+}
 @{application='KnowledgeLibrary.PdfLibrary';version=1;setupState='preparing'}|ConvertTo-Json|Set-Content -LiteralPath $marker -Encoding UTF8
 $state=Join-Path $install 'state';[IO.Directory]::CreateDirectory($state)|Out-Null
 $release=Join-Path $install ('releases\'+[DateTime]::UtcNow.ToString('yyyyMMddHHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8))

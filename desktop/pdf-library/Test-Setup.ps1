@@ -6,6 +6,12 @@ try {
  $target=Join-Path $fixture 'Installed'
  & "$PSScriptRoot/Setup-PdfLibrary.ps1" -Python $Python -Root $root -InstallRoot $target -NoShortcut
  $config=Get-Content -Raw -Encoding UTF8 (Join-Path $target 'library.json')|ConvertFrom-Json
+ $preserved=Join-Path $config.directory 'upgrade-preservation.txt'
+ [IO.File]::WriteAllText($preserved,'preserve existing private state')
+ $originalState=$config.directory
+ & "$PSScriptRoot/Setup-PdfLibrary.ps1" -Python $Python -Root $root -InstallRoot $target -NoShortcut
+ $config=Get-Content -Raw -Encoding UTF8 (Join-Path $target 'library.json')|ConvertFrom-Json
+ if($config.directory -ne $originalState -or [IO.File]::ReadAllText($preserved) -ne 'preserve existing private state'){throw 'Upgrade changed private state'}
  if($config.index -ne ''){throw 'First-user installation requires a legacy index'}
  if(!(Test-Path -LiteralPath $config.worker)){throw 'Worker bundle absent'}
  if(!(Test-Path -LiteralPath (Join-Path $target 'PdfLibrary.lnk'))){throw 'Launch shortcut absent'}
