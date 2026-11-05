@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -328,7 +329,7 @@ test("completion and new notes close immediately while the overview is slow", as
   await expect(dialog).not.toBeVisible({ timeout: 1000 });
   await expect(page.locator(".reading-copy h3")).not.toHaveText(before!);
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: /^기록과 생각/ }).click();
+  await openMyNotes(page, previewLibrary);
   await page.getByRole("button", { name: "새 기록", exact: true }).click();
   const note = page.getByRole("dialog");
   await note

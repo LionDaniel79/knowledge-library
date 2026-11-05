@@ -1,0 +1,948 @@
+{
+  "date": "2026-11-04",
+  "scope": "QA read-only / local disk read-only",
+  "exceptions": 76,
+  "originalPdfsLocated": 73,
+  "originalFullSha256": {
+    "matched": 73,
+    "mismatched": 0,
+    "unavailable": 3
+  },
+  "legacyDocumentBindingsVerified": 76,
+  "legacyRelativePathsMatched": 76,
+  "unselected40": {
+    "completeResearchSupplement": 37,
+    "paper": 0,
+    "excerpt": 0,
+    "manual_review": 3
+  },
+  "protected36": {
+    "paper": 31,
+    "periodical": 4,
+    "manualBookDeletion": 1
+  },
+  "drivesScanned": [
+    "C",
+    "D",
+    "E"
+  ],
+  "enumeratedRegularFiles": 1237438,
+  "accessErrors": 213,
+  "skippedReparsePoints": 172,
+  "unselectedCases": [
+    {
+      "case": "X37",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/8",
+      "pages": 135,
+      "contentsPage": 13,
+      "bodyPageChecked": 68,
+      "backCoverPage": 135,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X38",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/9",
+      "pages": 99,
+      "contentsPage": 11,
+      "bodyPageChecked": 50,
+      "backCoverPage": 99,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X39",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/1",
+      "pages": 214,
+      "contentsPage": 11,
+      "bodyPageChecked": 108,
+      "backCoverPage": 214,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X40",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/9",
+      "pages": 305,
+      "contentsPage": 10,
+      "bodyPageChecked": 153,
+      "backCoverPage": 305,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X41",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/11",
+      "pages": 301,
+      "contentsPage": 11,
+      "bodyPageChecked": 151,
+      "backCoverPage": 301,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X42",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/1",
+      "pages": 126,
+      "contentsPage": 10,
+      "bodyPageChecked": 64,
+      "backCoverPage": 126,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X43",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/8",
+      "pages": 118,
+      "contentsPage": 11,
+      "bodyPageChecked": 60,
+      "backCoverPage": 118,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X44",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/9",
+      "pages": 164,
+      "contentsPage": 11,
+      "bodyPageChecked": 83,
+      "backCoverPage": 164,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X45",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/11",
+      "pages": 303,
+      "contentsPage": 9,
+      "bodyPageChecked": 152,
+      "backCoverPage": 303,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X46",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/14",
+      "pages": 213,
+      "contentsPage": 10,
+      "bodyPageChecked": 107,
+      "backCoverPage": 213,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X47",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/7",
+      "pages": 154,
+      "contentsPage": 9,
+      "bodyPageChecked": 78,
+      "backCoverPage": 154,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X48",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/11",
+      "pages": 142,
+      "contentsPage": 10,
+      "bodyPageChecked": 72,
+      "backCoverPage": 142,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X49",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/12",
+      "pages": 144,
+      "contentsPage": 9,
+      "bodyPageChecked": 73,
+      "backCoverPage": 144,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X50",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/10",
+      "pages": 157,
+      "contentsPage": 11,
+      "bodyPageChecked": 79,
+      "backCoverPage": 157,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X51",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/19",
+      "pages": 166,
+      "contentsPage": 10,
+      "bodyPageChecked": 84,
+      "backCoverPage": 166,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X52",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/6",
+      "pages": 130,
+      "contentsPage": 9,
+      "bodyPageChecked": 66,
+      "backCoverPage": 130,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X53",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/23",
+      "pages": 133,
+      "contentsPage": 11,
+      "bodyPageChecked": 67,
+      "backCoverPage": 133,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X54",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/17",
+      "pages": 130,
+      "contentsPage": 9,
+      "bodyPageChecked": 66,
+      "backCoverPage": 130,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X55",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/16",
+      "pages": 229,
+      "contentsPage": 9,
+      "bodyPageChecked": 115,
+      "backCoverPage": 229,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X56",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/20",
+      "pages": 324,
+      "contentsPage": 11,
+      "bodyPageChecked": 163,
+      "backCoverPage": 324,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X57",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/21",
+      "pages": 220,
+      "contentsPage": 10,
+      "bodyPageChecked": 111,
+      "backCoverPage": 220,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X58",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/14",
+      "pages": 150,
+      "contentsPage": 9,
+      "bodyPageChecked": 76,
+      "backCoverPage": 150,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X59",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/4",
+      "pages": 176,
+      "contentsPage": 9,
+      "bodyPageChecked": 89,
+      "backCoverPage": 176,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X60",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/10",
+      "pages": 339,
+      "contentsPage": 13,
+      "bodyPageChecked": 170,
+      "backCoverPage": 339,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X61",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/12",
+      "pages": 198,
+      "contentsPage": 11,
+      "bodyPageChecked": 100,
+      "backCoverPage": 198,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X62",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/5",
+      "pages": 226,
+      "contentsPage": 11,
+      "bodyPageChecked": 114,
+      "backCoverPage": 226,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X63",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/15",
+      "pages": 239,
+      "contentsPage": 11,
+      "bodyPageChecked": 120,
+      "backCoverPage": 239,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X64",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/18",
+      "pages": 226,
+      "contentsPage": 11,
+      "bodyPageChecked": 114,
+      "backCoverPage": 226,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X65",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "3/17",
+      "pages": 187,
+      "contentsPage": 10,
+      "bodyPageChecked": 94,
+      "backCoverPage": 187,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X66",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/14",
+      "pages": 312,
+      "contentsPage": 13,
+      "bodyPageChecked": 157,
+      "backCoverPage": 312,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X67",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/12",
+      "pages": 327,
+      "contentsPage": 9,
+      "bodyPageChecked": 164,
+      "backCoverPage": 327,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X68",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/19",
+      "pages": 165,
+      "contentsPage": 11,
+      "bodyPageChecked": 83,
+      "backCoverPage": 165,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X69",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "2/4",
+      "pages": 150,
+      "contentsPage": 9,
+      "bodyPageChecked": 76,
+      "backCoverPage": 150,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X70",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/6",
+      "pages": 217,
+      "contentsPage": 13,
+      "bodyPageChecked": 109,
+      "backCoverPage": 217,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X71",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/18",
+      "pages": 129,
+      "contentsPage": 11,
+      "bodyPageChecked": 65,
+      "backCoverPage": 129,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X72",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "5/4",
+      "pages": 122,
+      "contentsPage": 11,
+      "bodyPageChecked": 62,
+      "backCoverPage": 122,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X73",
+      "classification": "complete_research_volume",
+      "subtype": "journal_supplement",
+      "issue": "7/9",
+      "pages": 228,
+      "contentsPage": 9,
+      "bodyPageChecked": 115,
+      "backCoverPage": 228,
+      "fullSha256Match": true,
+      "legacyBindingVerified": true,
+      "oldLocation": "outside_current_path",
+      "locationChange": "moved_out_of_selected_roots_same_basename"
+    },
+    {
+      "case": "X74",
+      "classification": "manual_review",
+      "reason": "original_not_located",
+      "fullSha256Match": null,
+      "legacyBindingVerified": true,
+      "exactPriorMissingId": true,
+      "historicalInventories": "2026-10-13 before and after: same legacy location and size",
+      "oldLocation": "absent",
+      "locationChange": "unknown",
+      "exactSizeCandidates": 0,
+      "nameCandidates": 14,
+      "differentCandidateFiles": 14,
+      "identicalCandidates": 0
+    },
+    {
+      "case": "X75",
+      "classification": "manual_review",
+      "reason": "original_not_located",
+      "fullSha256Match": null,
+      "legacyBindingVerified": true,
+      "exactPriorMissingId": true,
+      "historicalInventories": "2026-10-13 before and after: same legacy location and size",
+      "oldLocation": "absent",
+      "locationChange": "unknown",
+      "exactSizeCandidates": 0,
+      "nameCandidates": 14,
+      "differentCandidateFiles": 14,
+      "identicalCandidates": 0
+    },
+    {
+      "case": "X76",
+      "classification": "manual_review",
+      "reason": "original_not_located",
+      "fullSha256Match": null,
+      "legacyBindingVerified": true,
+      "exactPriorMissingId": true,
+      "historicalInventories": "2026-10-13 before and after: same legacy location and size",
+      "oldLocation": "absent",
+      "locationChange": "unknown",
+      "exactSizeCandidates": 0,
+      "nameCandidates": 0,
+      "differentCandidateFiles": 0,
+      "identicalCandidates": 0
+    }
+  ],
+  "protectedCases": [
+    {
+      "case": "X01",
+      "state": "excluded",
+      "kind": "book",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X02",
+      "state": "excluded",
+      "kind": "periodical",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X03",
+      "state": "excluded",
+      "kind": "periodical",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X04",
+      "state": "excluded",
+      "kind": "periodical",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X05",
+      "state": "excluded",
+      "kind": "periodical",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X06",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X07",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X08",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X09",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X10",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X11",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X12",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X13",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X14",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X15",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X16",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X17",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X18",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X19",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X20",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X21",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X22",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X23",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X24",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X25",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X26",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X27",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X28",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X29",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X30",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X31",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X32",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X33",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X34",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X35",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    },
+    {
+      "case": "X36",
+      "state": "excluded",
+      "kind": "paper",
+      "fullSha256Match": true,
+      "bookBindingVerified": true,
+      "autoRestore": false
+    }
+  ],
+  "appliedActions": 0,
+  "ownerClarification": {
+    "capturedDate": "2026-11-04",
+    "provenance": "Library owner's explicit confirmation on 2026-11-04; merge relationship is owner-confirmed, not independently verified by PDF page-by-page comparison",
+    "originalScanPreserved": true,
+    "missingPhysicalFilesStillUnverified": 3,
+    "reportedActions": [
+      {
+        "legacyDocumentId": "553c6aea-b65e-5441-ac7e-301420f5fc4a",
+        "title": "나사2.pdf",
+        "disposition": "source_file_merged_into_selected_pdf_then_deleted_as_separate_file",
+        "notAnAccidentalFileLoss": true,
+        "confirmedMergedIntoDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "confirmedBy": "owner_explicit_statement"
+      },
+      {
+        "legacyDocumentId": "60be9144-136e-59a8-9ec9-4096ed382454",
+        "title": "마틴 루터 킹 연설",
+        "disposition": "intentionally_deleted_as_separate_pdf",
+        "notAnAccidentalFileLoss": true
+      },
+      {
+        "legacyDocumentId": "0fd012e3-e212-53dc-bf01-0cf4fa10729d",
+        "title": "나사, 그들만의 방식 1.pdf",
+        "disposition": "source_file_merged_into_selected_pdf_then_superseded",
+        "notAnAccidentalFileLoss": true,
+        "confirmedMergedIntoDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "confirmedBy": "owner_explicit_statement"
+      }
+    ],
+    "existingSelectedRecord": {
+      "documentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+      "title": "나사 그들만의 방식.pdf",
+      "selectedInSealedManifest": true,
+      "verifiedContentsIncludeAllSourceParts": false,
+      "note": "Owner confirms this is the merged output of 나사, 그들만의 방식 1.pdf and 나사2.pdf. Existing QA selection and document ID were verified; separate byte-level reconstruction not performed."
+    },
+    "safetyPolicy": "Retain the selected merged output and historical document IDs and relationships. Do not flag the two superseded NASA files as unexplained losses, recreate them, or automatically restore them. Preserve the independently owner-deleted MLK speech as a separate deletion case. Do not mutate QA or production book/exclusion states without a separate reversible policy and approval.",
+    "missingFilesPhysicalEvidenceNote": "Three historical source PDFs were not located by Windows scanning; a confirmed source-to-merged-output relationship explains the two NASA files, and the owner confirmed direct deletion of the separate MLK speech PDF. This does not retroactively turn SHA checks of missing files into verified matches.",
+    "confirmedMerge": {
+      "verificationLevel": "owner_explicit_confirmation",
+      "sourceFiles": [
+        {
+          "fileName": "나사, 그들만의 방식 1.pdf",
+          "legacyDocumentId": "0fd012e3-e212-53dc-bf01-0cf4fa10729d"
+        },
+        {
+          "fileName": "나사2.pdf",
+          "legacyDocumentId": "553c6aea-b65e-5441-ac7e-301420f5fc4a"
+        }
+      ],
+      "mergedOutput": {
+        "fileName": "나사 그들만의 방식.pdf",
+        "legacyDocumentId": "99a80449-ebdc-533b-98d7-d7512974f6ea",
+        "listedIn4108Selected": true,
+        "preservationPriority": "retain_current_merged_pdf"
+      },
+      "doesNotRequireRecreatingSeparateSourcePdfs": true,
+      "caveat": "The merge relationship is conclusively confirmed by the owner; byte-level composition of the merged PDF was not independently re-audited."
+    }
+  }
+}

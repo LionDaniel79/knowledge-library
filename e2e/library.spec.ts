@@ -1,8 +1,14 @@
+import { previewLibrary } from "../src/lib/preview-data";
+import {
+  openMyNotes,
+  mountPreviewFixture,
+  openIntegratedSearch,
+} from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 test("reading carousel stops at both ends and responds to mouse dragging", async ({
   page,
 }) => {
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   const previous = page.getByRole("button", { name: "이전 책", exact: true }),
     next = page.getByRole("button", { name: "다음 책", exact: true });
   await expect(previous).toBeDisabled();
@@ -23,7 +29,7 @@ test("reading carousel stops at both ends and responds to mouse dragging", async
 test("completion dates show their books and month navigation changes totals", async ({
   page,
 }) => {
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   await expect(page.getByTestId("month-total")).toContainText("3");
   await page.getByRole("button", { name: "2026-10-09", exact: true }).click();
   await expect(page.getByTestId("selected-date-books")).toContainText(
@@ -35,22 +41,29 @@ test("completion dates show their books and month navigation changes totals", as
 test("preserves the selected reading card across navigation and search", async ({
   page,
 }) => {
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
   await page.getByRole("button", { name: "다음 책", exact: true }).click();
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).click();
+  await openMyNotes(page, previewLibrary);
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
   await page.getByRole("button", { name: "나의 서재", exact: true }).click();
   await expect(page.getByTestId("carousel-position")).toHaveText("2 / 4");
+  await openIntegratedSearch(page);
   await page.getByPlaceholder("책, 저자, 내 생각을 검색하세요").fill("질문");
   await page.getByRole("button", { name: "검색 지우기" }).click();
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "서재 메뉴" })
+    .getByRole("button", { name: "나의 서재", exact: true })
+    .click();
   await expect(page.getByTestId("carousel-position")).toHaveText("2 / 4");
 });
 test("search finds independent thoughts and mobile layout does not overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/preview");
+  await mountPreviewFixture(page);
+  await openIntegratedSearch(page);
   await page.getByPlaceholder("책, 저자, 내 생각을 검색하세요").fill("질문");
   await expect(page.getByTestId("search-results")).toContainText(
     "답보다 오래 남는 질문",

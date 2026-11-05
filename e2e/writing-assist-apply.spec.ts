@@ -123,10 +123,14 @@ for (const direction of ["titles", "ideas", "materials", "stale"] as const)
     });
     await page.addStyleTag({ path: "src/app/globals.css" });
     await page.addScriptTag({ content: script });
-    await page.locator(".assist-launcher > summary").click();
+    await page
+      .locator(".assist-launcher > summary")
+      .getByText("AI 도움", { exact: true })
+      .click();
     await page
       .getByRole("combobox", { name: "대상 목차" })
       .selectOption(chapterId);
+    await page.getByText("내가 요청한 도움", { exact: true }).click();
     await page.locator(".assist-request-row > details > summary").click();
     const apply = page.getByRole("button", {
       name:

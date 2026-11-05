@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -184,7 +185,7 @@ test("opens full note bodies before editing and keeps calendar and statistics co
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page.getByRole("button", { name, exact: true }).click();
   }
-  await menu("기록과 생각");
+  await openMyNotes(page, { books: [book], notes: [note] });
   await page
     .getByRole("button", { name: /긴 기록/ })
     .first()

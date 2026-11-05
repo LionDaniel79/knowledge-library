@@ -49,6 +49,6 @@ test("manual thought map has no local AI controls or automatic inference request
   await expect(
     page.getByText("PC 연결·분석 설정", { exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "지도 새로고침" }).click();
+  await expect(page.locator(".topic-material-filters")).toBeVisible();
   expect(calls.every((p) => p === "/api/thought-map")).toBe(true);
 });

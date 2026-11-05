@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Database, Executor } from "./library-store";
 import { LibraryError } from "./library-store";
 import type { DesktopIdentity } from "./desktop-auth";
+import { retentionHolds, unselectedPdfBooks } from "./pdf-retention-policy";
 import {
   desktopStart,
   desktopPut,
@@ -211,7 +212,7 @@ export async function previewDesktopManifest(
     throw new LibraryError(409, "확정된 목록만 검토할 수 있습니다.");
   const c = (
     await db.query(
-      "WITH selected AS (SELECT i.document_id,i.book_id,i.expected_book_version,b.version,b.source_data->>'app' AS app,e.state,e.kind FROM library_desktop_manifest_items i LEFT JOIN library_documents d ON d.owner_id=i.owner_id AND d.id=i.document_id LEFT JOIN library_books b ON b.owner_id=i.owner_id AND b.id=i.book_id AND d.book_id=b.id LEFT JOIN library_book_exclusions e ON e.owner_id=i.owner_id AND e.id=i.book_id WHERE i.owner_id=$1 AND i.manifest_id=$2) SELECT count(*)::int AS selected,count(*) FILTER(WHERE version IS NULL OR app IS DISTINCT FROM 'Local PDF')::int AS missing,count(*) FILTER(WHERE version IS NOT NULL AND version<>expected_book_version)::int AS conflicts,count(*) FILTER(WHERE state='excluded' AND kind='book')::int AS manual_exclusions,count(*) FILTER(WHERE state='excluded' AND kind<>'book')::int AS scope_exclusions FROM selected",
+      "WITH selected AS (SELECT i.document_id,i.book_id,i.expected_book_version,b.version,b.source_data->>'app' AS app,e.state,e.kind FROM library_desktop_manifest_items i LEFT JOIN library_documents d ON d.owner_id=i.owner_id AND d.id=i.document_id LEFT JOIN library_books b ON b.owner_id=i.owner_id AND b.id=i.book_id AND d.book_id=b.id LEFT JOIN library_book_exclusions e ON e.owner_id=i.owner_id AND e.id=i.book_id WHERE i.owner_id=$1 AND i.manifest_id=$2) SELECT count(*)::int AS selected,count(*) FILTER(WHERE version IS NULL OR app IS DISTINCT FROM 'Local PDF')::int AS missing,count(*) FILTER(WHERE version IS NOT NULL AND version<>expected_book_version)::int AS conflicts,count(*) FILTER(WHERE state='excluded' AND kind='book')::int AS manual_exclusions,count(*) FILTER(WHERE state='excluded' AND kind IN ('paper','periodical'))::int AS scope_exclusions,count(*) FILTER(WHERE state='excluded' AND kind='pdf_archive')::int AS restorable_pdf_archive FROM selected",
       [who.owner, id],
     )
   ).rows[0];
@@ -227,21 +228,26 @@ export async function previewDesktopManifest(
       [who.owner, id],
     )
   ).rows[0];
+  const holds = retentionHolds(await unselectedPdfBooks(db, who.owner, id));
   return {
     manifestId: id,
     status: "preview",
+    ...holds,
+    protectedSelectedBooks:
+      Number(c.manual_exclusions) + Number(c.scope_exclusions),
     selectedDocuments: Number(c.selected),
     missing: Number(c.missing),
     versionConflicts: Number(c.conflicts),
     manualExclusions: Number(c.manual_exclusions),
     scopeExclusions: Number(c.scope_exclusions),
+    restorablePdfArchiveBooks: Number(c.restorable_pdf_archive),
     deleteCandidates: Number(d.n), // Legacy compatibility: document count, never deletion approval.
     archiveBooks: Number(a.n),
     archiveDocuments: Number(d.n),
     canApplySelection: false,
     canDelete: false,
     warning:
-      "선택되지 않은 기존 PDF는 삭제하지 않고 보관하며, 승인 후 같은 문서 ID로 재등록합니다. 5단계 백업 검증과 별도 승인 전에는 실행되지 않습니다.",
+      "미선택 문서 수와 보관 승인은 다릅니다. 사용자 제외 36건을 자동 복원하지 않으며 미선택·미제외 자료는 자동 보관하지 않습니다. 기존 도서 ID·메모·독서 기록을 유지하고 별도 검토·백업·승인이 필요합니다.",
   };
 }
 export async function previewDesktopCleanup(

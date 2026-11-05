@@ -374,10 +374,22 @@ export function ReplicaEntry({
         }
       })();
     }, 1800);
-    const resume = () => {
+    const idleWindow = 5 * 60000;
+    let lastInteraction = Date.now();
+    const syncOnResume = () => {
       setClientToday(todayInSeoul());
       if (runtime && !automaticSyncDeferred.current)
         void runtime.sync({ reason: "resume" }).catch(() => {});
+    };
+    const resume = () => {
+      lastInteraction = Date.now();
+      syncOnResume();
+    };
+    const activity = () => {
+      const wasIdle = Date.now() - lastInteraction >= idleWindow;
+      lastInteraction = Date.now();
+      if (wasIdle && document.visibilityState === "visible" && navigator.onLine)
+        syncOnResume();
     };
     const accountStorage = (event: StorageEvent) => {
       if (
@@ -401,8 +413,21 @@ export function ReplicaEntry({
     window.addEventListener("storage", accountStorage);
     window.addEventListener("focus", resume);
     document.addEventListener("visibilitychange", visibility);
+    const activityEvents = ["pointerdown", "keydown", "scroll"] as const;
+    for (const event of activityEvents)
+      window.addEventListener(event, activity, {
+        capture: true,
+        passive: true,
+      });
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible" && navigator.onLine) resume();
+      // An unattended foreground tab must not keep the database awake forever.
+      // Scrolling/typing counts as use; explicit saves and active syncs are untouched.
+      if (
+        document.visibilityState === "visible" &&
+        navigator.onLine &&
+        Date.now() - lastInteraction < idleWindow
+      )
+        syncOnResume();
     }, 60000);
     return () => {
       cancelled = true;
@@ -415,6 +440,8 @@ export function ReplicaEntry({
       window.removeEventListener("storage", accountStorage);
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", visibility);
+      for (const event of activityEvents)
+        window.removeEventListener(event, activity, true);
     };
   }, [available, deferPdfAutoSync]);
   if (screen) {

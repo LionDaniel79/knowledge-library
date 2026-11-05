@@ -31,13 +31,23 @@ export function TopicManager({
     [description, setDescription] = useState(""),
     [aliases, setAliases] = useState(""),
     [parentId, setParentId] = useState("");
+  const [newDraft, setNewDraft] = useState({
+    name: "",
+    description: "",
+    aliases: "",
+    parentId: "",
+  });
+  function closeForm() {
+    if (!editing) setNewDraft({ name, description, aliases, parentId });
+    setFormOpen(false);
+  }
   function edit(t: Topic | null) {
     setFormOpen(true);
     setEditing(t);
-    setName(t?.name ?? "");
-    setDescription(t?.description ?? "");
-    setAliases(t?.aliases.join(", ") ?? "");
-    setParentId(t?.parentId ?? "");
+    setName(t?.name ?? newDraft.name);
+    setDescription(t?.description ?? newDraft.description);
+    setAliases(t?.aliases.join(", ") ?? newDraft.aliases);
+    setParentId(t?.parentId ?? newDraft.parentId);
   }
   return (
     <section className="panel thought-topics">
@@ -135,7 +145,7 @@ export function TopicManager({
       {formOpen && (
         <Modal
           title={editing ? "주제 수정" : "주제 만들기"}
-          onClose={() => setFormOpen(false)}
+          onClose={closeForm}
           canClose={!busy}
         >
           <form
@@ -156,7 +166,13 @@ export function TopicManager({
                 kdcCodes: editing?.kdcCodes ?? [],
               });
               if (saved) {
-                edit(null);
+                if (!editing)
+                  setNewDraft({
+                    name: "",
+                    description: "",
+                    aliases: "",
+                    parentId: "",
+                  });
                 setFormOpen(false);
               }
             }}

@@ -49,35 +49,24 @@ for (const width of [360, 1440]) {
     await page
       .getByRole("button", { name: "사유의 지도", exact: true })
       .click();
-    if (width <= 760)
-      await page
-        .getByRole("button", { name: "주제 관리", exact: true })
-        .click();
-    await page.getByText("주제 만들기·수정", { exact: true }).click();
+    await page.getByRole("button", { name: "주제 관리", exact: true }).click();
+    await page.getByText("주제 만들기", { exact: true }).click();
     const draft = page.getByLabel("주제 이름", { exact: true });
     await draft.fill("작성 중인 공감 주제");
     await page
       .getByRole("dialog", { name: "주제 만들기" })
       .getByRole("button", { name: "닫기", exact: true })
       .click();
-    const help = page.getByRole("button", { name: "사용법", exact: true });
+    const help = page
+      .locator(".knowledge-tabs")
+      .getByRole("button", { name: "사용법", exact: true });
     const before = requests;
     await help.click();
     const dialog = page.getByRole("dialog", { name: "사유의 지도 사용법" });
     await expect(dialog).toBeVisible();
-    await expect(
-      dialog.getByRole("heading", { name: "처음에는 이렇게 시작하세요" }),
-    ).toBeVisible();
-    await dialog
-      .getByText("4. 시간에 따른 생각의 변화 남기기", { exact: true })
-      .click();
-    await expect(
-      dialog.getByText("내 생각의 변화를 직접 연결", { exact: true }),
-    ).toBeVisible();
-    await dialog.getByText("6. 자동 기능과 AI의 범위", { exact: true }).click();
-    await expect(
-      dialog.getByText(/전체 서재의 자동 분석이나 자동 확정은 하지 않습니다/),
-    ).toBeVisible();
+    await expect(dialog).toContainText("메모 상자 → 내 기록");
+    await expect(dialog).toContainText("글감묶음");
+    await expect(dialog).toContainText("AI는 직접 요청할 때만 도움을 줍니다.");
     expect(
       await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
     ).toBe(true);
@@ -92,7 +81,7 @@ for (const width of [360, 1440]) {
     expect(requests).toBe(before);
     await help.click();
     await dialog.getByRole("button", { name: "닫기", exact: true }).click();
-    await page.getByText("주제 만들기·수정", { exact: true }).click();
+    await page.getByText("주제 만들기", { exact: true }).click();
     await expect(draft).toHaveValue("작성 중인 공감 주제");
   });
 }

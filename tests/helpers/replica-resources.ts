@@ -176,7 +176,7 @@ export async function resourceFixture(provided?: ReplicaStorage) {
       {
         id: crypto.randomUUID(),
         phase: "runtime",
-        period: "2026-10",
+        period: new Date().toISOString().slice(0, 7),
         status: "settled",
         cost_usd: "0.000001",
         max_cost_usd: "0.010000",

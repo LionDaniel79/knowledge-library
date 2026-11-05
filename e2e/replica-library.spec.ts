@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import sharp from "sharp";
@@ -209,14 +210,19 @@ test("puts real change synchronization left of add book and opens local books, i
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).click();
-  await page.locator(".notes-grid .note-card > p").click();
+  await openMyNotes(page);
+  await page.locator(".thought-card .thought-title").click();
   await expect(
     page
       .getByRole("dialog", { name: "기록 수정", exact: true })
       .getByRole("textbox", { name: "내용", exact: true }),
   ).toHaveValue(content);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "서재 메뉴" })
+    .getByRole("button", { name: "나의 서재", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "내 독서 메모 수정 이력", exact: true })
     .click();

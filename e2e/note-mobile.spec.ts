@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -82,8 +83,8 @@ async function mount(page: Page, detail?: () => Promise<void>) {
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).tap();
-  await page.getByRole("button", { name: "기록과 생각", exact: true }).tap();
-  await expect(page.locator(".notes-grid .note-card")).toHaveCount(1);
+  await openMyNotes(page, fixture);
+  await expect(page.locator(".thought-card")).toHaveCount(1);
 }
 test("one body tap opens immediately, fetches once and presents a fitting mobile editor", async ({
   page,
@@ -97,7 +98,7 @@ test("one body tap opens immediately, fetches once and presents a fitting mobile
     calls++;
     await wait;
   });
-  await page.locator(".notes-grid .note-card > p").tap();
+  await page.locator(".thought-card .thought-title").tap();
   await expect(
     page.getByRole("dialog", { name: "기록 불러오기", exact: true }),
   ).toBeVisible();
@@ -124,7 +125,7 @@ test("one body tap opens immediately, fetches once and presents a fitting mobile
   await expect(page.getByLabel("작성일 시작", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("작성일 끝", { exact: true })).toHaveCount(0);
   const kind = await page
-    .getByRole("combobox", { name: "종류", exact: true })
+    .getByRole("button", { name: "종류 선택", exact: true })
     .boundingBox();
   expect(kind!.height).toBeGreaterThanOrEqual(44);
   expect(kind!.x + kind!.width).toBeLessThanOrEqual(390);
@@ -193,7 +194,7 @@ test("closing note loading cancels opening even after the delayed response compl
     release = r;
   });
   await mount(page, () => wait);
-  await page.locator(".notes-grid .note-card > p").tap();
+  await page.locator(".thought-card .thought-title").tap();
   const loading = page.getByRole("dialog", {
     name: "기록 불러오기",
     exact: true,
@@ -206,7 +207,7 @@ test("closing note loading cancels opening even after the delayed response compl
     page.getByRole("dialog", { name: "기록 수정", exact: true }),
   ).toHaveCount(0);
   // A cancelled load must not leave a pending flag that prevents reopening.
-  await page.locator(".notes-grid .note-card > p").tap();
+  await page.locator(".thought-card .thought-title").tap();
   await expect(
     page.getByRole("dialog", { name: "기록 수정", exact: true }),
   ).toBeVisible();
