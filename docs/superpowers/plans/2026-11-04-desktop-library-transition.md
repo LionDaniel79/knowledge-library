@@ -44,10 +44,10 @@
 - [x] Build/synthetic WPF search/page/cancel/queue/tray smoke; real read-only audit only after isolated tests pass.
 
 ## Task F — Actual bibliography cleanup and release
-- [ ] Read-only concrete preview for outside-root PDFs: classify references/mixed formats/duplicates/exclusions, blocked reimport identity and sync tombstones.
+- [x] Read-only concrete preview for outside-root PDFs: classify references/mixed formats/duplicates/exclusions, blocked reimport identity and sync tombstones. Restored-copy preview5173 eligible/40 held; exact private review list generated.
 - [x] Implement guarded hard-purge only for reviewed unreferenced records; held references retain notes/history and are reported, never silently detached.
 - [x] Extend backups for new non-secret business data; fresh encrypted QA/production archives restored and verified2026-11-05 before live changes.
-- [ ] Full tests, focused independent reviews, preview deployments/QA; single commit/push per verified milestone to avoid repeated CI billing.
+- [x] Full tests, focused independent reviews, preview deployments/QA; batch checkpoint pushes to avoid repeated CI billing. Web851/browser304; native97 passed/one privilege skip; OCR quality31 and pipeline19; real image-only installed OCR; actual QA registration/replay/location/no-op and exact fixture cleanup passed.
 - [ ] Apply safe approved deployment/registration steps. Ask only for destructive target approval or actual user-secret entry; record all NOT_RUN honestly.
 - [ ] Retire legacy server/autoruns only after replacement installed and validated; finish read-only mobile acceptance with minimal user assistance.
 
@@ -62,3 +62,9 @@ Clean isolated worktree at c09137b; Vitest805 + four conditional tests, Playwrig
 - Actual read-only inventory9319 PDFs; selected roots4109 physical. Existing index9321 documents all have SHA-256, so relocation identity can reuse originals. Old path absence is not file deletion.
 - Logos source2620 rows ->2418 eligible; production read-only preview2412 new/6 possible existing editions; no import yet.
 - Remaining release tasks: commit/preview HTTPS verification, install new desktop alongside old installation, actual full scan, production schema/release and selected registration, reviewed web-only purge target/approval, old server retirement after replacement validation.
+
+## Additional verified checkpoint
+- PR9→8→7 merge and existing web release completed under explicit approval. New split PR10 remains draft and is separate from the actual production data transition.
+- Actual full inventory/SHA comparison, native installation, QA HTTPS acceptance and verified encrypted state backup completed. Schema3 migration was first proved on a copy, preserving content/OCR/queue/request identities and resolving all4108 selected legacy identities after a cached rescan.
+- Shared-content logical book identities and the previous300dpi body/footnote quality profile are preserved in the native worker. Fatal engine failures pause rather than poison the queue; installed raster OCR and upgrade-state preservation are now explicit acceptance gates.
+- Concrete private cleanup list:5173 outside-root web records;40 held; generated revisions30815, unconfirmed generated memberships15296 and bulk exclusions5173 included in reviewed scope. Operational execution still requires final approval.

@@ -1,0 +1,58 @@
+{
+  "status": "READY_FOR_FINAL_CUTOVER_APPROVAL",
+  "date": "2026-11-05",
+  "installedNativeCommit": "fe6b983472e95ca4ccd98103766f63e7f2f52380",
+  "deployedMainCommit": "afafa5e7184c85014d5f5656f3766720a43ded39",
+  "verification": {
+    "webUnit": { "status": "PASS", "passed": 851, "notRun": 4 },
+    "browser": { "status": "PASS", "passed": 304 },
+    "nativePython": { "status": "PASS", "passed": 97, "skipped": 1 },
+    "existingOcrQualityLanguages": { "status": "PASS", "passed": 31 },
+    "existingOcrPipelineRecoveryPriority": { "status": "PASS", "passed": 19 },
+    "wpfSetupUpgradeImageOnlyOcr": { "status": "PASS" },
+    "qaHttpsReplayLocationNoOp": { "status": "PASS", "fixtureCleanup": "PASS" },
+    "independentQaRestore": { "status": "PASS", "tables": 65 },
+    "independentProductionRestore": { "status": "PASS", "tables": 59 },
+    "nativeActualUpgrade": {
+      "status": "PASS",
+      "preservedPages": 9900,
+      "preservedQueueRows": 207152,
+      "preservedImmutableBodies": 31
+    },
+    "remoteGitHubActions": {
+      "status": "NOT_RUN",
+      "reason": "Account allowance blocked jobs before any steps"
+    },
+    "releasedSplitMobileAcceptance": { "status": "NOT_RUN" }
+  },
+  "inventory": {
+    "physicalPdfs": 9319,
+    "contentResources": 8451,
+    "selectedPhysicalPdfs": 4109,
+    "selectedLegacyIds": 4108,
+    "selectedAdditionalCopies": 1,
+    "selectedUnresolved": 0,
+    "fileLegacySha256Mismatches": 0
+  },
+  "isolatedCleanupPreview": {
+    "candidateBooks": 5173,
+    "heldBooks": 40,
+    "reviewedGeneratedRevisions": 30815,
+    "reviewedSuggestedMemberships": 15296,
+    "reviewedBulkExclusions": 5173,
+    "productionApplied": false
+  },
+  "logosPreview": {
+    "eligible": 2418,
+    "newCandidates": 2412,
+    "heldPotentialEditions": 6,
+    "productionApplied": false
+  },
+  "preservation": {
+    "originalPdfWrites": 0,
+    "legacyOcrIndexWrites": 0,
+    "productionBusinessDataMutations": 0,
+    "unsentUserDeviceDataReset": false,
+    "legacyTasksRetired": false
+  }
+}
