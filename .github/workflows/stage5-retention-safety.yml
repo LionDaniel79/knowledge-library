@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/stage5-windows-https-v2
+      - main
     paths:
       - src/server/pdf-retention.ts
       - src/server/pdf-retention-policy.ts
@@ -13,24 +13,30 @@ on:
       - tests/pdf-retention-mobile-stage5.test.ts
       - .github/workflows/stage5-retention-safety.yml
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - src/server/pdf-retention.ts
       - src/server/pdf-retention-policy.ts
       - src/server/desktop-catalog.ts
       - tests/pdf-retention-stage4.test.ts
       - tests/pdf-retention-stage5-safety.test.ts
+      - tests/pdf-retention-mobile-stage5.test.ts
       - .github/workflows/stage5-retention-safety.yml
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   retention:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
           cache: npm
       - run: npm ci
       - name: Typecheck

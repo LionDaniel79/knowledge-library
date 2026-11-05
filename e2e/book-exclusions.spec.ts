@@ -103,10 +103,15 @@ test("excluded materials are searchable and can be restored with a stable retry;
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).tap();
   await page.getByRole("button", { name: /^소장 도서/ }).tap();
   await expect(
-    page.getByRole("button", { name: "제외한 자료", exact: true }),
+    page.getByRole("button", { name: "삭제·제외한 자료", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "제외한 자료", exact: true }).tap();
-  const dialog = page.getByRole("dialog", { name: "제외한 자료", exact: true });
+  await page
+    .getByRole("button", { name: "삭제·제외한 자료", exact: true })
+    .tap();
+  const dialog = page.getByRole("dialog", {
+    name: "삭제·제외한 자료",
+    exact: true,
+  });
   await expect(
     dialog.getByRole("heading", { name: archived.title, exact: true }),
   ).toBeVisible();
@@ -117,7 +122,7 @@ test("excluded materials are searchable and can be restored with a stable retry;
     true,
   );
   await dialog
-    .getByRole("searchbox", { name: "제외한 자료 검색" })
+    .getByRole("searchbox", { name: "삭제·제외한 자료 검색" })
     .fill("잘못");
   await expect(
     dialog.getByRole("heading", { name: archived.title }),

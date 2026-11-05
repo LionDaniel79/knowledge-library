@@ -29,7 +29,8 @@ test("note browsing retrieves matching records outside the initial page", async 
   await page.route("https://library.test/api/library-materials?*", (r) =>
     r.fulfill({
       json:
-        new URL(r.request().url()).searchParams.get("topic") === topic
+        new URL(r.request().url()).searchParams.get("topics") ===
+        JSON.stringify([topic])
           ? {
               items: [
                 {
@@ -98,9 +99,15 @@ test("note browsing retrieves matching records outside the initial page", async 
   );
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
+  await page.getByRole("button", { name: "주제 선택", exact: true }).click();
+  await page.getByRole("checkbox", { name: "정서", exact: true }).check();
   await page
-    .getByRole("combobox", { name: "주제", exact: true })
-    .selectOption(topic);
+    .getByRole("button", { name: "주제 선택 완료", exact: true })
+    .click();
+  await page
+    .locator(".topic-material-filters")
+    .getByRole("button", { name: "검색", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "주제로 찾은 책", exact: true })
     .click();

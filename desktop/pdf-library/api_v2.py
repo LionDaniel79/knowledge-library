@@ -63,7 +63,16 @@ def prepare(rows, operation):
                 physicalByRoot=totals, expectedDocuments=len(rows))
 
 
+def wait_for_server_time(stamp):
+    """Wait out a small server/PC skew without accepting a future timestamp."""
+    if type(stamp) is int:
+        ahead = stamp - time.time()
+        if 0 < ahead <= 5:
+            time.sleep(ahead + 0.05)
+
+
 def check_snapshot(snapshot, origin, rows):
+    wait_for_server_time(snapshot['verifiedAtUnix'])
     require(snapshot['origin'] == origin and 0 <= time.time()-snapshot['verifiedAtUnix'] <= 3600,
             'Fresh test-owner version export required')
     entries = snapshot['items']
@@ -93,6 +102,7 @@ def fetch_version_snapshot(rows, origin, send):
                       {'documentIds': chunk})
         items = result.get('items')
         stamp = result.get('verifiedAtUnix')
+        wait_for_server_time(stamp)
         require(type(stamp) is int and 0 <= time.time()-stamp <= 3600,
                 'Untrusted server version export timestamp')
         require(isinstance(items, list) and len(items) == len(chunk),

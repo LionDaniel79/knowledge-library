@@ -153,3 +153,15 @@ class Contract(unittest.TestCase):
         send = Mock(side_effect=[dict(manifestId=uid(100),operationId=uid(101),status='collecting'),KeyboardInterrupt])
         with self.assertRaises(KeyboardInterrupt):api.submit(rows(1),uid(101),send)
         self.assertEqual(send.call_count,2)
+
+    def test_small_server_skew_waits_without_accepting_future_or_stale_versions(self):
+        stamp = 100
+        with patch.object(api.time, "time", side_effect=[98.5,100.1]), patch.object(api.time, "sleep") as sleep:
+            snapshot = dict(origin="test",verifiedAtUnix=stamp,items=rows(1))
+            api.check_snapshot(snapshot,"test",rows(1))
+            sleep.assert_called_once()
+        for remote in (106, -3501, True):
+            with patch.object(api.time, "time", return_value=100), patch.object(api.time, "sleep") as sleep:
+                with self.assertRaises(ValueError):
+                    api.fetch_version_snapshot(rows(1),"test",lambda *args:dict(verifiedAtUnix=remote,items=rows(1)))
+                sleep.assert_not_called()

@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect, type Page } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
@@ -214,26 +215,24 @@ test("books and notes replace pages, keep per-device sizes and reset filters wit
   await expect(page.locator(".shelf-card")).toHaveCount(50);
   await expect(page.locator(".shelf-card").first()).toContainText("도서 1");
   await size.selectOption("10");
-  await navigate(page, "기록과 생각");
+  await openMyNotes(page, { books, notes });
   await page
-    .getByRole("combobox", { name: "기록과 생각 표시 개수", exact: true })
+    .getByRole("combobox", { name: "내 기록 표시 개수", exact: true })
     .selectOption("15");
-  await expect(page.locator(".notes-grid > .note-card")).toHaveCount(15);
+  await expect(page.locator(".thought-card")).toHaveCount(15);
   const noteNav = page.getByRole("navigation", {
-    name: "기록과 생각 페이지",
+    name: "내 기록 페이지",
     exact: true,
   });
   await noteNav.getByRole("button", { name: "2페이지", exact: true }).click();
-  await expect(page.locator(".notes-grid > .note-card").first()).toContainText(
-    "기록 16",
-  );
+  await expect(page.locator(".thought-card").first()).toContainText("기록 16");
   await mount(page);
   await navigate(page, "소장 도서");
   await expect(size).toHaveValue("10");
   await expect(page.locator(".shelf-card")).toHaveCount(10);
-  await navigate(page, "기록과 생각");
+  await openMyNotes(page, { books, notes });
   await expect(
-    page.getByRole("combobox", { name: "기록과 생각 표시 개수", exact: true }),
+    page.getByRole("combobox", { name: "내 기록 표시 개수", exact: true }),
   ).toHaveValue("15");
   expect(
     await page.evaluate(

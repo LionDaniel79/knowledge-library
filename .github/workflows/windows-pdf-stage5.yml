@@ -2,18 +2,30 @@ name: Windows PDF stage 5 contracts
 on:
   push:
     branches:
-      - feat/stage5-windows-https-v2
+      - main
     paths:
       - "desktop/pdf-library/**"
+      - "src/lib/desktop-catalog-contract.ts"
+      - "src/server/desktop-catalog.ts"
+      - "tests/desktop-http-manifest-stage5.test.ts"
       - ".github/workflows/windows-pdf-stage5.yml"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "desktop/pdf-library/**"
+      - "src/lib/desktop-catalog-contract.ts"
+      - "src/server/desktop-catalog.ts"
+      - "tests/desktop-http-manifest-stage5.test.ts"
       - ".github/workflows/windows-pdf-stage5.yml"
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   windows-manifest:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

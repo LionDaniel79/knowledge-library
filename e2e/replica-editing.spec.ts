@@ -1,3 +1,4 @@
+import { openMyNotes } from "./helpers/notes-navigation";
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 let bundle: string, worker: string;
@@ -47,18 +48,22 @@ test("edits a note twice through the real form offline and retains the text and 
     });
   });
   await page.goto("https://edit.test/");
+  await openMyNotes(page);
   for (const content of ["오프라인 첫 수정", "오프라인 최종 수정"]) {
-    await page.locator(".notes-grid .note-card > p").click();
+    await page.locator(".thought-card .thought-title").click();
     const dialog = page.getByRole("dialog", { name: "기록 수정", exact: true });
     await dialog
       .getByRole("textbox", { name: "내용", exact: true })
       .fill(content);
     await dialog.getByRole("button", { name: "저장하기", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(page.locator(".notes-grid")).toContainText(content);
+    await expect(page.locator(".thought-card-grid")).toContainText(content);
   }
   await page.reload();
-  await expect(page.locator(".notes-grid")).toContainText("오프라인 최종 수정");
+  await openMyNotes(page);
+  await expect(page.locator(".thought-card-grid")).toContainText(
+    "오프라인 최종 수정",
+  );
   expect(
     await page.evaluate(
       async () =>

@@ -1673,7 +1673,7 @@ test("mobile picker opens as a stable list and focuses search only on a direct t
       left: parseFloat((e as HTMLElement).style.left),
     }));
     await page.screenshot({
-      path: "E:/지식서재 작업/private-data/runtime/whiteboard-dropdown-20261024.png",
+      path: test.info().outputPath("whiteboard-dropdown-20261024.png"),
       fullPage: false,
     });
     await page.evaluate(() => window.scrollTo(0, 24));
@@ -1770,7 +1770,7 @@ test("search brings two distant book memos together at a readable size without c
     })
     .toBe(true);
   await page.screenshot({
-    path: "E:/지식서재 작업/private-data/runtime/whiteboard-compact-20261024.png",
+    path: test.info().outputPath("whiteboard-compact-20261024.png"),
     fullPage: false,
   });
 });
@@ -1929,7 +1929,7 @@ test("mobile controls stay inside the screen while the toolbar scrolls independe
   expect(pop!.x + pop!.width).toBeLessThanOrEqual(391);
   await page.keyboard.press("Escape");
   await page.screenshot({
-    path: "E:/지식서재 작업/private-data/runtime/whiteboard-mobile-20261023.png",
+    path: test.info().outputPath("whiteboard-mobile-20261023.png"),
     fullPage: true,
   });
 });
@@ -2000,7 +2000,7 @@ test("keyboard note selection offers the same real connection without dragging",
   await b.press("Enter");
   await expect.poll(() => f.state.connections.length).toBe(1);
   await page.screenshot({
-    path: "E:/지식서재 작업/private-data/runtime/whiteboard-desktop-20261023.png",
+    path: test.info().outputPath("whiteboard-desktop-20261023.png"),
     fullPage: true,
   });
 });

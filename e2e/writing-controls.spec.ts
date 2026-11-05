@@ -259,7 +259,7 @@ test("writing direction and target appear only inside the expanded AI help", asy
   const fixture = await mount(page);
   await expect(page.locator(".wb-canvas-shell")).toBeVisible();
   const direction = page.getByRole("combobox", {
-    name: "AI 도움 방향",
+    name: "도움방향",
     exact: true,
   });
   const target = page.getByRole("combobox", { name: "대상 목차", exact: true });
@@ -268,11 +268,14 @@ test("writing direction and target appear only inside the expanded AI help", asy
   expect(fixture.assistCalls).toHaveLength(0);
   const launcher = page.locator(".assist-launcher");
   await expect(launcher).toHaveCount(1);
-  await launcher.locator(":scope > summary").click();
+  await launcher
+    .locator(":scope > summary")
+    .getByText("AI 도움", { exact: true })
+    .click();
   await expect(direction).toBeVisible();
   await expect(target).toBeVisible();
   await expect(
-    launcher.getByRole("combobox", { name: "AI 도움 방향", exact: true }),
+    launcher.getByRole("combobox", { name: "도움방향", exact: true }),
   ).toBeVisible();
   await direction.selectOption("materials");
   await expect(
@@ -281,13 +284,16 @@ test("writing direction and target appear only inside the expanded AI help", asy
     }),
   ).toBeVisible();
   await expect(
-    launcher.getByRole("button", { name: "분석할 기록 확인", exact: true }),
-  ).toHaveCount(0);
+    launcher.getByRole("button", { name: "분석", exact: true }),
+  ).toBeDisabled();
   await target.selectOption({ label: "1. 추천받을 목차" });
   await expect(
-    launcher.getByRole("button", { name: "분석할 기록 확인", exact: true }),
-  ).toBeVisible();
-  await launcher.locator(":scope > summary").click();
+    launcher.getByRole("button", { name: "분석", exact: true }),
+  ).toBeEnabled();
+  await launcher
+    .locator(":scope > summary")
+    .getByText("AI 도움", { exact: true })
+    .click();
   await expect(direction).toBeHidden();
   await expect(target).toBeHidden();
   expect(fixture.assistCalls.every((call) => call.method === "GET")).toBe(true);
@@ -299,15 +305,18 @@ test("the shared AI launcher still opens its regular assistant without writing c
   const fixture = await mount(page, true);
   const launcher = page.locator(".assist-launcher");
   await expect(
-    page.getByRole("button", { name: "분석할 기록 확인", exact: true }),
+    page.getByRole("button", { name: "분석", exact: true }),
   ).toBeHidden();
   expect(fixture.assistCalls).toHaveLength(0);
-  await launcher.locator(":scope > summary").click();
+  await launcher
+    .locator(":scope > summary")
+    .getByText("AI 도움", { exact: true })
+    .click();
   await expect(
     page.getByRole("combobox", { name: "도움 방향", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "분석할 기록 확인", exact: true }),
+    page.getByRole("button", { name: "분석", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".assist-launcher")).toHaveCount(1);
 });
