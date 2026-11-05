@@ -22,7 +22,7 @@ it("the deploy migration command prepares native registration, managed covers an
     await import("../scripts/migrate");
     const rows = (
       await pg.query(
-        "SELECT to_regclass('public.library_desktop_resources') IS NOT NULL AS resources,to_regclass('public.library_desktop_document_blocks') IS NOT NULL AS blocks,to_regclass('public.library_desktop_purge_backups') IS NOT NULL AS backups,to_regclass('public.library_desktop_scan_status') IS NOT NULL AS scans",
+        "SELECT to_regclass('public.library_desktop_resources') IS NOT NULL AS resources,to_regclass('public.library_desktop_document_blocks') IS NOT NULL AS blocks,to_regclass('public.library_desktop_purge_backups') IS NOT NULL AS backups,to_regclass('public.library_desktop_scan_status') IS NOT NULL AS scans,to_regclass('public.library_desktop_purge_scope_evidence') IS NOT NULL AS scope_evidence",
       )
     ).rows;
     expect(rows[0]).toEqual({
@@ -30,6 +30,7 @@ it("the deploy migration command prepares native registration, managed covers an
       blocks: true,
       backups: true,
       scans: true,
+      scope_evidence: true,
     });
     expect(
       (

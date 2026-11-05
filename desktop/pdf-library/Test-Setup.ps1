@@ -9,6 +9,46 @@ try {
  if($config.index -ne ''){throw 'First-user installation requires a legacy index'}
  if(!(Test-Path -LiteralPath $config.worker)){throw 'Worker bundle absent'}
  if(!(Test-Path -LiteralPath (Join-Path $target 'PdfLibrary.lnk'))){throw 'Launch shortcut absent'}
+ # Exercise the installed bridge and its helper using an image-only PDF. A
+ # native-text fixture would bypass Windows OCR and miss omitted bundle files.
+ $rasterCheck=@'
+import json, os, sys
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+app, root, state = map(Path, sys.argv[1:4])
+sys.path.insert(0, str(app))
+import management
+for name in ('기독도서', '일반도서'):
+    (root / name).mkdir(exist_ok=True)
+path = root / '기독도서' / 'Raster OCR fixture.pdf'
+with Image.new('RGB', (1500, 800), 'white') as image:
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype(str(Path(os.environ['WINDIR']) / 'Fonts' / 'arial.ttf'), 74)
+    draw.multiline_text((90, 140), 'LIBRARY RASTER OCR\nWINDOWS ENGINE READY\nREADING TEST 2026', font=font, fill='black', spacing=42)
+    image.save(path, 'PDF', resolution=150)
+import pypdfium2
+with pypdfium2.PdfDocument(str(path)) as pdf:
+    page = pdf[0]
+    try:
+        textpage = page.get_textpage()
+        try:
+            assert not textpage.get_text_bounded().strip(), 'Fixture must have no embedded text'
+        finally:
+            textpage.close()
+    finally:
+        page.close()
+management.scan(root, state)
+result = management.ocr_step(state)
+assert result['state'] == 'done', 'Installed raster OCR did not finish: ' + json.dumps(result)
+hits = management.search(state, 'LIBRARY')['hits']
+assert hits and all(hit['method'] != 'PDFium' for hit in hits), 'Windows OCR did not recognize the raster fixture'
+for name in ('management', 'sandbox', 'pdf_ocr', 'pdf_ocr_languages', 'pdf_ocr_pipeline', 'pdf_library', 'pdf_job_state'):
+    assert Path(sys.modules[name].__file__).resolve().is_relative_to(app.parents[1]), 'OCR imported outside the installed bundle: ' + name
+assert not management.status(state)['paused'], 'Healthy installed engine must remain ready'
+print('PASS installed image-only PDF / Windows OCR helper / recognized search / private bundle imports')
+'@
+ & $config.python -B -c $rasterCheck (Split-Path -Parent $config.worker) $root $config.directory
+ if($LASTEXITCODE){throw 'Installed raster OCR pipeline failed'}
  $configFile=Join-Path $target 'library.json'
  $secure=ConvertTo-SecureString ('klw_'+('a'*43)) -AsPlainText -Force
  & "$PSScriptRoot/Connect-PdfLibrary.ps1" -Configuration $configFile -Origin 'https://fixture.example.invalid' -Token $secure

@@ -149,6 +149,7 @@ partial class PdfDesktop {
             }
             object scanning;if(r.TryGetValue("scan",out scanning)&&scanning!=null){var scan=(Dictionary<string,object>)scanning;if(Val(scan,"state")=="scanning")backgroundStatus.Text="폴더 확인 중 · "+Val(scan,"files")+"개 · 이번 내용 확인 "+Val(scan,"hashed")+"개";}
             object active;if(r.TryGetValue("current",out active)&&active!=null){var a=(Dictionary<string,object>)active;string title=Val(a,"title");if(title.Length==0)title=Val(a,"resource_id");backgroundStatus.Text=title+" · "+Val(a,"page_number")+"쪽 처리 중…";}
+            if(paused && Val(r,"engineError").Length>0)backgroundStatus.Text=Val(r,"engineError");
             if(watcherFault)connectionStatus.Text="폴더 감지를 확인하세요. 전체 PDF 확인으로 변경분을 안전하게 찾을 수 있습니다.";
         }catch(Exception ex){if(!exiting)libraryStatus.Text=ex.Message;}finally{monitorBusy=false;}
     }

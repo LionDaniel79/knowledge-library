@@ -39,7 +39,7 @@ $app=Join-Path $release 'desktop\pdf-library';$scripts=Join-Path $release 'scrip
 [IO.Directory]::CreateDirectory($app)|Out-Null;[IO.Directory]::CreateDirectory($scripts)|Out-Null
 Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object {($_.Extension -eq '.py' -and $_.Name -notmatch '^(test_|smoke\.py$)') -or $_.Extension -eq '.cs' -or $_.Name -in @('Build.ps1','Connect-PdfLibrary.ps1','README.md')} | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $app}
 $sourceScripts=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\scripts'))
-Get-ChildItem -LiteralPath $sourceScripts -File | Where-Object {$_.Name -like 'pdf_*.py' -or $_.Name -in @('requirements-pdf.txt','requirements-ocr.txt')} | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $scripts}
+Get-ChildItem -LiteralPath $sourceScripts -File | Where-Object {$_.Name -like 'pdf_*.py' -or $_.Name -in @('windows_ocr.py','requirements-pdf.txt','requirements-ocr.txt')} | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $scripts}
 $interpreter=(Resolve-Path -LiteralPath $Python).Path
 if($PreparePython){
  $venv=Join-Path $install 'runtime'
@@ -48,7 +48,25 @@ if($PreparePython){
  & $interpreter -m pip install --disable-pip-version-check -r (Join-Path $scripts 'requirements-pdf.txt') -r (Join-Path $scripts 'requirements-ocr.txt')
  if($LASTEXITCODE){throw 'PDF/OCR 도구 설치 실패. 기존 PDF와 색인은 변경하지 않았습니다.'}
 }
-& $interpreter -B -c "import sys; assert sys.version_info >= (3,12); import pypdfium2,PIL; from winrt.windows.media.ocr import OcrEngine; assert len(OcrEngine.available_recognizer_languages)>0"
+$verifyRuntime=@'
+import sys
+from pathlib import Path
+assert sys.version_info >= (3, 12)
+import pypdfium2, PIL
+from winrt.windows.media.ocr import OcrEngine
+languages = list(OcrEngine.available_recognizer_languages)
+assert languages, 'Install at least one Windows OCR language'
+scripts = Path(sys.argv[1])
+assert (scripts / 'windows_ocr.py').is_file(), 'Windows OCR helper missing from installed bundle'
+sys.path.insert(0, str(scripts))
+from pdf_ocr import WindowsOcr
+engine = WindowsOcr(languages[0].language_tag)
+try:
+    assert engine.process.poll() is None, 'Windows OCR helper exited during startup'
+finally:
+    engine.close()
+'@
+& $interpreter -B -c $verifyRuntime $scripts
 if($LASTEXITCODE){throw 'PDF/OCR 도구가 필요합니다. Python 3.12 이상과 Windows OCR 언어를 확인하고 -PreparePython으로 설치하세요.'}
 $exe=Join-Path $app 'PdfDesktop.exe'
 & (Join-Path $app 'Build.ps1') -Output $exe

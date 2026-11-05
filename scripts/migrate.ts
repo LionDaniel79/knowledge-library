@@ -59,7 +59,21 @@ try {
   );
   await client.query(await readFile("db/038_desktop_pdf_purge.sql", "utf8"));
   await client.query(await readFile("db/039_desktop_scan_status.sql", "utf8"));
+  await client.query(
+    await readFile("db/040_desktop_pdf_purge_scope_evidence.sql", "utf8"),
+  );
   if (role) {
+    await client.query(
+      'REVOKE ALL ON library_desktop_purge_scope_evidence FROM "' + role + '"',
+    );
+    await client.query(
+      'GRANT SELECT ON library_desktop_purge_scope_evidence TO "' + role + '"',
+    );
+    await client.query(
+      'GRANT DELETE ON library_revisions,library_topic_memberships,library_book_exclusions TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_desktop_resources,library_desktop_scan_status TO "' +
         role +

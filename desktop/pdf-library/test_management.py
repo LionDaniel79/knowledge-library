@@ -3,6 +3,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import sys
 import tempfile
 import unittest
 import uuid
@@ -95,6 +96,48 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(result['hits'][0]['kind'], 'paper')
         self.assertTrue(result['hits'][0]['available'])
         self.assertTrue(m.render(self.state, result['hits'][0]['id'], 1)['image'])
+
+    def test_fatal_ocr_engine_failure_pauses_once_and_preserves_completed_pages(self):
+        with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[2] / 'scripts'), *sys.path]):
+            from pdf_ocr import OcrEngineError
+        self.scan()
+        m.ocr_step(self.state, recognize=lambda *_: ('보존할 완료 본문', 'fixture'))
+        resource_error = OSError('sensitive resource failure')
+        resource_error.winerror = 1455
+        failures = (OcrEngineError(str(self.root) + ' secret-token'), BrokenPipeError('secret-token'),
+                    MemoryError('secret-token'), resource_error)
+        for failure in failures:
+            with self.subTest(error=type(failure).__name__):
+                m.pause(self.state, False)
+                before = m.status(self.state)
+                with closing(m.database(self.state)) as db:
+                    attempts = db.execute('select sum(attempts) from queue').fetchone()[0]
+                calls = []
+                def fail(*_):
+                    calls.append(True)
+                    raise failure
+                stopped = m.ocr_step(self.state, recognize=fail)
+                self.assertEqual(stopped['state'], 'paused')
+                status = m.status(self.state)
+                self.assertTrue(status['paused'])
+                self.assertTrue(status['engineError'])
+                self.assertNotIn('secret-token', json.dumps(status))
+                self.assertNotIn(str(self.root), json.dumps(status))
+                self.assertEqual(status['queue']['error'], 0)
+                self.assertEqual(status['queue']['pending'], 1)
+                self.assertEqual(status['queue']['done'], before['queue']['done'])
+                self.assertEqual(m.ocr_step(self.state, recognize=fail)['state'], 'paused')
+                self.assertEqual(len(calls), 1)
+                with closing(m.database(self.state)) as db:
+                    self.assertEqual(db.execute('select sum(attempts) from queue').fetchone()[0], attempts + 1)
+                m.retry(self.state)
+                self.assertTrue(m.status(self.state)['paused'])
+                self.assertTrue(m.status(self.state)['engineError'])
+                self.assertEqual(len(m.search(self.state, '완료 본문')['hits']), 1)
+        m.pause(self.state, False)
+        self.assertEqual(m.status(self.state)['engineError'], '')
+        self.assertEqual(m.ocr_step(self.state, recognize=lambda *_: ('다시 인식한 본문', 'fixture'))['state'], 'done')
+        self.assertEqual(m.status(self.state)['queue']['done'], 2)
 
     def test_offline_ocr_checks_each_resource_once_instead_of_each_page(self):
         self.scan()

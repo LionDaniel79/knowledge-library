@@ -11,13 +11,20 @@ import { withSyncWrite } from "./sync/write";
 const uuid = z.string().uuid();
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const desktopPdfPurgePreviewInput = z
-  .object({ manifestId: uuid })
+  .object({ manifestId: uuid, scopeEvidenceId: uuid.optional() })
   .strict();
 const reviewedBook = z
   .object({
     bookId: uuid,
     expectedBookVersion: z.number().int().positive(),
     documentIds: z.array(uuid).min(1),
+  })
+  .strict();
+const generatedTargets = z
+  .object({
+    revisionIds: z.array(uuid),
+    membershipIds: z.array(uuid),
+    exclusionBookIds: z.array(uuid),
   })
   .strict();
 export const desktopPdfPurgeApplyInput = z
@@ -28,6 +35,8 @@ export const desktopPdfPurgeApplyInput = z
     planHash: digest,
     reviewed: z.array(reviewedBook).max(100000),
     backupAttestationId: uuid,
+    scopeEvidenceId: uuid.optional(),
+    reviewedGenerated: generatedTargets.optional(),
     confirmation: z.literal("PERMANENTLY DELETE WEB PDF METADATA"),
   })
   .strict();
@@ -65,6 +74,7 @@ const ignoredTables = new Set([
   "library_desktop_manifest_items",
   "library_desktop_tokens",
   "library_desktop_purge_backups",
+  "library_desktop_purge_scope_evidence",
 ]);
 const identityReceipt = z.union([
   z.object({ id: uuid, version: z.number().int().positive() }).strict(),
@@ -119,7 +129,7 @@ const expectedFks = new Set([
 async function foreignKeys(tx: Executor) {
   const rows = (
     await tx.query(
-      "SELECT c.conname,n.nspname AS schema,t.relname AS table_name,r.relname AS target,c.confdeltype,pg_get_constraintdef(c.oid) AS definition,array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(num,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.num ORDER BY k.ord),',') AS columns FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace JOIN pg_class r ON r.oid=c.confrelid JOIN pg_namespace rn ON rn.oid=r.relnamespace WHERE c.contype='f' AND rn.nspname='public' AND r.relname IN ('library_books','library_documents') ORDER BY n.nspname,t.relname,c.conname",
+      "SELECT c.conname,n.nspname AS schema,t.relname AS table_name,r.relname AS target,c.confdeltype,pg_get_constraintdef(c.oid) AS definition,array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(num,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.num ORDER BY k.ord),',') AS columns FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace JOIN pg_class r ON r.oid=c.confrelid JOIN pg_namespace rn ON rn.oid=r.relnamespace WHERE c.contype='f' AND rn.nspname='public' AND r.relname IN ('library_books','library_documents','library_revisions','library_topic_memberships','library_book_exclusions') ORDER BY n.nspname,t.relname,c.conname",
     )
   ).rows;
   for (const r of rows) {
@@ -148,7 +158,321 @@ function outsideSelectedRoots(doc: Record<string, any>): boolean {
     !["기독도서", "일반도서"].includes(parts[0])
   );
 }
-async function inspect(tx: Executor, owner: string, manifestId: string) {
+const outsideEvidenceItems = z
+  .array(
+    z
+      .object({
+        bookId: uuid,
+        documentId: uuid,
+        expectedBookVersion: z.number().int().positive(),
+        outsideCopies: z.number().int().positive().max(100000),
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(100000);
+type OutsideEvidenceItem = z.infer<typeof outsideEvidenceItems>[number];
+function canonical(value: any, key = ""): any {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (
+    typeof value === "string" &&
+    /_at$/.test(key) &&
+    Number.isFinite(Date.parse(value))
+  )
+    return new Date(value).toISOString();
+  if (Array.isArray(value)) return value.map((v) => canonical(v));
+  if (typeof value === "object")
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical(value[k], k)]),
+    );
+  return value;
+}
+const equalRows = (a: unknown, b: unknown) =>
+  JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+async function scopeEvidence(
+  tx: Executor,
+  owner: string,
+  manifest: Record<string, any>,
+  selected: DesktopItem[],
+  id?: string,
+) {
+  const invalid = {
+    valid: false,
+    row: null as Record<string, any> | null,
+    items: [] as OutsideEvidenceItem[],
+  };
+  if (
+    !id ||
+    !(
+      await tx.query(
+        "SELECT to_regclass('public.library_desktop_purge_scope_evidence') IS NOT NULL AS ready",
+      )
+    ).rows[0]?.ready
+  )
+    return invalid;
+  const row = (
+    await tx.query(
+      "SELECT *,verified_at>now()-interval '24 hours' AND verified_at<=now() AND expires_at>now() AS fresh FROM library_desktop_purge_scope_evidence WHERE owner_id=$1 AND id=$2",
+      [owner, id],
+    )
+  ).rows[0];
+  if (!row) return invalid;
+  invalid.row = row;
+  const parsed = outsideEvidenceItems.safeParse(row.documents);
+  const head = await syncHead(tx, owner);
+  if (
+    !parsed.success ||
+    !row.fresh ||
+    !row.scan_completed ||
+    !row.roots_available ||
+    !row.inventory_complete ||
+    Number(row.unmapped_files) !== 0 ||
+    row.manifest_id !== manifest.id ||
+    row.items_digest !== manifest.items_digest ||
+    String(row.source_revision) !== head.head ||
+    Number(row.christian_files) !== Number(manifest.christian_files) ||
+    Number(row.general_files) !== Number(manifest.general_files)
+  )
+    return invalid;
+  const items = parsed.data,
+    docIds = new Set(items.map((i) => i.documentId));
+  if (
+    docIds.size !== items.length ||
+    items.some((i) =>
+      selected.some(
+        (s) => s.legacyDocumentId === i.documentId || s.bookId === i.bookId,
+      ),
+    ) ||
+    Number(row.inventory_documents) !== selected.length + items.length ||
+    Number(row.outside_files) !==
+      items.reduce((n, i) => n + i.outsideCopies, 0) ||
+    Number(row.inventory_files) !==
+      Number(row.christian_files) +
+        Number(row.general_files) +
+        Number(row.outside_files)
+  )
+    return invalid;
+  const mapped = (
+    await tx.query(
+      "SELECT d.id,d.book_id,b.version FROM library_documents d JOIN library_books b ON b.owner_id=d.owner_id AND b.id=d.book_id WHERE d.owner_id=$1 AND d.id=ANY($2::uuid[]) AND b.source_data->>'app'='Local PDF'",
+      [owner, items.map((i) => i.documentId)],
+    )
+  ).rows;
+  const byDoc = new Map(mapped.map((r) => [String(r.id), r]));
+  if (
+    items.some((i) => {
+      const d = byDoc.get(i.documentId);
+      return (
+        !d ||
+        d.book_id !== i.bookId ||
+        Number(d.version) !== i.expectedBookVersion
+      );
+    })
+  )
+    return invalid;
+  return { valid: true, row, items };
+}
+type GeneratedRow = { bookId: string; value: Record<string, any> };
+async function recognizedMigrationRows(
+  tx: Executor,
+  owner: string,
+  books: Record<string, any>[],
+  docs: Record<string, any>[],
+  witnessed: Set<string>,
+) {
+  const result = new Map<string, Map<string, GeneratedRow>>([
+    ["library_revisions", new Map()],
+    ["library_topic_memberships", new Map()],
+    ["library_book_exclusions", new Map()],
+  ]);
+  if (!witnessed.size) return result;
+  const eligibleBooks = books.filter((b) => witnessed.has(String(b.id)));
+  const bookIds = eligibleBooks.map((b) => b.id),
+    byBook = new Map(eligibleBooks.map((b) => [String(b.id), b]));
+  const members = (
+    await tx.query(
+      "SELECT to_jsonb(m) AS value,t.name AS topic_name FROM library_topic_memberships m JOIN library_topics t ON t.owner_id=m.owner_id AND t.id=m.topic_id WHERE m.owner_id=$1 AND m.source_kind='book' AND m.source_id=ANY($2::text[]) ORDER BY m.id",
+      [owner, bookIds],
+    )
+  ).rows;
+  for (const { value: r, topic_name } of members) {
+    const b = byBook.get(String(r.source_id));
+    if (
+      !b ||
+      r.status !== "suggested" ||
+      r.method !== "existing-tags-v1" ||
+      Number(r.version) !== 1 ||
+      !/^[1-9][0-9]*$/.test(r.source_version) ||
+      Number(r.source_version) > Number(b.version) ||
+      !Array.isArray(r.evidence) ||
+      !r.evidence.length ||
+      r.evidence.some(
+        (e: any) =>
+          !equalRows(e, { matchedTag: topic_name, coverage: "metadata" }) ||
+          !b.tags?.includes(topic_name),
+      )
+    )
+      continue;
+    result
+      .get("library_topic_memberships")!
+      .set(r.id, { bookId: String(b.id), value: r });
+  }
+  const exclusions = (
+    await tx.query(
+      "SELECT to_jsonb(e) AS value FROM library_book_exclusions e WHERE e.owner_id=$1 AND e.id=ANY($2::uuid[]) ORDER BY e.id",
+      [owner, bookIds],
+    )
+  ).rows.map((r) => r.value);
+  const revisions = (
+    await tx.query(
+      "SELECT to_jsonb(r) AS value FROM library_revisions r WHERE r.owner_id=$1 AND (r.entity_id=ANY($2::uuid[]) OR r.entity_id=ANY($3::uuid[])) ORDER BY r.id",
+      [owner, bookIds, members.map((r) => r.value.id)],
+    )
+  ).rows.map((r) => r.value);
+  const eligibleExclusions = new Map<string, any>();
+  for (const e of exclusions) {
+    const linked = docs.filter((d) => d.book_id === e.id);
+    if (
+      e.state !== "excluded" ||
+      !["paper", "periodical"].includes(e.kind) ||
+      e.reason !== "논문·간행물 일괄 제외" ||
+      Number(e.version) !== 1 ||
+      !linked.length ||
+      linked.some(
+        (d) =>
+          d.owner_id !== owner ||
+          d.material_kind !== e.kind ||
+          d.processing_scope !== "metadata_only",
+      ) ||
+      !revisions.some(
+        (r) =>
+          r.entity_id === e.id &&
+          r.action === "excludeBook" &&
+          r.before_data === null &&
+          equalRows(r.after_data, e),
+      )
+    )
+      continue;
+    eligibleExclusions.set(e.id, e);
+    result
+      .get("library_book_exclusions")!
+      .set(e.id, { bookId: e.id, value: e });
+  }
+  const isBookSnapshot = (s: any, b: any) =>
+    s &&
+    s.id === b.id &&
+    s.owner_id === owner &&
+    s.source_data?.app === "Local PDF" &&
+    equalRows(s.formats, ["pdf"]) &&
+    docs.some((d) => d.book_id === b.id && d.id === s.source_data?.recordId);
+  const enrichmentFields = new Set([
+    "title",
+    "author",
+    "publisher",
+    "isbn",
+    "total_pages",
+    "category",
+    "classification",
+    "source_data",
+    "cover_url",
+    "enrichment",
+    "version",
+  ]);
+  // The original enrichment script selected precisely this projection as its
+  // before snapshot. Missing owner/formats there is legitimate only for this
+  // exact historical shape; full import and other revision rules stay strict.
+  const legacyEnrichmentKeys = [
+    "id",
+    "isbn",
+    "tags",
+    "title",
+    "author",
+    "version",
+    "category",
+    "cover_url",
+    "publisher",
+    "enrichment",
+    "source_data",
+    "total_pages",
+    "classification",
+  ].sort();
+  const isLegacyEnrichmentBefore = (before: any, after: any, b: any) =>
+    before &&
+    typeof before === "object" &&
+    !Array.isArray(before) &&
+    equalRows(Object.keys(before).sort(), legacyEnrichmentKeys) &&
+    before.id === b.id &&
+    before.source_data?.app === "Local PDF" &&
+    before.source_data?.recordId === after?.source_data?.recordId &&
+    Number.isInteger(before.version) &&
+    before.version > 0 &&
+    Object.keys(after).every(
+      (k) =>
+        enrichmentFields.has(k) ||
+        equalRows({ [k]: after[k] }, { [k]: k in before ? before[k] : b[k] }),
+    );
+  for (const r of revisions) {
+    const b = byBook.get(String(r.entity_id));
+    let bookId: string | undefined;
+    if (
+      b &&
+      r.action === "importPdf" &&
+      r.before_data === null &&
+      isBookSnapshot(r.after_data, b) &&
+      Number(r.after_data.version) === 1
+    )
+      bookId = b.id;
+    else if (
+      b &&
+      r.action === "enrichBibliography" &&
+      isBookSnapshot(r.after_data, b) &&
+      (isBookSnapshot(r.before_data, b) ||
+        isLegacyEnrichmentBefore(r.before_data, r.after_data, b)) &&
+      Number(r.after_data.version) === Number(r.before_data.version) + 1 &&
+      Number(r.after_data.version) <= Number(b.version) &&
+      Object.keys(
+        isBookSnapshot(r.before_data, b)
+          ? { ...r.before_data, ...r.after_data }
+          : r.before_data,
+      ).every(
+        (k) =>
+          enrichmentFields.has(k) ||
+          equalRows(r.before_data[k], r.after_data[k]),
+      )
+    )
+      bookId = b.id;
+    else if (
+      b &&
+      r.action === "excludeBook" &&
+      r.before_data === null &&
+      eligibleExclusions.has(b.id) &&
+      equalRows(r.after_data, eligibleExclusions.get(b.id))
+    )
+      bookId = b.id;
+    else if (
+      r.action === "proposeTopicMembership" &&
+      r.before_data === null &&
+      r.id === r.entity_id
+    ) {
+      const m = result
+        .get("library_topic_memberships")!
+        .get(String(r.entity_id));
+      if (m && equalRows(r.after_data, m.value)) bookId = m.bookId;
+    }
+    if (bookId)
+      result.get("library_revisions")!.set(r.id, { bookId, value: r });
+  }
+  return result;
+}
+async function inspect(
+  tx: Executor,
+  owner: string,
+  manifestId: string,
+  scopeEvidenceId?: string,
+) {
   const m = (
     await tx.query(
       "SELECT *,sealed_at>now()-interval '24 hours' AND sealed_at<=now() AS fresh FROM library_desktop_manifests WHERE owner_id=$1 AND id=$2",
@@ -239,19 +563,51 @@ async function inspect(tx: Executor, owner: string, manifestId: string) {
     ...books.map((b) => ({ book_id: b.id, identity: b.id })),
     ...docs.map((d) => ({ book_id: d.book_id, identity: d.id })),
   ];
+  const witness = await scopeEvidence(tx, owner, m, items, scopeEvidenceId);
+  const witnessedDocuments = new Set(witness.items.map((i) => i.documentId));
+  const witnessedBooks = new Set(
+    [...byBook]
+      .filter(
+        ([, c]) =>
+          witness.valid &&
+          c.docs.length &&
+          c.docs.every(
+            (d) => d.owner_id === owner && witnessedDocuments.has(String(d.id)),
+          ),
+      )
+      .map(([id]) => id),
+  );
+  const removable = await recognizedMigrationRows(
+    tx,
+    owner,
+    books,
+    docs,
+    witnessedBooks,
+  );
+  for (const rows of removable.values())
+    for (const [id, r] of rows) ids.push({ book_id: r.bookId, identity: id });
+  const referenceIds = [
+    ...new Map(ids.map((i) => [i.book_id + ":" + i.identity, i])).values(),
+  ];
   for (const c of byBook.values()) {
+    if (scopeEvidenceId && !witness.valid)
+      c.reasons.add("scope_evidence_invalid");
     if (JSON.stringify(c.book.formats) !== '["pdf"]')
       c.reasons.add("mixed_formats");
     if (!c.docs.length) c.reasons.add("missing_document_mapping");
     if (c.docs.some((d) => d.owner_id !== owner))
       c.reasons.add("cross_owner_mapping");
-    if (c.docs.some((d) => !outsideSelectedRoots(d)))
+    if (
+      !witnessedBooks.has(String(c.book.id)) &&
+      c.docs.some((d) => !outsideSelectedRoots(d))
+    )
       c.reasons.add("selected_root_or_unknown_location");
     if (
       c.docs.some(
         (d) =>
           d.material_kind === "review" ||
-          d.processing_scope === "metadata_only",
+          (d.processing_scope === "metadata_only" &&
+            !removable.get("library_book_exclusions")!.has(String(c.book.id))),
       )
     )
       c.reasons.add("scope_review_pending");
@@ -270,11 +626,16 @@ async function inspect(tx: Executor, owner: string, manifestId: string) {
       // become review holds; no row content leaves the database.
       const matches = (
         await tx.query(
-          `SELECT DISTINCT x.book_id${table === "library_operations" ? ",t.result" : ""} FROM public.${quote(table)} t CROSS JOIN LATERAL regexp_matches(lower(to_jsonb(t)::text),'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}','g') hit(identity) JOIN jsonb_to_recordset($1::jsonb) x(book_id uuid,identity text) ON x.identity=hit.identity[1]${table === "library_books" ? " WHERE t.id<>x.book_id" : ""}`,
-          [JSON.stringify(ids)],
+          `SELECT DISTINCT x.book_id${table === "library_operations" ? ",t.result" : ""}${removable.has(table) ? ",to_jsonb(t) AS value" : ""} FROM public.${quote(table)} t CROSS JOIN LATERAL regexp_matches(lower(to_jsonb(t)::text),'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}','g') hit(identity) JOIN jsonb_to_recordset($1::jsonb) x(book_id uuid,identity text) ON x.identity=hit.identity[1]${table === "library_books" ? " WHERE t.id<>x.book_id" : ""}`,
+          [JSON.stringify(referenceIds)],
         )
       ).rows;
       for (const r of matches) {
+        if (
+          removable.get(table)?.get(String(r.value?.id))?.bookId ===
+          String(r.book_id)
+        )
+          continue;
         // Known idempotency receipts contain no bibliography/personal content.
         // Retaining these opaque IDs is necessary for safe offline retries.
         if (
@@ -358,6 +719,26 @@ async function inspect(tx: Executor, owner: string, manifestId: string) {
       });
   }
   const head = await syncHead(tx, owner);
+  const allowedIds = new Set(allowed.map((b) => b.bookId));
+  const generated = {
+    revisionIds: [] as string[],
+    membershipIds: [] as string[],
+    exclusionBookIds: [] as string[],
+  };
+  const generatedRows: unknown[] = [];
+  for (const [table, rows] of removable)
+    for (const [id, r] of rows)
+      if (allowedIds.has(r.bookId)) {
+        generated[
+          table === "library_revisions"
+            ? "revisionIds"
+            : table === "library_topic_memberships"
+              ? "membershipIds"
+              : "exclusionBookIds"
+        ].push(id);
+        generatedRows.push([table, r.value]);
+      }
+  for (const list of Object.values(generated)) list.sort();
   const planHash = hash([
     "desktop-pdf-purge-v1",
     owner,
@@ -368,8 +749,12 @@ async function inspect(tx: Executor, owner: string, manifestId: string) {
     books,
     docs,
     generatedSnapshot,
+    scopeEvidenceId ?? null,
+    witness.row,
+    generatedRows,
     allowed,
     held,
+    generated,
   ]);
   return {
     manifestId,
@@ -379,6 +764,7 @@ async function inspect(tx: Executor, owner: string, manifestId: string) {
     protectedSelectedBooks: new Set(items.map((i) => i.bookId)).size,
     allowed,
     held,
+    generated,
     candidates: books.map((b) => ({
       bookId: String(b.id),
       title: String(b.title),
@@ -395,7 +781,9 @@ export async function previewDesktopPdfPurge(
   raw: unknown,
 ) {
   const p = desktopPdfPurgePreviewInput.parse(raw);
-  return syncRead(db, owner, (tx) => inspect(tx, owner, p.manifestId));
+  return syncRead(db, owner, (tx) =>
+    inspect(tx, owner, p.manifestId, p.scopeEvidenceId),
+  );
 }
 export async function applyDesktopPdfPurge(
   db: Database,
@@ -430,11 +818,13 @@ export async function applyDesktopPdfPurge(
     // Reference checks include JSON and non-FK references. Lock all inspected
     // owner tables before the fresh check so uncoordinated writers cannot race it.
     await tx.query("SELECT public.library_desktop_pdf_purge_lock()");
-    const current = await inspect(tx, owner, p.manifestId);
+    const current = await inspect(tx, owner, p.manifestId, p.scopeEvidenceId);
     if (
       current.planHash !== p.planHash ||
       current.itemsDigest !== p.itemsDigest ||
-      JSON.stringify(current.allowed) !== JSON.stringify(p.reviewed)
+      JSON.stringify(current.allowed) !== JSON.stringify(p.reviewed) ||
+      ((p.scopeEvidenceId || p.reviewedGenerated) &&
+        !equalRows(current.generated, p.reviewedGenerated))
     )
       throw conflict();
     if (!current.allowed.length)
@@ -459,7 +849,24 @@ export async function applyDesktopPdfPurge(
       documentIds = current.allowed.flatMap((b) => b.documentIds);
     // Built-in capture triggers provide durable replica tombstones. Verify them
     // rather than treating a successful DELETE as sufficient sync protection.
-    for (const table of ["library_books", "library_documents"])
+    const tombstoneTargets: [string, string[]][] = [
+      ["library_books", bookIds],
+      ["library_documents", documentIds],
+      ...[...Object.entries(current.generated)]
+        .filter(([, ids]) => ids.length)
+        .map(
+          ([kind, ids]) =>
+            [
+              kind === "revisionIds"
+                ? "library_revisions"
+                : kind === "membershipIds"
+                  ? "library_topic_memberships"
+                  : "library_book_exclusions",
+              ids,
+            ] as [string, string[]],
+        ),
+    ];
+    for (const [table] of tombstoneTargets)
       if (
         !(
           await tx.query(
@@ -481,6 +888,13 @@ export async function applyDesktopPdfPurge(
       "INSERT INTO library_desktop_document_blocks(owner_id,document_id,book_id,plan_hash) SELECT owner_id,id,book_id,$3 FROM library_documents WHERE owner_id=$1 AND id=ANY($2::uuid[])",
       [owner, documentIds, p.planHash],
     );
+    for (const [table, ids] of tombstoneTargets.filter(
+      ([table]) => !["library_books", "library_documents"].includes(table),
+    ))
+      await tx.query(
+        `DELETE FROM public.${quote(table)} WHERE owner_id=$1 AND id=ANY($2::uuid[])`,
+        [owner, ids],
+      );
     for (const table of [
       "library_pdf_registry",
       "library_cover_locations",
@@ -493,10 +907,7 @@ export async function applyDesktopPdfPurge(
         [owner, bookIds],
       );
     }
-    for (const [table, ids] of [
-      ["library_books", bookIds],
-      ["library_documents", documentIds],
-    ] as const) {
+    for (const [table, ids] of tombstoneTargets) {
       const count = (
         await tx.query(
           "SELECT count(*)::int AS n FROM library_sync_row_versions WHERE owner_id=$1 AND entity=$2 AND deleted AND record_key=ANY($3::text[])",

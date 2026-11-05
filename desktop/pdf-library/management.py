@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import ssl
+import sys
 import time
 import unicodedata
 import uuid
@@ -510,7 +511,7 @@ def status(directory, limit=100):
                                   available=bool(copies), copies=copies, queue=counts, errors=errors, error=row['error'], webState=row['web_state'], legacyDocumentIds=aliases, webIssue=web_issue))
         latest = db.execute('select id,state,files,hashed,started_at,finished_at from scans order by rowid desc limit 1').fetchone()
         active = db.execute("select q.resource_id,q.page_number,r.title from queue q join resources r on r.id=q.resource_id where q.state='running' limit 1").fetchone()
-        return dict(resources=totals['resources'], availableCopies=sum(copies_by_resource.values()), queue=queue, paused=_setting(db, 'paused', '0') == '1', documents=documents,
+        return dict(resources=totals['resources'], availableCopies=sum(copies_by_resource.values()), queue=queue, paused=_setting(db, 'paused', '0') == '1', engineError=_setting(db, 'engine_error', ''), documents=documents,
                     documentsTruncated=totals['resources'] > len(documents), totalPages=totals['pages'],
                     completedPages=max(0, totals['pages'] - db.execute("select count(*) from queue where page_number>0 and state in ('pending','running','error')").fetchone()[0]),
                     scan=dict(latest) if latest else None, current=dict(active) if active else None,
@@ -523,6 +524,8 @@ def pause(directory, paused=True):
     require(type(paused) is bool, '일시정지 값이 올바르지 않습니다.')
     with closing(database(directory)) as db:
         _set(db, 'paused', int(paused))
+        if not paused:
+            _set(db, 'engine_error', '')
         db.commit()
     return {'paused': paused}
 
@@ -536,6 +539,16 @@ def retry(directory, document=None):
     return {'retried': count}
 
 
+def _engine_failure(error):
+    # The default recognizer imports pdf_ocr from the copied script bundle.
+    # Inspect its actual exception type without importing another engine or
+    # starting a subprocess when callers supply a recognizer for isolated tests.
+    engine_error = getattr(sys.modules.get('pdf_ocr'), 'OcrEngineError', None)
+    return (isinstance(error, (MemoryError, BrokenPipeError, ImportError))
+            or (isinstance(error, OSError) and getattr(error, 'winerror', None) in (8, 14, 1450, 1455))
+            or (isinstance(engine_error, type) and isinstance(error, engine_error)))
+
+
 def ocr_step(directory, index=None, recognize=None, stop=lambda: False):
     """Commit at most one page. Abandoned running pages recover under the OS lock."""
     if recognize is None:
@@ -545,7 +558,7 @@ def ocr_step(directory, index=None, recognize=None, stop=lambda: False):
         db.execute("update queue set state='pending' where state='running'")
         db.commit()
         if _setting(db, 'paused', '0') == '1':
-            return {'state': 'paused'}
+            return {'state': 'paused', 'engineError': _setting(db, 'engine_error', '')}
         if stop():
             raise InterruptedError('OCR 중단')
         # Offline resources remain pending; process any other connected resource.
@@ -604,6 +617,13 @@ def ocr_step(directory, index=None, recognize=None, stop=lambda: False):
             raise
         except Exception as error:
             db.rollback()
+            if _engine_failure(error):
+                message = 'OCR 실행기 오류로 일시정지했습니다 (' + type(error).__name__ + '). 설치·언어·메모리를 확인한 뒤 OCR 계속을 누르세요.'
+                db.execute("update queue set state='pending',error=null,updated_at=? where resource_id=? and page_number=?", (now(), resource, page))
+                _set(db, 'paused', '1')
+                _set(db, 'engine_error', message)
+                db.commit()
+                return dict(state='paused', document=document, title=task['title'], page=page, engineError=message)
             # Native OCR errors can contain absolute paths; retain a safe class only.
             message = 'OCR 처리 실패 (' + type(error).__name__ + '). 재시도할 수 있습니다.'
             db.execute("update queue set state='error',error=?,updated_at=? where resource_id=? and page_number=?", (message, now(), resource, page))
