@@ -39,6 +39,7 @@ function fixture(t, changes = {}, extra = {}) {
   const profile = {
     DATABASE_URL: "postgresql://library_web_runtime:secret@invalid.example/db",
     LIBRARY_OWNER_EMAIL: "owner@invalid.example",
+    LIBRARY_CATALOG_OWNER_ID: "11111111-1111-4111-8111-111111111111",
     YES24_API_KEY: "provider-secret",
     NEON_AUTH_BASE_URL: "https://invalid.example/auth",
     NEON_AUTH_COOKIE_SECRET: "auth-secret",
@@ -197,6 +198,10 @@ test("runs one finite approved pass with child-only minimal environment and no H
   assert.equal(args[0], "--import");
   assert.equal(options.env.LIBRARY_STAGE5_WRITE_ENABLED, "true");
   assert.equal(options.env.DATABASE_URL, f.profile.DATABASE_URL);
+  assert.equal(
+    options.env.LIBRARY_CATALOG_OWNER_ID,
+    f.profile.LIBRARY_CATALOG_OWNER_ID,
+  );
   for (const key of [
     "NODE_OPTIONS",
     "OPENAI_API_KEY",

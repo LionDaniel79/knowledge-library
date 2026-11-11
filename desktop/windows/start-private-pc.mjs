@@ -15,6 +15,7 @@ const allowed = [
   "NEON_AUTH_BASE_URL",
   "NEON_AUTH_COOKIE_SECRET",
   "LIBRARY_OWNER_EMAIL",
+  "LIBRARY_CATALOG_OWNER_ID",
   "YES24_API_KEY",
   "DATA4LIBRARY_KEY",
   "GOOGLE_BOOKS_API_KEY",
@@ -36,7 +37,12 @@ export function runtimeEnvironment(c, profile) {
     if (process.env[k]) env[k] = process.env[k];
   for (const k of allowed)
     if (typeof profile[k] === "string") env[k] = profile[k];
-  for (const k of allowed.slice(0, 4))
+  for (const k of [
+    "DATABASE_URL",
+    "NEON_AUTH_BASE_URL",
+    "NEON_AUTH_COOKIE_SECRET",
+    "LIBRARY_OWNER_EMAIL",
+  ])
     if (!env[k]) throw Error("Connection settings missing.");
   return {
     ...env,

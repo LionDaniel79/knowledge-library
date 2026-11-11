@@ -74,6 +74,7 @@ export async function runLogosCompletion(options: {
             records: LogosCandidate[];
             applied?: boolean;
             coverRetry?: { attempts: number; nextAttemptAt: number };
+            lookupRetry?: { attempts: number; nextAttemptAt: number };
           }
         | undefined;
       try {
@@ -87,17 +88,38 @@ export async function runLogosCompletion(options: {
           !Array.isArray(checkpoint.records))
       )
         throw Error("서지 작업 기록 형식을 확인하세요.");
+      for (const retry of [checkpoint?.coverRetry, checkpoint?.lookupRetry])
+        if (
+          retry &&
+          (!Number.isSafeInteger(retry.attempts) ||
+            retry.attempts < 1 ||
+            !Number.isSafeInteger(retry.nextAttemptAt) ||
+            retry.nextAttemptAt < 0)
+        )
+          throw Error("서지 재시도 기록 형식을 확인하세요.");
+      if (checkpoint?.lookupRetry && checkpoint.applied)
+        throw Error("서지 재시도 기록 형식을 확인하세요.");
       if (
-        checkpoint?.coverRetry &&
-        (!Number.isSafeInteger(checkpoint.coverRetry.attempts) ||
-          checkpoint.coverRetry.attempts < 1 ||
-          !Number.isSafeInteger(checkpoint.coverRetry.nextAttemptAt) ||
-          checkpoint.coverRetry.nextAttemptAt < 0)
-      )
-        throw Error("표지 재시도 기록 형식을 확인하세요.");
-      if (checkpoint && (!options.apply || checkpoint.applied)) {
+        checkpoint &&
+        !checkpoint.lookupRetry &&
+        (!options.apply || checkpoint.applied)
+      ) {
         stats.cached++;
         stats[decideLogosCandidate(book, checkpoint.records).state]++;
+        continue;
+      }
+      if (checkpoint?.lookupRetry && checkpoint.lookupRetry.attempts >= 3) {
+        stats.quarantined++;
+        stats.pending++;
+        continue;
+      }
+      if (
+        checkpoint?.lookupRetry &&
+        checkpoint.lookupRetry.nextAttemptAt > now()
+      ) {
+        stats.deferred++;
+        stats.pending++;
+        retryAt(checkpoint.lookupRetry.nextAttemptAt);
         continue;
       }
       // Three failed image attempts require a manual cover choice. Keeping this
@@ -120,13 +142,35 @@ export async function runLogosCompletion(options: {
         stats.pending++;
         continue;
       }
-      if (!checkpoint) {
+      if (!checkpoint || checkpoint.lookupRetry) {
         if (!options.online || stats.requests >= options.limit) {
           stats.pending++;
           continue;
         }
         stats.requests++;
-        checkpoint = { fingerprint, records: await options.lookup(book) };
+        try {
+          checkpoint = { fingerprint, records: await options.lookup(book) };
+        } catch (error) {
+          // A malformed provider JSON response belongs to this resource. Never
+          // apply an empty result for it, leak the payload, or block later books.
+          // Quota and other service-wide failures retain the existing safe stop.
+          if (!(error instanceof SyntaxError)) throw error;
+          const attempts = (checkpoint?.lookupRetry?.attempts ?? 0) + 1;
+          const nextAttemptAt =
+            attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
+          checkpoint = {
+            fingerprint,
+            records: [],
+            lookupRetry: { attempts, nextAttemptAt },
+          };
+          await atomicWriteJson(path, checkpoint);
+          stats.considered++;
+          stats.failed++;
+          stats.pending++;
+          if (attempts >= 3) stats.quarantined++;
+          else retryAt(nextAttemptAt);
+          continue;
+        }
         await atomicWriteJson(path, checkpoint);
       }
       stats.considered++;

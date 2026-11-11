@@ -8,6 +8,7 @@ import {
   applyLogosCompletion,
   logosCompletionBook,
   logosCompletionFingerprint,
+  resolveLogosOwner,
 } from "../src/server/logos-completion";
 import { logosLookup } from "../src/local/curation/logos-providers";
 import { runLogosCompletion } from "../src/local/curation/logos-runner";
@@ -46,13 +47,10 @@ if (args.includes("--help")) {
   process.once("SIGINT", () => controller.abort());
   process.once("SIGTERM", () => controller.abort());
   try {
-    const owner = (
-      await db.query(
-        'SELECT id::text FROM neon_auth."user" WHERE lower(email)=lower($1)',
-        [process.env.LIBRARY_OWNER_EMAIL],
-      )
-    ).rows[0]?.id;
-    if (!owner) throw Error("소유자를 확인하지 못했습니다.");
+    const owner = await resolveLogosOwner(db, {
+      id: process.env.LIBRARY_CATALOG_OWNER_ID,
+      email: process.env.LIBRARY_OWNER_EMAIL,
+    });
     const coverCapacity = await readCoverCapacity(db, owner);
     console.log(
       JSON.stringify({ preflight: "cover-storage", ...coverCapacity }),
