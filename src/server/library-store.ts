@@ -335,6 +335,7 @@ export function createLibraryStore(db: Database) {
         let version = 1;
         let before: unknown = null;
         let after: unknown;
+        let changedBook: MutationResult["book"];
         async function ownBook(bookId: string) {
           const row = (
             await tx.query(
@@ -533,7 +534,7 @@ export function createLibraryStore(db: Database) {
               startedOn: dateInput.nullable().default(null),
             })
             .parse(cmd.payload);
-          await ownBook(p.bookId);
+          const book = await ownBook(p.bookId);
           after = (
             await tx.query(
               "INSERT INTO library_cycles(id,owner_id,book_id,status,started_on) VALUES($1,$2,$3,'reading',$4) RETURNING " +
@@ -541,6 +542,38 @@ export function createLibraryStore(db: Database) {
               [id, owner, p.bookId, p.startedOn],
             )
           ).rows[0];
+          if (book.bookshelves.includes("책 대기열")) {
+            const updated = (
+              await tx.query(
+                "UPDATE library_books SET bookshelves=array_remove(bookshelves,$3),version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING " +
+                  bookSelect,
+                [owner, p.bookId, "책 대기열"],
+              )
+            ).rows[0];
+            await carryCuration(
+              tx,
+              owner,
+              book.id,
+              String(book.version),
+              String(updated.version),
+            );
+            await tx.query(
+              "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",
+              [
+                randomUUID(),
+                owner,
+                book.id,
+                cmd.type,
+                JSON.stringify(book),
+                JSON.stringify(updated),
+              ],
+            );
+            changedBook = {
+              id: updated.id,
+              version: updated.version,
+              bookshelves: updated.bookshelves,
+            };
+          }
         } else if (
           ["updateProgress", "completeReading", "editCompletion"].includes(
             cmd.type,
@@ -792,7 +825,11 @@ export function createLibraryStore(db: Database) {
             JSON.stringify(after),
           ],
         );
-        const result = { id, version };
+        const result = {
+          id,
+          version,
+          ...(changedBook ? { book: changedBook } : {}),
+        };
         await tx.query(
           "UPDATE library_operations SET result=$3 WHERE owner_id=$1 AND request_id=$2",
           [owner, cmd.requestId, JSON.stringify(result)],

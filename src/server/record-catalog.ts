@@ -3,6 +3,7 @@ import { monthCells, type Note, type ReadingCycle } from "../lib/domain";
 import { LibraryError, type Executor } from "./library-store";
 import { memoSearchFields } from "../lib/search-fields";
 import { searchFieldSql } from "./search-sql";
+import { recentReadingStart } from "../lib/recent-reading";
 import {
   compactBookSelect as bookSelect,
   attachCatalogCovers,
@@ -152,6 +153,7 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
         .string()
         .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
         .optional(),
+      recentThrough: z.string().date().optional(),
       offset: z.coerce.number().int().min(0).max(1000000).default(0),
       limit: z.coerce.number().int().min(1).max(100).default(24),
     })
@@ -162,20 +164,21 @@ export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
       p.date ?? null,
       p.id ?? null,
       p.completedMonth ? p.completedMonth + "-01" : null,
+      p.recentThrough ?? null,
+      p.recentThrough ? recentReadingStart(p.recentThrough) : null,
     ],
     where =
-      "owner_id=$1 AND ($2::uuid IS NULL OR book_id=$2::uuid) AND ($3::date IS NULL OR completed_on=$3::date) AND ($4::uuid IS NULL OR id=$4::uuid) AND ($5::date IS NULL OR (status='completed' AND completed_on >= $5::date AND completed_on < $5::date + interval '1 month'))";
+      "owner_id=$1 AND ($2::uuid IS NULL OR book_id=$2::uuid) AND ($3::date IS NULL OR completed_on=$3::date) AND ($4::uuid IS NULL OR id=$4::uuid) AND ($5::date IS NULL OR (status='completed' AND completed_on >= $5::date AND completed_on < $5::date + interval '1 month')) AND ($6::date IS NULL OR (status='completed' AND completed_on BETWEEN $7::date AND $6::date))";
+  const source = p.recentThrough
+    ? `(SELECT DISTINCT ON (book_id) * FROM library_active_cycles WHERE ${where} ORDER BY book_id,completed_on DESC,id) recent`
+    : `library_active_cycles WHERE ${where}`;
   const total = Number(
-      (
-        await db.query(
-          `SELECT count(*)::int AS n FROM library_active_cycles WHERE ${where}`,
-          args,
-        )
-      ).rows[0].n,
+      (await db.query(`SELECT count(*)::int AS n FROM ${source}`, args)).rows[0]
+        .n,
     ),
     items = (
       await db.query(
-        `SELECT ${cycleSelect} FROM library_active_cycles WHERE ${where} ORDER BY completed_on ${p.completedMonth ? "ASC NULLS LAST" : "DESC NULLS FIRST"},id LIMIT $7 OFFSET $6`,
+        `SELECT ${cycleSelect} FROM ${source} ORDER BY completed_on ${p.completedMonth && !p.recentThrough ? "ASC NULLS LAST" : "DESC NULLS FIRST"},id LIMIT $9 OFFSET $8`,
         [...args, p.offset, p.limit],
       )
     ).rows as ReadingCycle[];

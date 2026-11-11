@@ -42,6 +42,7 @@ import {
 } from "@/lib/domain";
 import { authClient } from "@/lib/auth-client";
 import { BookCover } from "./book-cover";
+import { QueuedBooks, RecentCompletedBooks } from "./dashboard-books";
 import { ReadingCarousel } from "./reading-carousel";
 import { ReadingCalendar } from "./reading-calendar";
 import { MonthCompletedBooks } from "./month-completed-books";
@@ -90,10 +91,12 @@ const LibrarySearchPanel = lazy(() =>
     default: m.LibrarySearchPanel,
   })),
 );
-type View = "home" | "books" | "calendar" | "stats" | "knowledge" | "search";
+type View =
+  "home" | "books" | "shelves" | "calendar" | "stats" | "knowledge" | "search";
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
+  { id: "shelves", label: "서재별 보기", icon: LibraryBig },
   { id: "search", label: "통합 검색", icon: Search },
   { id: "knowledge", label: "사유의 지도", icon: Feather },
   { id: "calendar", label: "독서 달력", icon: CalendarDays },
@@ -205,14 +208,18 @@ export function LibraryApp({
     revision: Library;
   } | null>(null);
   const remote = !!data.catalog;
-  const needle = view === "books" ? query.trim().toLocaleLowerCase() : "";
+  const needle =
+    view === "books" || view === "shelves"
+      ? query.trim().toLocaleLowerCase()
+      : "";
   const bookPaging = useListPagination(
     "books",
     JSON.stringify([view, needle, sort, category, shelfFilter, filter]),
   );
 
   const catalog = useBookCatalog({
-    enabled: remote && view === "books" && bookPaging.ready,
+    enabled:
+      remote && (view === "books" || view === "shelves") && bookPaging.ready,
     query: {
       q: needle,
       sort,
@@ -802,7 +809,7 @@ export function LibraryApp({
               </button>
             </div>
           )}
-          {view === "books" && (
+          {(view === "books" || view === "shelves") && (
             <div className="catalog-controls">
               <label>
                 분야
@@ -895,7 +902,17 @@ export function LibraryApp({
             <>
               {(view === "home" || view === "stats") && (
                 <div className="stat-grid">
-                  <div className="stat-card">
+                  <button
+                    type="button"
+                    className="stat-card"
+                    aria-label="소장한 책"
+                    style={{
+                      textAlign: "left",
+                      color: "inherit",
+                      width: "100%",
+                    }}
+                    onClick={() => navigate("books")}
+                  >
                     <span>소장한 책</span>
                     <strong>
                       {totalBooks}
@@ -910,7 +927,7 @@ export function LibraryApp({
                         .join(" · ")}
                     </p>
                     <LibraryBig />
-                  </div>
+                  </button>
                   <div className="stat-card">
                     <span>현재 읽는 중</span>
                     <strong>
@@ -944,64 +961,72 @@ export function LibraryApp({
                 </div>
               )}
               {view === "home" && (
-                <div className="dashboard-grid">
-                  <div className="dashboard-left">
-                    <ReadingCarousel
-                      index={readingIndex}
-                      onIndexChange={setReadingIndex}
-                      library={data}
-                      onProgress={(cycle) =>
-                        setEditor({ kind: "progress", cycle })
-                      }
-                      onComplete={(cycle) =>
-                        setEditor({ kind: "complete", cycle })
-                      }
-                      onBook={setDetail}
-                    />
-                    <section className="recent-notes">
-                      <div className="section-heading">
-                        <div>
-                          <span className="eyebrow">WORDS THAT STAY</span>
-                          <h2>최근 남긴 생각</h2>
-                        </div>
-                        <button
-                          className="text-button"
-                          onClick={() => navigate("notes")}
-                        >
-                          모두 보기 <ArrowUpRight size={15} />
-                        </button>
-                      </div>
-                      {data.notes.length ? (
-                        <div className="notes-grid">
-                          {data.notes.slice(0, 2).map(noteCard)}
-                        </div>
-                      ) : (
-                        <div className="panel empty-state">
-                          <Feather />
-                          <p>책과 상관없이 떠오른 생각도 남겨 보세요.</p>
+                <>
+                  <div className="dashboard-grid">
+                    <div className="dashboard-left">
+                      <ReadingCarousel
+                        index={readingIndex}
+                        onIndexChange={setReadingIndex}
+                        library={data}
+                        onProgress={(cycle) =>
+                          setEditor({ kind: "progress", cycle })
+                        }
+                        onComplete={(cycle) =>
+                          setEditor({ kind: "complete", cycle })
+                        }
+                        onBook={setDetail}
+                      />
+                      <section className="recent-notes">
+                        <div className="section-heading">
+                          <div>
+                            <span className="eyebrow">WORDS THAT STAY</span>
+                            <h2>최근 남긴 생각</h2>
+                          </div>
                           <button
-                            className="secondary"
-                            onClick={() => setEditor({ kind: "note" })}
+                            className="text-button"
+                            onClick={() => navigate("notes")}
                           >
-                            첫 생각 남기기
+                            모두 보기 <ArrowUpRight size={15} />
                           </button>
                         </div>
-                      )}
-                    </section>
+                        {data.notes.length ? (
+                          <div className="notes-grid">
+                            {data.notes.slice(0, 2).map(noteCard)}
+                          </div>
+                        ) : (
+                          <div className="panel empty-state">
+                            <Feather />
+                            <p>책과 상관없이 떠오른 생각도 남겨 보세요.</p>
+                            <button
+                              className="secondary"
+                              onClick={() => setEditor({ kind: "note" })}
+                            >
+                              첫 생각 남기기
+                            </button>
+                          </div>
+                        )}
+                      </section>
+                    </div>
+                    <ReadingCalendar
+                      library={data}
+                      month={month}
+                      setMonth={setMonth}
+                      selected={selected}
+                      setSelected={setSelected}
+                      onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                      onOpenBook={setDetail}
+                      today={today}
+                    />
                   </div>
-                  <ReadingCalendar
+                  <QueuedBooks library={data} renderBook={bookCard} />
+                  <RecentCompletedBooks
                     library={data}
-                    month={month}
-                    setMonth={setMonth}
-                    selected={selected}
-                    setSelected={setSelected}
-                    onEdit={(cycle) => setEditor({ kind: "date", cycle })}
-                    onOpenBook={setDetail}
                     today={today}
+                    renderBook={bookCard}
                   />
-                </div>
+                </>
               )}
-              {view === "books" && (
+              {(view === "books" || view === "shelves") && (
                 <>
                   <div className="book-toolbar">
                     <div className="book-view-actions">
@@ -1116,7 +1141,11 @@ export function LibraryApp({
                   ) : (
                     <div className="panel empty-state">
                       <LibraryBig />
-                      <h3>첫 번째 책을 들여놓으세요</h3>
+                      <h3>
+                        {shelfFilter !== "all"
+                          ? "이 서재에 담긴 책이 없습니다"
+                          : "첫 번째 책을 들여놓으세요"}
+                      </h3>
                       <p>
                         서지 정보와 보관 위치를 등록하고 독서 기록을 시작할 수
                         있습니다.
@@ -1291,13 +1320,15 @@ export function LibraryApp({
                 ))}
             </>
           )}
-          {remote && view === "books" && catalog.error && (
-            <p role="alert" className="error">
-              {catalog.error}{" "}
-              <button onClick={catalog.reload}>다시 조회</button>
-            </p>
-          )}
-          {view === "books" && (
+          {remote &&
+            (view === "books" || view === "shelves") &&
+            catalog.error && (
+              <p role="alert" className="error">
+                {catalog.error}{" "}
+                <button onClick={catalog.reload}>다시 조회</button>
+              </p>
+            )}
+          {(view === "books" || view === "shelves") && (
             <PageNavigation
               label="소장 도서"
               paging={bookPaging}

@@ -5,6 +5,7 @@ import {
   pageTopicMaterials,
 } from "../../lib/topic-materials";
 import { categoryName } from "../../lib/catalog";
+import { recentCompletedCycles } from "../../lib/recent-reading";
 import {
   bookSearchFields,
   memoSearchFields,
@@ -377,30 +378,32 @@ export function queryReading(data: LocalIndex, input: unknown) {
         .string()
         .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
         .optional(),
+      recentThrough: z.string().date().optional(),
       ...paging,
     })
     .parse(input);
-  const rows = activeCycles(data)
-    .filter(
-      (c) =>
-        (!p.id || c.id === p.id) &&
-        (!p.book || c.bookId === p.book) &&
-        (!p.date || c.completedOn === p.date) &&
-        (!p.completedMonth ||
-          (c.status === "completed" &&
-            !!c.completedOn?.startsWith(p.completedMonth + "-"))),
-    )
-    .sort((a, b) =>
-      p.completedMonth
-        ? binaryCompare(a.completedOn!, b.completedOn!) ||
-          binaryCompare(a.id, b.id)
-        : a.completedOn === null && b.completedOn !== null
-          ? -1
-          : b.completedOn === null && a.completedOn !== null
-            ? 1
-            : binaryCompare(b.completedOn ?? "", a.completedOn ?? "") ||
-              binaryCompare(a.id, b.id),
-    );
+  const filtered = activeCycles(data).filter(
+    (c) =>
+      (!p.id || c.id === p.id) &&
+      (!p.book || c.bookId === p.book) &&
+      (!p.date || c.completedOn === p.date) &&
+      (!p.completedMonth ||
+        (c.status === "completed" &&
+          !!c.completedOn?.startsWith(p.completedMonth + "-"))),
+  );
+  const rows = p.recentThrough
+    ? recentCompletedCycles(filtered, p.recentThrough)
+    : filtered.sort((a, b) =>
+        p.completedMonth
+          ? binaryCompare(a.completedOn!, b.completedOn!) ||
+            binaryCompare(a.id, b.id)
+          : a.completedOn === null && b.completedOn !== null
+            ? -1
+            : b.completedOn === null && a.completedOn !== null
+              ? 1
+              : binaryCompare(b.completedOn ?? "", a.completedOn ?? "") ||
+                binaryCompare(a.id, b.id),
+      );
   const items = rows.slice(p.offset, p.offset + p.limit),
     ids = new Set(items.map((c) => c.bookId));
   return {
