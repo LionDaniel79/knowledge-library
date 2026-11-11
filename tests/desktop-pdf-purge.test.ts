@@ -145,6 +145,23 @@ it("previews exact unreferenced outside-root metadata without writing or exposin
       .planHash,
   ).toBe(p.planHash);
 });
+it("keeps the reviewed plan identical across database session time zones", async () => {
+  const x = await fixture();
+  try {
+    await f.db.query("SET TIME ZONE 'UTC'");
+    const first = await previewDesktopPdfPurge(f.db, x.owner, {
+      manifestId: x.manifestId,
+    });
+    await f.db.query("SET TIME ZONE 'Asia/Seoul'");
+    const restored = await previewDesktopPdfPurge(f.db, x.owner, {
+      manifestId: x.manifestId,
+    });
+    expect(restored.allowed).toEqual(first.allowed);
+    expect(restored.planHash).toBe(first.planHash);
+  } finally {
+    await f.db.query("SET TIME ZONE 'UTC'");
+  }
+});
 it("purges metadata transactionally, retains identity blocks, emits tombstones, and replays the same request", async () => {
   const x = await fixture(),
     resourceId = randomUUID();

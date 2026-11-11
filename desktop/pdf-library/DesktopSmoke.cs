@@ -7,10 +7,36 @@ using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
 
 partial class PdfDesktop {
+    internal int[] CatalogSmokePids=new int[0];
+    static string SmokeVisibleText(DependencyObject root){
+        var text=root as System.Windows.Controls.TextBlock;var result=text==null?"":text.Text;
+        foreach(var child in LogicalTreeHelper.GetChildren(root)){var node=child as DependencyObject;if(node!=null)result+="\n"+SmokeVisibleText(node);}
+        return result;
+    }
+    async Task CheckCatalogSmoke(){
+        var mode=launchConfiguration==null?"":Val(launchConfiguration,"catalogSmokeProbe");
+        if(mode.Length==0)return;
+        var file=Path.Combine(data,"catalog-sidecar-probe.json");
+        if(mode=="invalid"){
+            await Task.Delay(250);
+            if(File.Exists(file))throw new Exception("Invalid optional collector configuration started a process.");
+            var text=SmokeVisibleText(this);
+            if(!text.Contains("서지 보완") || !text.Contains("설정"))throw new Exception("Invalid collector configuration must show a safe status message.");
+            if(text.Contains("secret-sentinel") || text.Contains("missing-node.exe"))throw new Exception("Collector configuration details leaked to the UI.");
+            return;
+        }
+        for(int i=0;i<100 && !File.Exists(file);i++)await Task.Delay(50);
+        if(!File.Exists(file))throw new Exception("Optional collector did not start with the native app.");
+        var probe=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file));
+        CatalogSmokePids=new[]{Convert.ToInt32(probe["parent"]),Convert.ToInt32(probe["child"])};
+        if((bool)probe["unsafeEnvironment"] || !(bool)probe["validArguments"])throw new Exception("Collector host inherited secrets or received incorrect arguments.");
+        foreach(int pid in CatalogSmokePids)using(var process=System.Diagnostics.Process.GetProcessById(pid))if(process.HasExited)throw new Exception("Collector process exited before native shutdown.");
+    }
     public async Task Inspect(string screenshot){
         if(!Title.Contains("PDF 서재"))throw new Exception("Standalone management UI is missing.");
         if(File.Exists(credentialFile) && ReadCredential()!="klw_"+new string('a',43))throw new Exception("Synthetic DPAPI key could not be read by desktop app.");
         backgroundTimer.Stop();await SetPaused(true);
+        await CheckCatalogSmoke();
         var catalogNotice=Path.Combine(data,"catalog-request.json");
         NotifyCatalog(0);
         if(File.Exists(catalogNotice))throw new Exception("No-op web sync must not wake the collector.");
@@ -47,12 +73,14 @@ partial class PdfDesktop {
         using(var f=new FileStream(screenshot,FileMode.CreateNew))enc.Save(f);
         Search();Cancel();await Task.Delay(300);
         if(current!=null && !current.HasExited)throw new Exception("Worker cancellation failed.");
+        await CheckCatalogSmoke();
         scanQueued=false;
         var first=Directory.GetFiles(root,"*.pdf",SearchOption.AllDirectories)[0];
         var added=Path.Combine(root,"UI smoke new copy.pdf");File.Copy(first,added);
         await Task.Delay(600);if(!scanQueued)throw new Exception("New PDF watcher did not queue a scan.");
         await SetPaused(true);backgroundTimer.Start();Close();
         if(IsVisible || exiting || tray==null || !backgroundTimer.IsEnabled)throw new Exception("Closing must keep background tray lifetime.");
+        await CheckCatalogSmoke();
         ShowFromTray();backgroundTimer.Stop();
         Console.WriteLine("PASS WPF "+(index.Length==0?"no-index OCR":"legacy overlay")+" search/render/cancel/import/queue/watcher/tray");
     }
@@ -74,6 +102,10 @@ class DesktopSmoke {
         app.Run(window);
         if(exitPid>0)try{using(var child=System.Diagnostics.Process.GetProcessById(exitPid)){if(!child.WaitForExit(2500)){Console.Error.WriteLine("Explicit Exit left a background worker alive.");result=1;}}}catch(ArgumentException){}
         if(result==0)Console.WriteLine("PASS explicit Exit stopped worker process");
+        foreach(int pid in window.CatalogSmokePids)try{using(var process=System.Diagnostics.Process.GetProcessById(pid)){
+            if(!process.WaitForExit(2500)){Console.Error.WriteLine("Explicit Exit left an optional collector process alive.");result=1;process.Kill();process.WaitForExit(2500);}
+        }}catch(ArgumentException){}
+        if(result==0 && window.CatalogSmokePids.Length>0)Console.WriteLine("PASS optional collector minimal environment/search cancel/tray lifetime/Exit process tree");
         return result;
     }
 }

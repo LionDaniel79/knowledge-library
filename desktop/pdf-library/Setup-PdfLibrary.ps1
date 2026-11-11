@@ -24,7 +24,24 @@ foreach($target in @($install,$pdfRoot)){
 }
 $marker=Join-Path $install 'pdf-library-install.json'
 if((Test-Path -LiteralPath $install) -and !(Test-Path -LiteralPath $marker)){throw '다른 파일을 보호하기 위해 새 빈 설치 경로를 지정하세요.'}
-if(Test-Path -LiteralPath $marker){$old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json;if($old.application -ne 'KnowledgeLibrary.PdfLibrary'){throw 'PDF 서재 설치 소유 정보를 확인하지 못했습니다.'}}
+$previousCatalog=$null
+$previousState=$null
+if(Test-Path -LiteralPath $marker){
+ $old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json
+ if($old.application -ne 'KnowledgeLibrary.PdfLibrary'){throw 'PDF 서재 설치 소유 정보를 확인하지 못했습니다.'}
+ $previousConfiguration=Join-Path $install 'library.json'
+ if(Test-Path -LiteralPath $previousConfiguration -PathType Leaf){
+  try{$savedConfiguration=Get-Content -LiteralPath $previousConfiguration -Raw -Encoding UTF8|ConvertFrom-Json;if($savedConfiguration.catalogConfiguration -is [string] -and ![string]::IsNullOrWhiteSpace($savedConfiguration.catalogConfiguration)){$previousCatalog=$savedConfiguration.catalogConfiguration};if($savedConfiguration.directory -is [string] -and ![string]::IsNullOrWhiteSpace($savedConfiguration.directory)){$previousState=[IO.Path]::GetFullPath($savedConfiguration.directory)}}catch{throw '기존 설치 설정을 읽지 못했습니다. 기존 관리 자료를 먼저 확인하세요.'}
+ }
+}
+$state=Join-Path $install 'state'
+if($previousState){
+ $state=$previousState.TrimEnd('\')
+ if(!(Test-Path -LiteralPath $state -PathType Container)){throw '기존 관리 폴더를 찾지 못했습니다. 저장 장치를 연결한 뒤 다시 설치하세요.'}
+ if($state.Equals($pdfRoot,[StringComparison]::OrdinalIgnoreCase) -or $state.StartsWith($pdfRoot+'\',[StringComparison]::OrdinalIgnoreCase)){throw '기존 관리 폴더는 PDF 저장소 밖에 있어야 합니다.'}
+ $parent=$state
+ while($parent){if((Test-Path -LiteralPath $parent) -and ((Get-Item -LiteralPath $parent -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw '기존 관리 폴더의 실제 경로를 확인하세요.'};$parent=[IO.Path]::GetDirectoryName($parent)}
+}
 [IO.Directory]::CreateDirectory($install)|Out-Null
 # Current-user private state; never changes permissions on the PDF root or old installation.
 # Build only the private DACL. Reapplying a descriptor read by Get-Acl can
@@ -40,7 +57,7 @@ if($PSVersionTable.PSEdition -eq 'Core'){
  (Get-Item -LiteralPath $install -Force).SetAccessControl($acl)
 }
 @{application='KnowledgeLibrary.PdfLibrary';version=1;setupState='preparing'}|ConvertTo-Json|Set-Content -LiteralPath $marker -Encoding UTF8
-$state=Join-Path $install 'state';[IO.Directory]::CreateDirectory($state)|Out-Null
+[IO.Directory]::CreateDirectory($state)|Out-Null
 $release=Join-Path $install ('releases\'+[DateTime]::UtcNow.ToString('yyyyMMddHHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8))
 $app=Join-Path $release 'desktop\pdf-library';$scripts=Join-Path $release 'scripts'
 [IO.Directory]::CreateDirectory($app)|Out-Null;[IO.Directory]::CreateDirectory($scripts)|Out-Null
@@ -78,7 +95,9 @@ if($LASTEXITCODE){throw 'PDF/OCR 도구가 필요합니다. Python 3.12 이상�
 $exe=Join-Path $app 'PdfDesktop.exe'
 & (Join-Path $app 'Build.ps1') -Output $exe
 $config=Join-Path $install 'library.json'
-@{version=1;python=$interpreter;worker=(Join-Path $app 'worker.py');index=$Index;root=$pdfRoot;directory=$state} | ConvertTo-Json | Set-Content -LiteralPath $config -Encoding UTF8
+$configuration=@{version=1;python=$interpreter;worker=(Join-Path $app 'worker.py');index=$Index;root=$pdfRoot;directory=$state}
+if($previousCatalog){$configuration.catalogConfiguration=$previousCatalog}
+$configuration|ConvertTo-Json|Set-Content -LiteralPath $config -Encoding UTF8
 $files=Get-ChildItem -LiteralPath $release -Recurse -File | ForEach-Object {[pscustomobject]@{path=$_.FullName.Substring($release.Length+1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}}
 @{application='KnowledgeLibrary.PdfLibrary';version=1;setupState='ready';installedAt=[DateTime]::UtcNow.ToString('o');release=$release;files=@($files)}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $marker -Encoding UTF8
 $shell=New-Object -ComObject WScript.Shell
