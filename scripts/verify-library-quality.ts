@@ -1,11 +1,9 @@
-/** Read-only acceptance checks against the owner's real catalog and local page index. */
+/** Read-only acceptance checks against the owner's real catalog. */
 import { Pool } from "pg";
 import { writeFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { searchLibrary } from "../src/server/library-search";
-import { readPdfPage, searchPdfPages } from "../src/server/pdf-index";
 import { compactTitle } from "../src/lib/bibliography";
-import { filterOwnedPdfHits } from "../src/local/curation/review-scope";
 const args = process.argv.slice(2),
   output = args[args.indexOf("--output") + 1];
 if (!args.includes("--output") || !isAbsolute(output))
@@ -20,7 +18,6 @@ const report: any = {
   writes: 0,
   aiCalls: 0,
   catalog: [],
-  pages: [],
 };
 const c = await pool.connect();
 try {
@@ -61,50 +58,8 @@ try {
       [owner],
     )
   ).rows[0];
-  const documents = (
-    await c.query(
-      "SELECT d.id,d.owner_id,b.owner_id AS book_owner_id,d.processing_scope FROM library_documents d JOIN library_books b ON b.id=d.book_id AND b.owner_id=d.owner_id WHERE d.owner_id=$1",
-      [owner],
-    )
-  ).rows;
   await c.query("COMMIT");
-  for (const query of [
-    "하이델베르크",
-    "삼위일체",
-    "정서중심",
-    "원자론",
-    "기독교강요",
-  ]) {
-    console.log(JSON.stringify({ stage: "pdf", query }));
-    const start = performance.now(),
-      hits = filterOwnedPdfHits(owner, searchPdfPages(query), documents);
-    const checked = hits.slice(0, 5).map((h) => {
-      const p = readPdfPage(h.documentId, h.pageNumber);
-      return {
-        documentId: h.documentId,
-        page: h.pageNumber,
-        method: h.extractionMethod,
-        quoteMatchesStoredPage: !!p && String(p.text).includes(h.quote),
-        signatureMatches: p?.signature === h.signature,
-      };
-    });
-    report.pages.push({
-      query,
-      expectedHit: query !== "정서중심",
-      durationMs: Math.round(performance.now() - start),
-      found: hits.length,
-      checked,
-    });
-  }
-  report.complete =
-    report.catalog.every((r: any) => r.matching > 0) &&
-    report.pages.every(
-      (r: any) =>
-        (!r.expectedHit || r.found > 0) &&
-        r.checked.every(
-          (p: any) => p.quoteMatchesStoredPage && p.signatureMatches,
-        ),
-    );
+  report.complete = report.catalog.every((r: any) => r.matching > 0);
   await writeFile(output, JSON.stringify(report, null, 2), {
     flag: "wx",
     mode: 0o600,
@@ -113,9 +68,7 @@ try {
   if (!report.complete) process.exitCode = 1;
 } catch {
   await c.query("ROLLBACK").catch(() => {});
-  console.error(
-    "실자료 검색 검수 중단. 비공개 설정과 로컬 색인 연결을 확인하세요.",
-  );
+  console.error("실자료 검색 검수 중단. 비공개 DB 설정을 확인하세요.");
   process.exitCode = 1;
 } finally {
   c.release();

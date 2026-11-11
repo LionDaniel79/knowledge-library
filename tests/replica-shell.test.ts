@@ -18,7 +18,6 @@ it("prepares only a versioned anonymous public shell and assets, and never cache
         version: "test-build",
         assets: [
           "/_next/static/main.js",
-          "/_next/static/chunks/app/reader/[id]/page.js",
           "/_next/static/chunks/app/api/auth/[...path]/route.js",
         ],
       });

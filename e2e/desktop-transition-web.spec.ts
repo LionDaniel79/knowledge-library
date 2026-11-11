@@ -62,3 +62,22 @@ test("web library keeps PDF bibliography and locations without the retired PC or
   ).toHaveCount(0);
   expect(calls.filter((path) => path.startsWith("/api/pdf"))).toEqual([]);
 });
+
+test("removed PDF original endpoints and reader return 404 rather than legacy functionality", async ({
+  request,
+}) => {
+  for (const path of [
+    "/api/pdf",
+    "/api/pdf/citation",
+    "/api/pdf/import",
+    "/api/pdf/reprocess",
+    "/api/pdf/connection",
+    "/api/pdf/11111111-1111-4111-8111-111111111111/file",
+    "/api/pdf/11111111-1111-4111-8111-111111111111/page",
+    "/api/pc-access",
+    "/api/library-operations",
+    "/reader/11111111-1111-4111-8111-111111111111",
+  ]) {
+    expect((await request.get(path)).status(), path).toBe(404);
+  }
+});

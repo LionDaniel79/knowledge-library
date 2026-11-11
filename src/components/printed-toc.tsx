@@ -15,7 +15,7 @@ export function PrintedTocView({
       <p className="form-hint">PDF에서 찾은 목차 후보 · 원문 확인 필요</p>
       {stale && (
         <p className="notice">
-          PDF가 변경되어 이전 원문 링크를 사용할 수 없습니다.
+          PDF가 변경되었습니다. 당시 목차 발췌와 쪽수는 기록으로 보관합니다.
         </p>
       )}
       <details>

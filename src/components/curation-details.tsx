@@ -148,7 +148,7 @@ export function CurationDetails({
                 )}
                 {pdfOutlineSchema.safeParse(item.value).success && (
                   <span className="form-hint">
-                    한 줄에 한 항목을 적어 주세요. 페이지를 연결하려면 ‘서론 |
+                    한 줄에 한 항목을 적어 주세요. 쪽수를 기록하려면 ‘서론 |
                     12’처럼 입력합니다.
                   </span>
                 )}

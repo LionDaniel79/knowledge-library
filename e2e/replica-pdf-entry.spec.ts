@@ -7,7 +7,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {ReplicaEntry} from './src/components/replica/entry';window.mount=()=>createRoot(document.getElementById('root')).render(<ReplicaEntry available={true} initialView="pdf"/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {ReplicaEntry} from './src/components/replica/entry';window.mount=()=>createRoot(document.getElementById('root')).render(<ReplicaEntry available={true}/>);`,
         loader: "tsx",
         resolveDir: process.cwd(),
       },

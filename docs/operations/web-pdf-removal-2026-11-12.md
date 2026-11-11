@@ -1,0 +1,19 @@
+# Web PDF original-search removal
+
+The web library now manages PDF bibliography and stored reading/quotation records only. Full-text search, original files/pages, page navigation, viewer TOC, original excerpts and PC/Tailscale links are removed, including retired-route notice handlers. Removed routes return404; old `?view=pdf` bookmarks resolve only to the ordinary book catalog.
+
+Deleted dedicated PDF routes, reader page, web search worker/query/highlight/download helpers, OCR operations route and controller, unused import launcher/status code, viewer CSS, PC URL helpers, tracing configuration and obsolete tests. The private Next HTTP server installer/tray/launcher source is removed. Detached catalog/Logos workers keep DPAPI profile loading through `desktop/windows/runtime-profile.mjs` without web-login/PC-origin dependencies.
+
+Preserved PDF ownership format and bibliography CRUD, covers, shelves/tags, stored highlights/quotes/page numbers/source snapshots, reading cycles, connections and existing database schema. Metadata import/retention, duplicate-file identity/path validation, saved bibliographic TOC display and shared local metadata collector helpers remain. `pdf_chunk` source identifiers still parse for archive compatibility, but live page evidence retrieval is unavailable; this does not delete saved evidence.
+
+Native `desktop/pdf-library`, Python OCR/index modules, actual installed applications, scheduled tasks, original PDFs, SQLite indexes and private connection profiles were not changed. Shared root/index/Python settings remain for local metadata tools; web PC-origin settings were removed from the example environment. No production data or migrations are required.
+
+Verification includes retained PDF bibliography/highlight/source/page/reading tests, negative menu/link/API/PC-call browser tests,404 checks for all removed endpoint families and remaining catalog/Logos Node tests. Production build and typecheck are rerun after regenerating route types; prior generated route artifacts are kept outside source in ignored build scratch. Historical documentation remains labelled as history; current README and PC instructions point to the independent Windows program.
+## Final verification
+
+- Full unit suite:821 passed,4 existing conditional skips (216 files passed,2 skipped).
+- Browser:13 distinct related tests passed, including404 routes, PDF bibliography, reading, connected-note reasons, narrow layouts and manual device sync.
+- Remaining detached catalog/Logos Node tests:38 passed.
+- Typecheck, production build, formatting and diff checks passed. Independent review found no blockers.
+- Initial failures were obsolete OCR-network expectations and a removed test still present in an already running test list; final suite rerun against the fixed source tree passed.
+- Real phone/tablet hardware and remote GitHub allowance-limited CI were not run. No live DB migration/write or original PDF/SQLite/OCR operation was performed.

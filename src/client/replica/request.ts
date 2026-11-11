@@ -160,8 +160,6 @@ export async function libraryRequest(
     method !== "GET" &&
     response.ok &&
     url.pathname.startsWith("/api/") &&
-    // OCR candidates live only in the PC's SQLite index.
-    url.pathname !== "/api/pdf/reprocess" &&
     !url.pathname.startsWith("/api/auth/")
   ) {
     const task = runtime.sync({ reason: "server-save" }).catch(() => {});

@@ -27,8 +27,7 @@ export function PdfOutlineView({
         <summary>목차 {outline.entries.length}개 펼치기</summary>
         {stale && (
           <p className="notice">
-            PDF가 변경되어 이전 목차의 페이지 이동을 중지했습니다. 당시 목차는
-            기록으로 보관합니다.
+            PDF가 변경되었습니다. 당시 목차와 쪽수는 기록으로 보관합니다.
           </p>
         )}
         <ol>

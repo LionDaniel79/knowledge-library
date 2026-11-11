@@ -11,7 +11,7 @@ import { dirname, basename, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { runtimeEnvironment, unlockProfile } from "./start-private-pc.mjs";
+import { runtimeEnvironment, unlockProfile } from "./runtime-profile.mjs";
 import { catalogWorkerEnvironment } from "./catalog-worker.mjs";
 import { startDetachedLogos } from "./logos-detached.mjs";
 

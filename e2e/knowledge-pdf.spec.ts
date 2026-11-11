@@ -83,7 +83,7 @@ test("connected memo edits preserve reasons and writing bundles replace retired 
     page.getByRole("button", { name: "설교·논문 자료", exact: true }),
   ).toHaveCount(0);
 });
-test("retired originals expose no private data while knowledge endpoints still require login", async ({
+test("removed originals return 404 while knowledge endpoints still require login", async ({
   request,
 }) => {
   const id = "00000000-0000-4000-a000-000000000001";
@@ -93,6 +93,6 @@ test("retired originals expose no private data while knowledge endpoints still r
     `/api/pdf/${id}/page?page=1`,
     `/api/pdf/${id}/cover`,
   ])
-    expect((await request.get(path)).status()).toBe(410);
+    expect((await request.get(path)).status()).toBe(404);
   expect((await request.get("/api/knowledge")).status()).toBe(401);
 });

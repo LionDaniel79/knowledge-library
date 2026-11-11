@@ -4,7 +4,6 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   testMatch: [
-    "pdf-search-phrases.spec.ts",
     "replica-pdf-entry.spec.ts",
     "thought-bundle-delete.spec.ts",
     "shared-thought-workflow.spec.ts",

@@ -9,7 +9,6 @@ import {
   type SourceRef,
 } from "../lib/curation";
 import { LibraryError, type Database, type Executor } from "./library-store";
-import { readPdfPage } from "./pdf-index";
 import { pdfOutlineSchema } from "../lib/pdf-outline";
 import { printedTocSchema, samePrintedTocSource } from "../lib/printed-toc";
 import { currentOutlineDocumentSql } from "./curation-freshness";
@@ -52,32 +51,13 @@ export async function readCurationSource(
 ) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   if (source.kind === "pdf_chunk") {
-    const [id, p] = source.id.split(":");
-    z.string().uuid().parse(id);
-    const page = Number(p);
-    if (!Number.isSafeInteger(page) || page < 1)
-      throw new LibraryError(400, "페이지를 확인해 주세요.");
-    const doc = (
-      await db.query(
-        "SELECT id FROM library_active_documents WHERE owner_id=$1 AND id=$2 AND processing_scope='full'",
-        [owner, id],
-      )
-    ).rows[0];
-    if (!doc) throw new LibraryError(404, "자료를 찾을 수 없습니다.");
-    const row = readPdfPage(id, page);
-    if (
-      !row ||
-      ["missing", "changed", "error", "locked"].includes(String(row.status)) ||
-      String(row.method).startsWith("ocr_")
-    )
-      throw new LibraryError(409, "원문을 확인할 수 없습니다.");
-    const text = String(row.text);
-    return {
-      text,
-      version: String(row.signature) + ":" + contentHash(text),
-      coverage: "partial",
-    };
+    // Existing stored citations remain in archives/history; live page access is retired.
+    throw new LibraryError(
+      410,
+      "PDF 원문 페이지 접근은 지원하지 않습니다. 저장된 인용과 쪽수는 보존됩니다.",
+    );
   }
+
   z.string().uuid().parse(source.id);
   const row =
     source.kind === "note"
