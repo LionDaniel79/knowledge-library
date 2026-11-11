@@ -15,6 +15,7 @@ export function catalogWorkerEnvironment(env) {
     "Path",
     "DATABASE_URL",
     "LIBRARY_OWNER_EMAIL",
+    "LIBRARY_CATALOG_OWNER_ID",
     "YES24_API_KEY",
     "DATA4LIBRARY_KEY",
     "DATA4LIBRARY_DAILY_LIMIT",

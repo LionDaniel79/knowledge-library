@@ -191,6 +191,17 @@ stops the complete process tree. Missing or invalid optional settings only show 
 safe status and leave local search/OCR available. Setup preserves this one string
 on an owned-install upgrade; a new installation does not enable it automatically.
 
+An owned-install upgrade also preserves an existing separate private management
+directory. Missing storage or a reparse path fails safely instead of silently
+initializing another state database. An internal SSD state directory is suitable
+when the PDF/application drive has slow synchronous SQLite commits.
+
+The optional Logos collector accepts `LIBRARY_CATALOG_OWNER_ID` only from the
+trusted DPAPI operator profile. This lets the restricted role complete books
+without reading authentication tables. Web requests cannot supply this setting.
+Malformed provider JSON is deferred per resource with two scheduled retries;
+after three failures it stays pending for review, allowing other books to finish.
+
 `Test-Setup.ps1 -SmokeExecutable ...` uses a temporary fake Node helper and runtime
 configuration to check secret-environment isolation, search cancellation, tray
 lifetime, child-tree termination and invalid-setting fallback without unlocking

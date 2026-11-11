@@ -13,6 +13,26 @@ import { collectBookReference } from "../local/curation/catalog";
 import { isbn13 } from "../lib/bibliography";
 import { CatalogQuotaError } from "../local/curation/api-quota";
 
+/** Trusted local operator configuration; never accept this value from a web request. */
+export async function resolveLogosOwner(
+  db: Pick<Executor, "query">,
+  configured: { id?: string; email?: string },
+): Promise<string> {
+  if (configured.id !== undefined) {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(configured.id))
+      throw Error("서지 보완 소유자 설정을 확인하세요.");
+    return configured.id;
+  }
+  const owner = (
+    await db.query(
+      'SELECT id::text FROM neon_auth."user" WHERE lower(email)=lower($1)',
+      [configured.email],
+    )
+  ).rows[0]?.id;
+  if (!owner) throw Error("소유자를 확인하지 못했습니다.");
+  return owner;
+}
+
 export const logosCompletionFingerprint = (book: LogosCompletionBook) =>
   createHash("sha256")
     .update(
