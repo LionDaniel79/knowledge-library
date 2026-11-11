@@ -1,6 +1,7 @@
 "use client";
 import { useId, useState } from "react";
 import type { Book, Note, Library } from "@/lib/domain";
+import { formats, formatNames } from "@/lib/domain";
 import { categories, categoryName } from "@/lib/catalog";
 import { noteKindNames } from "@/lib/note-kinds";
 import { containsSearchField } from "@/lib/search-fields";
@@ -129,9 +130,11 @@ export function AdvancedSearch({
                   <option value="all">전체</option>
                   <option value="reading">읽는 중</option>
                   <option value="completed">완독</option>
-                  <option value="paper">종이책</option>
-                  <option value="ebook">전자책</option>
-                  <option value="pdf">PDF</option>
+                  {formats.map((format) => (
+                    <option key={format} value={format}>
+                      {formatNames[format]}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

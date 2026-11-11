@@ -70,7 +70,12 @@ it("imports only eligible Logos books by stable Resource ID and saves confirmed 
       ["단행본", "성경 주석"].sort(),
     );
     expect(
-      sources.every((s) => s.app === "Logos" && s.formats.includes("ebook")),
+      sources.every(
+        (s) =>
+          s.app === "Logos" &&
+          s.formats.includes("logos") &&
+          !s.formats.includes("ebook"),
+      ),
     ).toBe(true);
     expect((await previewLogos(fixture.db, owner, data)).alreadyImported).toBe(
       2,

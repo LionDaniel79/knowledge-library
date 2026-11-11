@@ -33,7 +33,16 @@ const queryInput = z.object({
     .default("all"),
   shelf: z.string().max(80).default("all"),
   filter: z
-    .enum(["all", "reading", "completed", "paper", "pdf", "ebook", "unknown"])
+    .enum([
+      "all",
+      "reading",
+      "completed",
+      "paper",
+      "logos",
+      "ebook",
+      "pdf",
+      "unknown",
+    ])
     .default("all"),
   topic: z
     .union([z.enum(["all", "unclassified"]), z.string().uuid()])
@@ -218,6 +227,7 @@ export async function readCatalogCounts(tx: Executor, owner: string) {
   ).rows;
   const formatCounts: Record<Format, number> = {
       paper: 0,
+      logos: 0,
       pdf: 0,
       ebook: 0,
       unknown: 0,

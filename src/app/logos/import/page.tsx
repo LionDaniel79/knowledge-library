@@ -117,7 +117,7 @@ export default function LogosImportPage() {
   }
   return (
     <main style={{ maxWidth: 900, margin: "3rem auto", padding: "1.5rem" }}>
-      <h1>로고스 전자책 등록 준비</h1>
+      <h1>로고스 도서 등록 준비</h1>
       <p>
         Logos의 Excel 2003 XML 내보내기를 선택하세요.
         주석·성경·설교집·사전·신학서·정기간행물 등 텍스트 자료는 포함하고,

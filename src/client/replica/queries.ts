@@ -96,7 +96,16 @@ const bookQuery = z.object({
     .default("all"),
   shelf: str("all", 80),
   filter: z
-    .enum(["all", "reading", "completed", "paper", "pdf", "ebook", "unknown"])
+    .enum([
+      "all",
+      "reading",
+      "completed",
+      "paper",
+      "logos",
+      "ebook",
+      "pdf",
+      "unknown",
+    ])
     .default("all"),
   topic: z
     .union([z.enum(["all", "unclassified"]), z.string().uuid()])

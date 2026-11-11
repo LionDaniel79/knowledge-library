@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
 import type { Book, Command, Library, Note, ReadingCycle } from "@/lib/domain";
+import { formats, formatNames } from "@/lib/domain";
 import { BookLookup } from "./book-lookup";
 import type { BookCandidate } from "@/lib/book-lookup";
 import { CoverInput } from "./cover-input";
@@ -373,44 +374,21 @@ export function LibraryForm({
               </div>
               <fieldset>
                 <legend>소장 형태</legend>
-                <label className="check-label">
-                  <input
-                    name="formats"
-                    type="checkbox"
-                    value="ebook"
-                    defaultChecked={book?.formats.includes("ebook")}
-                  />
-                  전자책
-                </label>
-                <label className="check-label">
-                  <input
-                    name="formats"
-                    type="checkbox"
-                    value="paper"
-                    defaultChecked={
-                      book ? book.formats.includes("paper") : true
-                    }
-                  />
-                  종이책
-                </label>
-                <label className="check-label">
-                  <input
-                    name="formats"
-                    type="checkbox"
-                    value="pdf"
-                    defaultChecked={book?.formats.includes("pdf")}
-                  />
-                  PDF
-                </label>
-                <label className="check-label">
-                  <input
-                    name="formats"
-                    type="checkbox"
-                    value="unknown"
-                    defaultChecked={book?.formats.includes("unknown")}
-                  />
-                  형식 확인 필요
-                </label>
+                {formats.map((format) => (
+                  <label className="check-label" key={format}>
+                    <input
+                      name="formats"
+                      type="checkbox"
+                      value={format}
+                      defaultChecked={
+                        book
+                          ? book.formats.includes(format)
+                          : format === "paper"
+                      }
+                    />
+                    {formatNames[format]}
+                  </label>
+                ))}
               </fieldset>
               <label>
                 보관 위치

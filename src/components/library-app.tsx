@@ -30,6 +30,8 @@ import {
 import {
   readingStats,
   formatNames,
+  formats,
+  orderedFormats,
   type Format,
   type Library,
   type ReadingCycle,
@@ -229,7 +231,7 @@ export function LibraryApp({
       : data.books.filter((b) => (b.category ?? "") === id).length;
   const formatCount = (format: Format) =>
     data.catalog
-      ? data.catalog.formatCounts[format]
+      ? (data.catalog.formatCounts[format] ?? 0)
       : data.books.filter((b) => b.formats.includes(format)).length;
   const detailBook = remote
     ? detailState?.id === detail && detailState.revision === data
@@ -565,7 +567,11 @@ export function LibraryApp({
       <strong>{book.title}</strong>
       <span>{book.author || "저자 미입력"}</span>
       <div className="shelf-meta">
-        <span>{book.formats.map((f) => formatNames[f]).join(" · ")}</span>
+        <span>
+          {orderedFormats(book.formats)
+            .map((f) => formatNames[f])
+            .join(" · ")}
+        </span>
         <b>
           {readingIds.has(book.id)
             ? "읽는 중"
@@ -896,8 +902,12 @@ export function LibraryApp({
                       <small>권</small>
                     </strong>
                     <p>
-                      전자책 {formatCount("ebook")} · 종이책{" "}
-                      {formatCount("paper")} · PDF {formatCount("pdf")}
+                      {formats
+                        .map(
+                          (format) =>
+                            `${formatNames[format]} ${formatCount(format)}`,
+                        )
+                        .join(" · ")}
                     </p>
                     <LibraryBig />
                   </div>
@@ -1029,10 +1039,10 @@ export function LibraryApp({
                         ["all", "전체"],
                         ["reading", "읽는 중"],
                         ["completed", "완독"],
-                        ["paper", "종이책"],
-                        ["pdf", "PDF"],
-                        ["ebook", "전자책"],
-                        ["unknown", "형식 확인 필요"],
+                        ...formats.map((format) => [
+                          format,
+                          formatNames[format],
+                        ]),
                       ].map(([id, label]) => (
                         <button
                           key={id}
@@ -1080,7 +1090,7 @@ export function LibraryApp({
                                 {book.publisher ? ` · ${book.publisher}` : ""}
                               </span>
                               <small>
-                                {book.formats
+                                {orderedFormats(book.formats)
                                   .map((f) => formatNames[f])
                                   .join(" · ")}
                                 {book.category
@@ -1502,7 +1512,9 @@ export function LibraryApp({
                 <dd>{detailBook.isbn || "미입력"}</dd>
                 <dt>소장 형태</dt>
                 <dd>
-                  {detailBook.formats.map((f) => formatNames[f]).join(" · ")}
+                  {orderedFormats(detailBook.formats)
+                    .map((f) => formatNames[f])
+                    .join(" · ")}
                 </dd>
                 <dt>분야</dt>
                 <dd>{categoryName(detailBook.category)}</dd>

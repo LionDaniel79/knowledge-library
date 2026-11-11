@@ -10,7 +10,13 @@ const client = await pool.connect();
 try {
   await client.query("BEGIN");
   await client.query(await readFile("db/001_library.sql", "utf8"));
-  await client.query(await readFile("db/002_ireaditnow.sql", "utf8"));
+  // 002 is a bootstrap upgrade. Replaying its obsolete format/kind constraints
+  // after later migrations would reject current books and notes.
+  await client.query(`DO $legacy_import_bootstrap$ BEGIN
+    IF to_regclass('public.library_imports') IS NULL THEN
+      ${await readFile("db/002_ireaditnow.sql", "utf8")}
+    END IF;
+  END $legacy_import_bootstrap$;`);
   await client.query(await readFile("db/003_reading_history.sql", "utf8"));
   await client.query(await readFile("db/004_pdf_library.sql", "utf8"));
   await client.query(await readFile("db/005_knowledge.sql", "utf8"));
@@ -62,6 +68,7 @@ try {
   await client.query(
     await readFile("db/040_desktop_pdf_purge_scope_evidence.sql", "utf8"),
   );
+  await client.query(await readFile("db/041_logos_format.sql", "utf8"));
   if (role) {
     await client.query(
       'REVOKE ALL ON library_desktop_purge_scope_evidence FROM "' + role + '"',
