@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,12 +12,14 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using System.Xml;
+using Microsoft.Win32.SafeHandles;
 using Forms=System.Windows.Forms;
 
 partial class PdfDesktop {
     readonly TextBlock libraryStatus=new TextBlock{Text="서재를 확인합니다…",TextWrapping=TextWrapping.Wrap};
     readonly TextBlock backgroundStatus=new TextBlock{Text="백그라운드 준비 중",TextWrapping=TextWrapping.Wrap};
     readonly TextBlock connectionStatus=new TextBlock{Text="웹 연결 선택 사항 · 로컬 검색은 연결 없이 사용할 수 있습니다.",TextWrapping=TextWrapping.Wrap};
+    readonly TextBlock catalogStatus=new TextBlock{Text="서지 보완 연결은 선택 사항입니다.",TextWrapping=TextWrapping.Wrap};
     readonly ProgressBar libraryProgress=new ProgressBar{Height=6,Minimum=0,Maximum=1};
     readonly ListBox libraryDocuments=new ListBox{Height=105};
     readonly Button pauseButton=new Button{Content="OCR 일시정지",Margin=new Thickness(3),Padding=new Thickness(9,4,9,4)};
@@ -24,6 +27,8 @@ partial class PdfDesktop {
     readonly DispatcherTimer backgroundTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(2)};
     WorkerJob backgroundJob,monitorJob;
     Process backgroundProcess;
+    WorkerJob catalogJob;
+    Process catalogProcess;
     Forms.NotifyIcon tray;
     FileSystemWatcher watcher;
     bool exiting,backgroundBusy,monitorBusy,paused,scanQueued=true,watcherFault,webSyncQueued,auditQueued;
@@ -54,7 +59,7 @@ partial class PdfDesktop {
         tools.Children.Add(Btn("웹 서지 일괄 등록",SyncWeb));
         tools.Children.Add(Btn("웹 연결 설정",ConfigureWeb));
         tools.Children.Add(Btn("종료",ExitApplication));
-        bar.Children.Add(libraryStatus);bar.Children.Add(libraryProgress);bar.Children.Add(backgroundStatus);bar.Children.Add(connectionStatus);
+        bar.Children.Add(libraryStatus);bar.Children.Add(libraryProgress);bar.Children.Add(backgroundStatus);bar.Children.Add(connectionStatus);bar.Children.Add(catalogStatus);
         bar.Children.Add(autoWeb);
         autoWeb.Checked+=(s,e)=>SaveConnection();autoWeb.Unchecked+=(s,e)=>SaveConnection();
         bar.Children.Add(libraryDocuments);
@@ -70,6 +75,7 @@ partial class PdfDesktop {
         if(File.Exists(connection))try{var saved=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(connection,Encoding.UTF8));webOrigin=Val(saved,"webOrigin");credentialFile=Val(saved,"credentialFile");autoWeb.IsChecked=Val(saved,"autoSync")=="True";}catch{connectionStatus.Text="웹 연결 설정을 다시 확인하세요.";}
         if(credentialFile.Length==0)credentialFile=Path.Combine(data,"web-device.dpapi");
         RefreshConnection();
+        StartCatalogSidecar();
         tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="전자도서관 PDF 서재",Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("PDF 서재 열기",null,(s,e)=>Dispatcher.BeginInvoke(new Action(ShowFromTray)));
@@ -195,7 +201,38 @@ partial class PdfDesktop {
         }
     }
     internal void ExitApplication(){if(exiting)return;exiting=true;StopManagement();Cancel();Close();Application.Current.Shutdown();}
+    void StartCatalogSidecar(){
+        object value;
+        if(launchConfiguration==null || !launchConfiguration.TryGetValue("catalogConfiguration",out value))return;
+        var configured=value as string;
+        if(String.IsNullOrWhiteSpace(configured)){if(value!=null)catalogStatus.Text="서지 보완 연결 설정을 확인해 주세요.";return;}
+        try{
+            var configuration=Path.GetFullPath(Path.IsPathRooted(configured)?configured:Path.Combine(Path.GetDirectoryName(configFile),configured));
+            var settings=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(configuration,Encoding.UTF8));
+            var node=Path.GetFullPath(Val(settings,"node"));var app=Path.GetFullPath(Val(settings,"app"));
+            var helper=Path.Combine(app,"desktop","windows","catalog-detached.mjs");
+            if(!File.Exists(node)||!Directory.Exists(app)||!File.Exists(helper))throw new InvalidOperationException();
+            catalogJob=new WorkerJob();
+            var process=CatalogHost.Start(node,helper,configuration,Path.Combine(data,"catalog-request.json"),app,catalogJob.Name);
+            catalogProcess=process;
+            process.Exited+=(s,e)=>{try{Dispatcher.BeginInvoke(new Action(()=>{
+                if(exiting || catalogProcess!=process)return;
+                catalogStatus.Text="서지 보완이 중지되었습니다. 연결 설정을 확인한 뒤 앱을 다시 열어 주세요.";
+                StopCatalogSidecar();
+            }));}catch(InvalidOperationException){}};
+            process.EnableRaisingEvents=true;
+            catalogStatus.Text="서지 보완 연결 중 · 새 웹 등록 알림이 있으면 처리합니다.";
+        }catch{
+            StopCatalogSidecar();
+            catalogStatus.Text="서지 보완을 시작하지 못했습니다. 연결 설정을 확인해 주세요.";
+        }
+    }
+    void StopCatalogSidecar(){
+        if(catalogJob!=null){catalogJob.Dispose();catalogJob=null;}
+        if(catalogProcess!=null){catalogProcess.Dispose();catalogProcess=null;}
+    }
     void StopManagement(){
+        StopCatalogSidecar();
         backgroundTimer.Stop();if(watcher!=null){watcher.Dispose();watcher=null;}if(backgroundJob!=null){backgroundJob.Dispose();backgroundJob=null;}if(monitorJob!=null){monitorJob.Dispose();monitorJob=null;}if(tray!=null){tray.Visible=false;tray.Dispose();tray=null;}
     }
     static bool ValidOrigin(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&uri.Scheme=="https"&&uri.AbsolutePath=="/"&&uri.Query.Length==0&&uri.Fragment.Length==0&&uri.UserInfo.Length==0;}
@@ -262,5 +299,64 @@ partial class PdfDesktop {
             await RefreshLibrary();
         }catch{connectionStatus.Text="웹 등록을 완료하지 못했습니다. 연결과 기기 인증을 확인한 뒤 다시 시도하세요. 대기 목록은 보존됩니다.";}
         finally{if(req!=null)req.Remove("token");}
+    }
+}
+
+// Attach the suspended Node host before it can create its first child. The
+// existing WorkerJob remains the sole lifetime owner; closing its handle kills
+// the host and every descendant. Only Windows runtime paths reach this host.
+static class CatalogHost {
+    [StructLayout(LayoutKind.Sequential)]
+    struct Security {public int length;public IntPtr descriptor;[MarshalAs(UnmanagedType.Bool)] public bool inherit;}
+    [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
+    struct Startup {public int size;public string reserved,desktop,title;public uint x,y,width,height,charsX,charsY,fill,flags;public short show,reservedSize;public IntPtr reservedPointer,input,output,error;}
+    [StructLayout(LayoutKind.Sequential)]
+    struct Information {public IntPtr process,thread;public uint processId,threadId;}
+    [DllImport("kernel32",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern SafeFileHandle OpenJobObjectW(uint access,bool inherit,string name);
+    [DllImport("kernel32",SetLastError=true)]
+    static extern bool AssignProcessToJobObject(SafeFileHandle job,IntPtr process);
+    [DllImport("kernel32",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string name,uint access,uint share,ref Security security,uint creation,uint flags,IntPtr template);
+    [DllImport("kernel32",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern bool CreateProcessW(string application,StringBuilder command,IntPtr processSecurity,IntPtr threadSecurity,bool inherit,uint flags,IntPtr environment,string directory,ref Startup startup,out Information information);
+    [DllImport("kernel32",SetLastError=true)] static extern uint ResumeThread(IntPtr thread);
+    [DllImport("kernel32",SetLastError=true)] static extern bool TerminateProcess(IntPtr process,uint code);
+    [DllImport("kernel32")] static extern bool CloseHandle(IntPtr handle);
+    static string Quote(string value){
+        var result=new StringBuilder("\"");int slashes=0;
+        foreach(char c in value){if(c=='\\'){slashes++;continue;}result.Append('\\',c=='\"'?slashes*2+1:slashes);result.Append(c);slashes=0;}
+        result.Append('\\',slashes*2);return result.Append('"').ToString();
+    }
+    static IntPtr EnvironmentBlock(){
+        var allowed=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var key in new[]{"SystemRoot","SYSTEMROOT","WINDIR","USERPROFILE","LOCALAPPDATA","APPDATA","PATH","Path","TEMP","TMP"}){
+            var value=Environment.GetEnvironmentVariable(key);if(!String.IsNullOrEmpty(value))allowed[key]=value;
+        }
+        return Marshal.StringToHGlobalUni(String.Join("\0",allowed.OrderBy(pair=>pair.Key,StringComparer.OrdinalIgnoreCase).Select(pair=>pair.Key+"="+pair.Value))+"\0\0");
+    }
+    public static Process Start(string node,string helper,string configuration,string notification,string directory,string jobName){
+        var security=new Security{length=Marshal.SizeOf(typeof(Security)),inherit=true};
+        using(var job=OpenJobObjectW(1,false,jobName))using(var nul=CreateFileW("NUL",0xc0000000,3,ref security,3,0,IntPtr.Zero)){
+            if(job.IsInvalid||nul.IsInvalid)throw new InvalidOperationException();
+            var startup=new Startup{size=Marshal.SizeOf(typeof(Startup)),flags=0x100,input=nul.DangerousGetHandle(),output=nul.DangerousGetHandle(),error=nul.DangerousGetHandle()};
+            var command=new StringBuilder(String.Join(" ",new[]{node,helper,"--config",configuration,"--notification",notification}.Select(Quote)));
+            var environment=EnvironmentBlock();var information=new Information();Process process=null;
+            try{
+                // CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED
+                if(!CreateProcessW(node,command,IntPtr.Zero,IntPtr.Zero,true,0x08000404,environment,directory,ref startup,out information))throw new InvalidOperationException();
+                if(!AssignProcessToJobObject(job,information.process))throw new InvalidOperationException();
+                process=Process.GetProcessById((int)information.processId);var held=process.Handle;
+                if(ResumeThread(information.thread)==0xffffffff)throw new InvalidOperationException();
+                return process;
+            }catch{
+                if(information.process!=IntPtr.Zero)TerminateProcess(information.process,1);
+                if(process!=null)process.Dispose();throw;
+            }finally{
+                if(information.thread!=IntPtr.Zero)CloseHandle(information.thread);
+                if(information.process!=IntPtr.Zero)CloseHandle(information.process);
+                Marshal.FreeHGlobal(environment);
+            }
+        }
     }
 }

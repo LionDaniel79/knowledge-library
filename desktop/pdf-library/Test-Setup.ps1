@@ -6,12 +6,18 @@ try {
  $target=Join-Path $fixture 'Installed'
  & "$PSScriptRoot/Setup-PdfLibrary.ps1" -Python $Python -Root $root -InstallRoot $target -NoShortcut
  $config=Get-Content -Raw -Encoding UTF8 (Join-Path $target 'library.json')|ConvertFrom-Json
+ if($config.PSObject.Properties['catalogConfiguration']){throw 'A new installation must not configure a collector automatically'}
+ $retainedCatalog=Join-Path $fixture 'catalog 구성.json'
+ $config|Add-Member -NotePropertyName catalogConfiguration -NotePropertyValue $retainedCatalog
+ $config|Add-Member -NotePropertyName unapprovedRuntimeField -NotePropertyValue 'must-not-copy'
+ $config|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $target 'library.json') -Encoding UTF8
  $preserved=Join-Path $config.directory 'upgrade-preservation.txt'
  [IO.File]::WriteAllText($preserved,'preserve existing private state')
  $originalState=$config.directory
  & "$PSScriptRoot/Setup-PdfLibrary.ps1" -Python $Python -Root $root -InstallRoot $target -NoShortcut
  $config=Get-Content -Raw -Encoding UTF8 (Join-Path $target 'library.json')|ConvertFrom-Json
  if($config.directory -ne $originalState -or [IO.File]::ReadAllText($preserved) -ne 'preserve existing private state'){throw 'Upgrade changed private state'}
+ if($config.catalogConfiguration -ne $retainedCatalog -or $config.PSObject.Properties['unapprovedRuntimeField']){throw 'Upgrade did not preserve only the optional collector configuration string'}
  if($config.index -ne ''){throw 'First-user installation requires a legacy index'}
  if(!(Test-Path -LiteralPath $config.worker)){throw 'Worker bundle absent'}
  if(!(Test-Path -LiteralPath (Join-Path $target 'PdfLibrary.lnk'))){throw 'Launch shortcut absent'}
@@ -64,11 +70,36 @@ print('PASS installed image-only PDF / Windows OCR quality profile / recognized 
  if([Net.NetworkCredential]::new('', $stored).Password -cne ('klw_'+('a'*43))){throw 'DPAPI credential roundtrip failed'}
  if((Get-Content -Raw -Encoding UTF8 $configFile).Contains('klw_')){throw 'Plain credential in configuration'}
  if($SmokeExecutable){
+  $fakeApp=Join-Path $fixture 'Fake catalog 앱';$fakeModules=Join-Path $fakeApp 'desktop\windows'
+  [IO.Directory]::CreateDirectory($fakeModules)|Out-Null
+  $fakeCollector=@'
+import {spawn} from 'node:child_process';
+import {readFileSync,writeFileSync} from 'node:fs';
+const args=process.argv.slice(2),config=JSON.parse(readFileSync(args[args.indexOf('--config')+1],'utf8').replace(/^\uFEFF/,''));
+const blocked=['OPENAI_API_KEY','DATABASE_URL','NEON_AUTH_BASE_URL','NEON_AUTH_COOKIE_SECRET','LIBRARY_DEVICE_TOKEN','NODE_OPTIONS','LIBRARY_PDF_ROOT','LIBRARY_PDF_INDEX'];
+const child=spawn(process.execPath,['--eval','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+writeFileSync(config.probeFile,JSON.stringify({parent:process.pid,child:child.pid,unsafeEnvironment:blocked.some(key=>Boolean(process.env[key])),validArguments:args.length===4&&args[0]==='--config'&&args[2]==='--notification'&&args[3]===config.expectedNotification}));
+setInterval(()=>{},1000);
+'@
+  [IO.File]::WriteAllText((Join-Path $fakeModules 'catalog-detached.mjs'),$fakeCollector,(New-Object Text.UTF8Encoding($false)))
+  $fakeRuntime=@{node=(Get-Command node -ErrorAction Stop).Source;app=$fakeApp;profileFile='must-not-unlock.dpapi.json';probeFile=(Join-Path $config.directory 'catalog-sidecar-probe.json');expectedNotification=(Join-Path $config.directory 'catalog-request.json')}
+  [IO.File]::WriteAllText($retainedCatalog,($fakeRuntime|ConvertTo-Json),(New-Object Text.UTF8Encoding($true)))
+  $config|Add-Member -NotePropertyName catalogSmokeProbe -NotePropertyValue 'active'
+  $config|ConvertTo-Json|Set-Content -LiteralPath $configFile -Encoding UTF8
   $sample=Join-Path $root '기독도서\Setup sample.pdf';[IO.Directory]::CreateDirectory((Split-Path -Parent $sample))|Out-Null
   & $Python -B -c 'import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);from smoke import text_pdf;text_pdf(Path(sys.argv[2]))' $PSScriptRoot $sample
   if($LASTEXITCODE){throw 'Synthetic PDF creation failed'}
-  & $SmokeExecutable --config $configFile (Join-Path $fixture 'setup-smoke.png')
+  $sentinels=@{}
+  foreach($key in @('OPENAI_API_KEY','DATABASE_URL','NEON_AUTH_BASE_URL','NEON_AUTH_COOKIE_SECRET','LIBRARY_DEVICE_TOKEN','NODE_OPTIONS','LIBRARY_PDF_ROOT','LIBRARY_PDF_INDEX')){$sentinels[$key]=[Environment]::GetEnvironmentVariable($key,'Process');[Environment]::SetEnvironmentVariable($key,'secret-sentinel','Process')}
+  try{& $SmokeExecutable --config $configFile (Join-Path $fixture 'setup-smoke.png')}
+  finally{foreach($key in $sentinels.Keys){[Environment]::SetEnvironmentVariable($key,$sentinels[$key],'Process')}}
   if($LASTEXITCODE){throw 'Installed configuration WPF smoke failed'}
+  foreach($file in @((Join-Path $config.directory 'catalog-sidecar-probe.json'),(Join-Path $config.directory 'catalog-request.json'),(Join-Path $root 'UI smoke new copy.pdf'))){if(Test-Path -LiteralPath $file){Remove-Item -LiteralPath $file -Force}}
+  $fakeRuntime.node=Join-Path $fixture 'missing-node.exe'
+  [IO.File]::WriteAllText($retainedCatalog,($fakeRuntime|ConvertTo-Json),(New-Object Text.UTF8Encoding($true)))
+  $config.catalogSmokeProbe='invalid';$config|ConvertTo-Json|Set-Content -LiteralPath $configFile -Encoding UTF8
+  & $SmokeExecutable --config $configFile (Join-Path $fixture 'setup-invalid-collector-smoke.png')
+  if($LASTEXITCODE){throw 'Invalid optional collector blocked local WPF workflows'}
  }
  Write-Output 'PASS standalone setup/no-index/private bundle/shortcut/DPAPI connection'
 } finally {

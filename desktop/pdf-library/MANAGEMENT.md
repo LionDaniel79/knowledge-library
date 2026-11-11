@@ -180,6 +180,23 @@ removes login/AI secrets from the child environment, drains only successful
 progress up to a fixed limit, and waits for a new notification after failure or
 no progress. Device-only installations do not require an administrator DB profile.
 
+An optional `catalogConfiguration` string in `library.json` points to the existing
+DPAPI runtime configuration. The native app reads only its `node` and `app` paths
+to launch the detached helper; credentials are never command-line arguments.
+The host receives a minimal Windows environment, not inherited database, login,
+AI or PDF settings. It starts suspended, joins a native-owned `WorkerJob`, and
+then runs, so descendants share the same lifetime from their first instruction.
+Closing to the tray keeps the helper alive; explicit Exit closes its job and
+stops the complete process tree. Missing or invalid optional settings only show a
+safe status and leave local search/OCR available. Setup preserves this one string
+on an owned-install upgrade; a new installation does not enable it automatically.
+
+`Test-Setup.ps1 -SmokeExecutable ...` uses a temporary fake Node helper and runtime
+configuration to check secret-environment isolation, search cancellation, tray
+lifetime, child-tree termination and invalid-setting fallback without unlocking
+an operational profile or making network requests. Its separate raster fixture
+continues to exercise the installed real Windows OCR quality pipeline.
+
 ```powershell
 Set-Location C:/Users/admin/kl-stage5-e2e-1104/desktop/pdf-library
 & 'E:/지식서재 작업/private-data/runtime/ocr-quality-20261022/Scripts/python.exe' -m unittest test_management -v

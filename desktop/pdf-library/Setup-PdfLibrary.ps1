@@ -24,7 +24,15 @@ foreach($target in @($install,$pdfRoot)){
 }
 $marker=Join-Path $install 'pdf-library-install.json'
 if((Test-Path -LiteralPath $install) -and !(Test-Path -LiteralPath $marker)){throw '다른 파일을 보호하기 위해 새 빈 설치 경로를 지정하세요.'}
-if(Test-Path -LiteralPath $marker){$old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json;if($old.application -ne 'KnowledgeLibrary.PdfLibrary'){throw 'PDF 서재 설치 소유 정보를 확인하지 못했습니다.'}}
+$previousCatalog=$null
+if(Test-Path -LiteralPath $marker){
+ $old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json
+ if($old.application -ne 'KnowledgeLibrary.PdfLibrary'){throw 'PDF 서재 설치 소유 정보를 확인하지 못했습니다.'}
+ $previousConfiguration=Join-Path $install 'library.json'
+ if(Test-Path -LiteralPath $previousConfiguration -PathType Leaf){
+  try{$savedConfiguration=Get-Content -LiteralPath $previousConfiguration -Raw -Encoding UTF8|ConvertFrom-Json;if($savedConfiguration.catalogConfiguration -is [string] -and ![string]::IsNullOrWhiteSpace($savedConfiguration.catalogConfiguration)){$previousCatalog=$savedConfiguration.catalogConfiguration}}catch{}
+ }
+}
 [IO.Directory]::CreateDirectory($install)|Out-Null
 # Current-user private state; never changes permissions on the PDF root or old installation.
 # Build only the private DACL. Reapplying a descriptor read by Get-Acl can
@@ -78,7 +86,9 @@ if($LASTEXITCODE){throw 'PDF/OCR 도구가 필요합니다. Python 3.12 이상�
 $exe=Join-Path $app 'PdfDesktop.exe'
 & (Join-Path $app 'Build.ps1') -Output $exe
 $config=Join-Path $install 'library.json'
-@{version=1;python=$interpreter;worker=(Join-Path $app 'worker.py');index=$Index;root=$pdfRoot;directory=$state} | ConvertTo-Json | Set-Content -LiteralPath $config -Encoding UTF8
+$configuration=@{version=1;python=$interpreter;worker=(Join-Path $app 'worker.py');index=$Index;root=$pdfRoot;directory=$state}
+if($previousCatalog){$configuration.catalogConfiguration=$previousCatalog}
+$configuration|ConvertTo-Json|Set-Content -LiteralPath $config -Encoding UTF8
 $files=Get-ChildItem -LiteralPath $release -Recurse -File | ForEach-Object {[pscustomobject]@{path=$_.FullName.Substring($release.Length+1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}}
 @{application='KnowledgeLibrary.PdfLibrary';version=1;setupState='ready';installedAt=[DateTime]::UtcNow.ToString('o');release=$release;files=@($files)}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $marker -Encoding UTF8
 $shell=New-Object -ComObject WScript.Shell

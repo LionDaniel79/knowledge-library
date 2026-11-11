@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { runtimeEnvironment, unlockProfile } from "./start-private-pc.mjs";
 import { catalogWorkerEnvironment } from "./catalog-worker.mjs";
+import { startDetachedLogos } from "./logos-detached.mjs";
 
 const MAX_OUTPUT = 64 * 1024;
 const MAX_PASSES = 1000;
@@ -420,6 +421,57 @@ export function startDetachedCatalog(
   };
 }
 
+export function startCatalogServices(
+  configuration,
+  notificationPath,
+  options = {},
+) {
+  let config, catalog;
+  const controllers = [];
+  const status = (service) => (value) =>
+    options.onStatus?.({ ...value, service });
+  try {
+    config =
+      typeof configuration === "string"
+        ? JSON.parse(readFileSync(configuration, "utf8").replace(/^\uFEFF/, ""))
+        : configuration;
+    catalog = (options.startCatalog || startDetachedCatalog)(
+      config,
+      notificationPath,
+      { onStatus: status("catalog") },
+    );
+    controllers.push(catalog);
+  } catch {
+    throw Error("Independent catalog services unavailable.");
+  }
+  if (config.logosCompletionApproved === true) {
+    try {
+      controllers.push(
+        (options.startLogos || startDetachedLogos)(config, notificationPath, {
+          onStatus: status("logos"),
+        }),
+      );
+    } catch {
+      options.onWarning?.(
+        "Logos completion unavailable; pending work is retained.",
+      );
+    }
+  }
+  // A failed watcher must not silently leave the other service detached.
+  for (const current of controllers)
+    current.done.then(() => {
+      for (const other of controllers) if (other !== current) other.stop();
+    });
+  const done = Promise.all(controllers.map((c) => c.done)).then((codes) =>
+    codes.some((c) => c !== 0) ? 1 : 0,
+  );
+  const stop = () => {
+    for (const c of controllers) c.stop();
+    return done;
+  };
+  return { stop, kill: stop, done };
+}
+
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -434,10 +486,16 @@ if (
       args[2] !== "--notification"
     )
       throw Error();
-    controller = startDetachedCatalog(args[1], args[3], {
+    controller = startCatalogServices(args[1], args[3], {
       onStatus(status) {
         if (status.event === "pass")
-          console.log(JSON.stringify({ runs: status.runs, ...status.totals }));
+          console.log(
+            JSON.stringify({
+              service: status.service,
+              runs: status.runs,
+              ...status.totals,
+            }),
+          );
       },
     });
     process.on("SIGINT", stop);
