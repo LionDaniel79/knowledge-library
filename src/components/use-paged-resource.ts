@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   mergeAdoptedRelationships,
   confirmedRelationships,
+  rememberConfirmedRelationship,
   type AdoptedRelationship,
 } from "@/lib/assist-adoption-overlay";
 import { useReplicaDataOptional } from "./replica/provider";
@@ -30,10 +31,9 @@ export function usePagedResource<T>(
       return;
     const refreshAfterAi = (event: Event) => {
       const value = (event as CustomEvent<AdoptedRelationship>).detail;
-      if (value?.connection?.id)
-        confirmed?.connections.set(value.connection.id, value.connection);
-      if (value?.bundle?.id)
-        confirmed?.bundles.set(value.bundle.id, value.bundle);
+      if (value?.ownerId && value.ownerId !== replicaOwner) return;
+      if (!value?.connection?.id && !value?.bundle?.id) return;
+      rememberConfirmedRelationship(replicaOwner, value);
       setState((previous) =>
         previous.path === path && previous.data
           ? {
@@ -44,12 +44,11 @@ export function usePagedResource<T>(
             }
           : previous,
       );
-      setRetry((n) => n + 1);
     };
     window.addEventListener("library:assist-adopted", refreshAfterAi);
     return () =>
       window.removeEventListener("library:assist-adopted", refreshAfterAi);
-  }, [enabled, path, confirmed]);
+  }, [enabled, path, confirmed, replicaOwner]);
   const [state, setState] = useState<{
     path: string;
     data: T | null;

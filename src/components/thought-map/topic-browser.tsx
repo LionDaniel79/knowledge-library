@@ -267,11 +267,11 @@ export function TopicBrowser({
         <AssistLauncher
           library={library}
           scope={query}
+          onAdopt={(result) => {
+            if (!result?.connection && !result?.bundle) void onUpdated();
+          }}
           ownerId={ownerId}
           onOpen={onOpen}
-          onAdopt={() => {
-            void onUpdated();
-          }}
         />
         <div className="thought-card-grid">
           {shown.map((m) => (

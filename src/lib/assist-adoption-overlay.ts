@@ -1,5 +1,6 @@
 /** Canonical server rows returned by an explicit single-suggestion adoption. */
 export type AdoptedRelationship = {
+  ownerId?: string;
   connection?: { id: string; version: number; [key: string]: unknown } | null;
   bundle?: { id: string; version: number; [key: string]: unknown } | null;
 };
@@ -28,9 +29,17 @@ export function rememberConfirmedRelationship(
 ) {
   const rows = confirmedRelationships(owner);
   if (!rows) return;
-  if (detail.connection?.id)
+  if (
+    detail.connection?.id &&
+    (rows.connections.get(detail.connection.id)?.version ?? -1) <=
+      detail.connection.version
+  )
     rows.connections.set(detail.connection.id, detail.connection);
-  if (detail.bundle?.id) rows.bundles.set(detail.bundle.id, detail.bundle);
+  if (
+    detail.bundle?.id &&
+    (rows.bundles.get(detail.bundle.id)?.version ?? -1) <= detail.bundle.version
+  )
+    rows.bundles.set(detail.bundle.id, detail.bundle);
 }
 export function releaseConfirmedRelationships(owner: string) {
   confirmedByOwner.delete(owner);

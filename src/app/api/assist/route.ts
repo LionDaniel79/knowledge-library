@@ -1,3 +1,4 @@
+import { measureAssistDatabase } from "@/server/assist-timing";
 import { z } from "zod";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
@@ -41,6 +42,8 @@ export async function GET(request: Request) {
   }
 }
 export async function POST(request: Request) {
+  const handlerAt = performance.now();
+  let timingHeader = "";
   try {
     validateWriteOrigin(request, process.env.APP_ORIGIN ?? "");
     const owner = await requireOwner(),
@@ -101,10 +104,22 @@ export async function POST(request: Request) {
         })
         .strict()
         .parse(p.payload);
-      result = await s.adopt(owner, v.id, v.index);
+      const timing = measureAssistDatabase(database),
+        adoptAt = performance.now();
+      result = await createAssistStore(timing.db).adopt(owner, v.id, v.index);
+      timingHeader = `adopt;dur=${(performance.now() - adoptAt).toFixed(1)}, ${timing.header()}`;
     }
     if (p.action === "request" && serverAssistConfig().ready) schedule(owner);
-    return Response.json(result, { headers });
+    return Response.json(result, {
+      headers: {
+        ...headers,
+        ...(timingHeader
+          ? {
+              "Server-Timing": `handler;dur=${(performance.now() - handlerAt).toFixed(1)}, ${timingHeader}`,
+            }
+          : {}),
+      },
+    });
   } catch (e) {
     return failure(e);
   }

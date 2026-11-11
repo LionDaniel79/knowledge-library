@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Trash2 } from "lucide-react";
 import { libraryRequest } from "@/client/replica/request";
 import type { Library } from "@/lib/domain";
@@ -58,13 +58,16 @@ export function AssistRequestCard({
   onWritingSuggestion?: (
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
-  ) => boolean | void;
+  ) => boolean | void | Promise<boolean | void>;
 }) {
   const [open, setOpen] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
+    [pending, setPending] = useState<number | null>(null),
+    [confirmed, setConfirmed] = useState<any[]>([]),
     [appliedWriting, setAppliedWriting] = useState<number[]>([]);
+  const applying = useRef(false);
   useEffect(() => {
     if (!open) return;
     const c = new AbortController();
@@ -87,12 +90,49 @@ export function AssistRequestCard({
   }, [open, r.id, r.updated_at, r.status, revision]);
   const value = detail ?? r,
     adopted = (index: number) =>
-      (value.adoption ?? r.adoption ?? []).some((a: any) => a.index === index);
+      [...confirmed, ...(value.adoption ?? []), ...(r.adoption ?? [])].some(
+        (a: any) => a.index === index,
+      );
   const canDelete = !["queued", "claimed", "sending", "cost_unknown"].includes(
     r.status,
   );
   async function adopt(index: number) {
-    if (await act("adopt", { id: r.id, index })) setRevision((n) => n + 1);
+    if (applying.current) return;
+    applying.current = true;
+    setPending(index);
+    setError("");
+    try {
+      const result = await act("adopt", { id: r.id, index });
+      if (result?.ok && result.adoption?.id)
+        setConfirmed((old) => [
+          ...old.filter((a) => a.index !== index),
+          result.adoption,
+        ]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      applying.current = false;
+      setPending(null);
+    }
+  }
+  async function applyWriting(
+    index: number,
+    suggestion: SynthesisResult["suggestions"][number],
+  ) {
+    if (applying.current || !onWritingSuggestion) return;
+    applying.current = true;
+    setPending(index);
+    setError("");
+    try {
+      const success = await onWritingSuggestion(suggestion, value.scope);
+      if (success !== false)
+        setAppliedWriting((old) => [...new Set([...old, index])]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      applying.current = false;
+      setPending(null);
+    }
   }
   const suggestions = (value.result?.output?.suggestions ??
     []) as SynthesisResult["suggestions"];
@@ -167,39 +207,35 @@ export function AssistRequestCard({
                   ) : onWritingSuggestion && value.scope?.writingContext ? (
                     <button
                       type="button"
-                      disabled={busy || appliedWriting.includes(index)}
-                      onClick={() => {
-                        try {
-                          const success = onWritingSuggestion(s, value.scope);
-                          if (success !== false)
-                            setAppliedWriting((old) => [
-                              ...new Set([...old, index]),
-                            ]);
-                        } catch (e) {
-                          setError(
-                            e instanceof Error
-                              ? e.message
-                              : "제안을 적용하지 못했습니다.",
-                          );
-                        }
-                      }}
+                      disabled={
+                        busy ||
+                        pending !== null ||
+                        appliedWriting.includes(index)
+                      }
+                      onClick={() => void applyWriting(index, s)}
                     >
-                      {appliedWriting.includes(index)
-                        ? "적용함"
-                        : value.scope.writingContext.request === "materials"
-                          ? "추천 메모를 목차에 넣기"
-                          : value.scope.writingContext.request === "titles"
-                            ? "목차 제목으로 사용"
-                            : "목차로 추가"}
+                      {pending === index
+                        ? "적용 중…"
+                        : appliedWriting.includes(index)
+                          ? "적용함"
+                          : value.scope.writingContext.request === "materials"
+                            ? "추천 메모를 목차에 넣기"
+                            : value.scope.writingContext.request === "titles"
+                              ? "목차 제목으로 사용"
+                              : "목차로 추가"}
                     </button>
                   ) : value.scope?.writingContext ? (
                     <small>해당 글감에서 제안을 적용할 수 있습니다.</small>
                   ) : (
                     <button
-                      disabled={busy || adopted(index)}
+                      disabled={busy || pending !== null || adopted(index)}
                       onClick={() => void adopt(index)}
                     >
-                      {adopted(index) ? "저장함" : adoptNames[s.kind]}
+                      {pending === index
+                        ? "저장 중…"
+                        : adopted(index)
+                          ? "저장함"
+                          : adoptNames[s.kind]}
                     </button>
                   )}
                   <details>
@@ -235,14 +271,16 @@ export function AssistRequestCard({
                     {item.value ?? item.tag}
                   </span>
                   <button
-                    disabled={busy || adopted(index)}
+                    disabled={busy || pending !== null || adopted(index)}
                     onClick={() => void adopt(index)}
                   >
-                    {adopted(index)
-                      ? "저장함"
-                      : item.kind === "topic"
-                        ? "주제로 저장"
-                        : "태그로 저장"}
+                    {pending === index
+                      ? "저장 중…"
+                      : adopted(index)
+                        ? "저장함"
+                        : item.kind === "topic"
+                          ? "주제로 저장"
+                          : "태그로 저장"}
                   </button>
                 </p>
               ))}
