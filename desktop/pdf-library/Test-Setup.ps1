@@ -11,6 +11,10 @@ try {
  $config|Add-Member -NotePropertyName catalogConfiguration -NotePropertyValue $retainedCatalog
  $config|Add-Member -NotePropertyName unapprovedRuntimeField -NotePropertyValue 'must-not-copy'
  $config|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $target 'library.json') -Encoding UTF8
+ $ssdState=Join-Path $fixture 'private-ssd-state'
+ [IO.Directory]::CreateDirectory($ssdState)|Out-Null
+ $config.directory=$ssdState
+ $config|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $target 'library.json') -Encoding UTF8
  $preserved=Join-Path $config.directory 'upgrade-preservation.txt'
  [IO.File]::WriteAllText($preserved,'preserve existing private state')
  $originalState=$config.directory
