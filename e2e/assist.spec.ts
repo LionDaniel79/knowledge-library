@@ -2,7 +2,23 @@ import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
 import { previewLibrary } from "../src/lib/preview-data";
 let bundle: string;
+let cardBundle: string;
 test.beforeAll(async () => {
+  cardBundle = (
+    await build({
+      stdin: {
+        contents: `import{createRoot}from'react-dom/client';import{AssistRequestCard}from'./src/components/assist-request-card';createRoot(document.getElementById('root')).render(<AssistRequestCard request={window.fixture.request} busy={false} act={async()=>{throw Error('Unexpected server adoption')}} library={{notes:[],books:[],cycles:[]}} onWritingSuggestion={window.applyWriting}/>);`,
+        resolveDir: process.cwd(),
+        loader: "tsx",
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      platform: "browser",
+      jsx: "automatic",
+      define: { "process.env.NODE_ENV": '"production"' },
+    })
+  ).outputFiles[0].text;
   bundle = (
     await build({
       stdin: {
@@ -440,3 +456,196 @@ test("adoption can retry a server failure and acknowledges a committed result wi
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(attempts).toBe(2);
 });
+
+// Real panel/card with a delayed API boundary. The server's later reads are
+// deliberately stale: the canonical mutation response must be enough.
+for (const purpose of ["synthesis", "tag_suggestion", "organize_note"])
+  test(`adoption ${purpose} shows pending immediately and keeps the canonical acknowledgement without duplicate reads`, async ({
+    page,
+  }, testInfo) => {
+    const fixture = await mount(page, true, "0.5", purpose);
+    await page.evaluate(() => ((window as any).fixture.blockSync = true));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let postCount = 0;
+    await page.route("https://library.test/api/assist", async (route) => {
+      if (
+        route.request().method() !== "POST" ||
+        route.request().postDataJSON().action !== "adopt"
+      )
+        return route.fallback();
+      postCount++;
+      await gate;
+      return route.fulfill({
+        json: {
+          ok: true,
+          adoption: { index: 0, id: "canonical-adoption", kind: purpose },
+          ...(purpose === "synthesis"
+            ? {
+                connection: {
+                  id: "canonical-connection",
+                  version: 2,
+                  title: "서버에서 확정한 제목",
+                  noteIds: [],
+                },
+              }
+            : {}),
+        },
+      });
+    });
+    await page.getByText("내가 요청한 도움", { exact: true }).click();
+    await page.locator(".assist-request-row > details > summary").click();
+    const apply = page.getByRole("button", {
+      name:
+        purpose === "synthesis"
+          ? "연결 확정"
+          : purpose === "tag_suggestion"
+            ? "태그로 저장"
+            : "주제로 저장",
+      exact: true,
+    });
+    await expect(apply).toBeEnabled();
+    const readsBefore = fixture.getCount();
+    await page.evaluate(() => {
+      const row = document.querySelector(".assist-request-row")!;
+      const timing: Record<string, number | null> = {
+        click: null,
+        pending: null,
+        saved: null,
+      };
+      (window as any).adoptionTiming = timing;
+      row.addEventListener("click", () => (timing.click ??= performance.now()));
+      new MutationObserver(() => {
+        if (row.textContent?.includes("저장 중…"))
+          timing.pending ??= performance.now();
+        if (row.textContent?.includes("저장함"))
+          timing.saved ??= performance.now();
+      }).observe(row, { subtree: true, childList: true, characterData: true });
+    });
+    await apply.click();
+    await expect.poll(() => postCount).toBe(1);
+    const pending = page.getByRole("button", { name: "저장 중…", exact: true });
+    await expect.soft(pending).toBeVisible({ timeout: 150 });
+    await expect(
+      page.getByRole("button", { name: "저장함", exact: true }),
+    ).toHaveCount(0);
+    // A second click while the server is pending cannot submit twice.
+    await page
+      .locator(".assist-request-row button")
+      .first()
+      .evaluate((button: HTMLButtonElement) => button.click());
+    expect(postCount).toBe(1);
+    await page.waitForTimeout(500); // Deliberately slow server boundary.
+    const responseAt = await page.evaluate(() => performance.now());
+    release();
+    await expect(
+      page.getByRole("status").filter({ hasText: /선택한/ }),
+    ).toBeVisible();
+    await expect
+      .soft(page.getByRole("button", { name: "저장함", exact: true }))
+      .toBeDisabled({ timeout: 400 });
+    const timing = await page.evaluate(() => (window as any).adoptionTiming);
+    const metrics = {
+      clickToPendingMs:
+        timing.pending === null ? null : timing.pending - timing.click,
+      clickToApiReleaseMs: responseAt - timing.click,
+      clickToSavedMs:
+        timing.saved === null ? null : timing.saved - timing.click,
+      postCount,
+      extraAssistGets: fixture.getCount() - readsBefore,
+    };
+    console.log("ADOPTION_METRICS", purpose, JSON.stringify(metrics));
+    await testInfo.attach("adoption-metrics", {
+      body: JSON.stringify(metrics),
+      contentType: "application/json",
+    });
+    expect(fixture.getCount() - readsBefore).toBe(0);
+    // Manual refresh must not erase a known committed acknowledgement when
+    // its list and detail snapshots have not caught up yet.
+    await page
+      .getByRole("button", { name: "요청 목록 새로고침", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "저장함", exact: true }),
+    ).toBeDisabled();
+  });
+
+for (const outcome of ["success", "false", "reject"])
+  test(`writing adoption awaits the ${outcome} delegate before marking applied and permits a failed retry`, async ({
+    page,
+  }) => {
+    await page.route("https://writing-delegate.test/**", (route) => {
+      if (route.request().url().includes("/api/assist"))
+        return route.fulfill({ json: { requests: [] } });
+      return route.fulfill({
+        contentType: "text/html",
+        body: '<div id="root"></div>',
+      });
+    });
+    await page.goto("https://writing-delegate.test/");
+    await page.evaluate((outcome) => {
+      const fixture = ((window as any).fixture = {
+        calls: 0,
+        request: {
+          id: "writing-delegate",
+          purpose: "synthesis",
+          status: "completed",
+          created_at: "2026-11-01",
+          scope: { writingContext: { request: "titles" } },
+          result: {
+            valid: true,
+            output: {
+              suggestions: [
+                {
+                  kind: "writing_idea",
+                  title: "적용할 목차",
+                  reason: "근거",
+                  outline: [],
+                  evidence: [],
+                },
+              ],
+            },
+          },
+        },
+      });
+      (window as any).applyWriting = () => {
+        fixture.calls++;
+        return new Promise((resolve, reject) => {
+          (window as any).finishWriting = () =>
+            outcome === "reject" && fixture.calls === 1
+              ? reject(new Error("글감 적용 실패"))
+              : resolve(
+                  outcome === "false" && fixture.calls === 1 ? false : true,
+                );
+        });
+      };
+    }, outcome);
+    await page.addScriptTag({ content: cardBundle });
+    await page.locator(".assist-request-row > details > summary").click();
+    const apply = page.getByRole("button", {
+      name: "목차 제목으로 사용",
+      exact: true,
+    });
+    await apply.click();
+    await expect(
+      page.getByRole("button", { name: "적용 중…", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "적용함", exact: true }),
+    ).toHaveCount(0);
+    await page.evaluate(() => (window as any).finishWriting());
+    if (outcome !== "success") {
+      await expect(apply).toBeEnabled();
+      if (outcome === "reject")
+        await expect(page.getByRole("alert")).toContainText("글감 적용 실패");
+      await apply.click();
+      await page.evaluate(() => (window as any).finishWriting());
+    }
+    await expect(
+      page.getByRole("button", { name: "적용함", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).fixture.calls)).toBe(
+      outcome === "success" ? 1 : 2,
+    );
+  });

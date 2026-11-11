@@ -27,7 +27,7 @@ import { AssistRequestCard } from "./assist-request-card";
 export type AssistProps = {
   library: Library;
   noteId?: string;
-  onAdopt?: () => void;
+  onAdopt?: (result: any) => void;
   onOpen?: (kind: string, id: string) => void;
   scope?: Record<string, string | number>;
   ownerId?: string;
@@ -35,7 +35,7 @@ export type AssistProps = {
   onWritingSuggestion?: (
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
-  ) => void;
+  ) => boolean | void | Promise<boolean | void>;
   analysisControls?: (onAnalyze: () => void, busy: boolean) => ReactNode;
 };
 export const focusNames = {
@@ -152,7 +152,7 @@ export function AssistPanel({
   }, []);
   useEffect(() => {
     void load().catch((e) => setError(e.message));
-  }, [load, replica?.revision]);
+  }, [load]);
   const active = state?.requests?.some((r: any) =>
     ["queued", "claimed", "sending"].includes(r.status),
   );
@@ -199,6 +199,26 @@ export function AssistPanel({
       if (action === "adopt") {
         if (!j.ok || !j.adoption?.id)
           throw Error("연결 확정 결과를 확인하지 못했습니다.");
+        setState((old: any) =>
+          old
+            ? {
+                ...old,
+                requests: old.requests.map((request: any) =>
+                  request.id === payload.id
+                    ? {
+                        ...request,
+                        adoption: [
+                          ...(request.adoption ?? []).filter(
+                            (a: any) => a.index !== j.adoption.index,
+                          ),
+                          j.adoption,
+                        ],
+                      }
+                    : request,
+                ),
+              }
+            : old,
+        );
         setMessage(
           j.connection
             ? "선택한 메모 연결을 확정했습니다. 연결된 메모 목록에 반영됩니다."
@@ -216,12 +236,16 @@ export function AssistPanel({
         if (typeof window !== "undefined")
           window.dispatchEvent(
             new CustomEvent("library:assist-adopted", {
-              detail: { connection: j.connection, bundle: j.bundle },
+              detail: {
+                ownerId: ownerId || replica?.runtime?.owner || "",
+                connection: j.connection,
+                bundle: j.bundle,
+              },
             }),
           );
-        onAdopt?.();
+        onAdopt?.(j);
       }
-      if (action !== "preview")
+      if (action !== "preview" && action !== "adopt")
         void load().catch(() => {
           // Refresh failure must not turn a successful persisted adoption
           // into an apparent save error. The confirmed row is already visible.

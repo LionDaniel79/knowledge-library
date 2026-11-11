@@ -149,10 +149,21 @@ async function buildTask(
   owner: string,
   input: z.infer<typeof assistSelectionSchema>,
   lock = false,
+  freshnessOnly = false,
 ): Promise<AiTask> {
   const sources: AiTask["payload"]["sources"][number][] = [];
   for (const selected of input.sources) {
-    const s = await readCurationSource(tx, owner, selected.source, lock);
+    const record =
+      selected.source.kind === "note"
+        ? await currentRecord(tx, owner, selected.source.id, lock)
+        : null;
+    const s = record
+      ? {
+          text: record.content,
+          version: String(record.version),
+          coverage: "full",
+        }
+      : await readCurationSource(tx, owner, selected.source, lock);
     if (s.version !== selected.source.version)
       throw new LibraryError(409, "선택한 원자료가 변경되었습니다.");
     let text = s.text,
@@ -166,10 +177,6 @@ async function buildTask(
     }
     if (input.purpose === "compare_notes" && selected.selection)
       throw new LibraryError(400, "생각 비교에는 기록 전체를 선택해 주세요.");
-    const record =
-      selected.source.kind === "note"
-        ? await currentRecord(tx, owner, selected.source.id, lock)
-        : null;
     sources.push({
       ...selected,
       text,
@@ -205,7 +212,7 @@ async function buildTask(
   // owner-scoped snapshot as the selected notes. Legacy requests omit them.
   const currentIds = sources.map((s) => s.source.id);
   const existingConnections =
-    input.useCurrentRelations && input.purpose === "synthesis"
+    !freshnessOnly && input.useCurrentRelations && input.purpose === "synthesis"
       ? (
           await tx.query(
             "SELECT id,title,reason,version,source_id,target_id FROM library_connections WHERE owner_id=$1 AND status='accepted' AND source_kind='note' AND target_kind='note' AND source_id=ANY($2::uuid[]) AND target_id=ANY($2::uuid[]) ORDER BY id LIMIT 100",
@@ -223,7 +230,7 @@ async function buildTask(
         }))
       : undefined;
   const existingBundles =
-    input.useCurrentRelations && input.purpose === "synthesis"
+    !freshnessOnly && input.useCurrentRelations && input.purpose === "synthesis"
       ? (
           await tx.query(
             "SELECT id,title,description,version,note_ids FROM library_memo_bundles WHERE owner_id=$1 AND archived_at IS NULL AND jsonb_array_length(note_ids)>=2 AND note_ids <@ $2::jsonb ORDER BY created_at,id LIMIT 40",
@@ -293,6 +300,7 @@ async function stillCurrent(tx: Executor, owner: string, task: AiTask) {
           ...(s.selection ? { selection: s.selection } : {}),
         })),
       },
+      true,
       true,
     );
     const withoutTargets = (value: AiTask) =>

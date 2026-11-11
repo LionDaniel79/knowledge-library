@@ -71,3 +71,18 @@ it("preserves selected link between component mounts but keeps other account row
   releaseConfirmedRelationships(owner);
   releaseConfirmedRelationships(other);
 });
+
+it("retains a newer confirmed row when a retry returns an older canonical version", () => {
+  const owner = "test-retry-version";
+  releaseConfirmedRelationships(owner);
+  rememberConfirmedRelationship(owner, {
+    connection: { id: "same", version: 3, title: "new" },
+  });
+  rememberConfirmedRelationship(owner, {
+    connection: { id: "same", version: 1, title: "old" },
+  });
+  expect(confirmedRelationships(owner)!.connections.get("same")!.title).toBe(
+    "new",
+  );
+  releaseConfirmedRelationships(owner);
+});
