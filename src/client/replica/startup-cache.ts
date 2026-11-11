@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Library } from "../../lib/domain";
+import { formats, type Library } from "../../lib/domain";
 // This small, disposable view supplements the complete IndexedDB replica. It
 // contains no provider responses, credentials, original PDFs or editable drafts.
 const text = z.string(),
@@ -27,7 +27,7 @@ const book = z.object({
   author: text,
   publisher: text,
   isbn: text,
-  formats: z.array(z.enum(["paper", "pdf", "ebook", "unknown"])),
+  formats: z.array(z.enum(formats)),
   totalPages: number.nullable(),
   shelf: text,
   tags: strings,
@@ -106,6 +106,7 @@ const libraryView = z.object({
       total: number,
       formatCounts: z.object({
         paper: number,
+        logos: number.default(0),
         pdf: number,
         ebook: number,
         unknown: number,

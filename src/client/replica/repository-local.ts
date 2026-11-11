@@ -604,7 +604,7 @@ export function createLocalReplicaRepository(
           ...activeNotes(data).flatMap((n) => (n.bookId ? [n.bookId] : [])),
         ]),
         all = activeBooks(data),
-        formatCounts = { paper: 0, pdf: 0, ebook: 0, unknown: 0 },
+        formatCounts = { paper: 0, logos: 0, ebook: 0, pdf: 0, unknown: 0 },
         categoryCounts: Record<string, number> = {};
       for (const { book: b } of all) {
         categoryCounts[b.category ?? ""] =

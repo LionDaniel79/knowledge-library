@@ -32,6 +32,7 @@ const words: Record<string, string> = {
   rejected: "거절",
   pending: "검토 대기",
   paper: "종이책",
+  logos: "로고스",
   pdf: "PDF",
   ebook: "전자책",
   unknown: "형식 확인 필요",

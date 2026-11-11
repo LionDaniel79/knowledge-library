@@ -39,6 +39,18 @@ it("the deploy migration command prepares native registration, managed covers an
         )
       ).rows.some((r: any) => r.definition.includes("managed_asset")),
     ).toBe(true);
+    await pg.exec(`INSERT INTO library_books(id,owner_id,title,formats,source_data)
+      VALUES('11111111-1111-4111-8111-111111111111','owner','Logos',ARRAY['logos'],'{"app":"Logos"}');
+      INSERT INTO library_notes(id,owner_id,book_id,title,content,kind)
+      VALUES('22222222-2222-4222-8222-222222222222','owner','11111111-1111-4111-8111-111111111111','주장','보존','claim');`);
+    vi.resetModules();
+    await import("../scripts/migrate");
+    expect(
+      (await pg.query("SELECT formats,version FROM library_books")).rows[0],
+    ).toEqual({ formats: ["logos"], version: 1 });
+    expect((await pg.query("SELECT kind FROM library_notes")).rows[0]).toEqual({
+      kind: "claim",
+    });
   } finally {
     await pg.close();
   }

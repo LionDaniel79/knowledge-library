@@ -110,7 +110,7 @@ export async function applyLogos(db: Database, owner: string, raw: unknown) {
       },
     }));
     const added = await tx.query(
-      "INSERT INTO library_books(id,owner_id,title,author,publisher,formats,shelf,tags,source_key,source_data) SELECT x.id,$1,x.title,x.author,x.publisher,ARRAY['ebook'],'Logos',ARRAY['Logos'],x.source_key,x.source_data FROM jsonb_to_recordset($2::jsonb) AS x(id uuid,title text,author text,publisher text,source_key text,source_data jsonb) ON CONFLICT(owner_id,source_key) DO NOTHING RETURNING id",
+      "INSERT INTO library_books(id,owner_id,title,author,publisher,formats,shelf,tags,source_key,source_data) SELECT x.id,$1,x.title,x.author,x.publisher,ARRAY['logos'],'Logos',ARRAY['Logos'],x.source_key,x.source_data FROM jsonb_to_recordset($2::jsonb) AS x(id uuid,title text,author text,publisher text,source_key text,source_data jsonb) ON CONFLICT(owner_id,source_key) DO NOTHING RETURNING id",
       [owner, JSON.stringify(rows)],
     );
     await tx.query(

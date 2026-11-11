@@ -1,13 +1,17 @@
 import { z } from "zod";
 import { catalogSelection } from "./catalog-selection";
 import { noteContextFields } from "./note-context";
-export type Format = "paper" | "pdf" | "ebook" | "unknown";
+export const formats = ["paper", "logos", "ebook", "pdf", "unknown"] as const;
+export type Format = (typeof formats)[number];
 export const formatNames: Record<Format, string> = {
   paper: "종이책",
-  pdf: "PDF",
+  logos: "로고스",
   ebook: "전자책",
+  pdf: "PDF",
   unknown: "형식 확인 필요",
 };
+export const orderedFormats = (values: readonly Format[]) =>
+  formats.filter((format) => values.includes(format));
 export interface ImportedImage {
   sha256: string;
   mime: string;
@@ -164,7 +168,7 @@ export const bookInput = z.object({
   publisher: short.default(""),
   isbn: z.string().trim().max(30).default(""),
   formats: z
-    .array(z.enum(["paper", "pdf", "ebook", "unknown"]))
+    .array(z.enum(formats))
     .min(1)
     .transform((v) => [...new Set(v)]),
   totalPages: z.number().int().positive().max(100000).nullable().default(null),
