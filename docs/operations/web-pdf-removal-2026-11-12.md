@@ -12,7 +12,7 @@ Verification includes retained PDF bibliography/highlight/source/page/reading te
 ## Final verification
 
 - Full unit suite:821 passed,4 existing conditional skips (216 files passed,2 skipped).
-- Browser:13 distinct related tests passed, including404 routes, PDF bibliography, frozen quotes/pages, reading, connected-note reasons, narrow layouts and manual device sync.
+- Browser:13 distinct related tests passed, including404 routes, PDF bibliography, reading, connected-note reasons, narrow layouts and manual device sync.
 - Remaining detached catalog/Logos Node tests:38 passed.
 - Typecheck, production build, formatting and diff checks passed. Independent review found no blockers.
 - Initial failures were obsolete OCR-network expectations and a removed test still present in an already running test list; final suite rerun against the fixed source tree passed.
