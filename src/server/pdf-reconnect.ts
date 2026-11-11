@@ -62,49 +62,6 @@ async function config() {
     throw e;
   }
 }
-export async function connectedPdf(
-  doc: {
-    id: string;
-    path: string;
-    relative_path: string;
-    bytes: string | number;
-    mtime_ns: string;
-  },
-  owner: string,
-) {
-  const mapping = process.env.LIBRARY_PDF_INDEX
-      ? await config()
-      : { version: 0 },
-    root = process.env.LIBRARY_PDF_ROOT!;
-  let path: string;
-  if (mapping.version && mapping.owner === owner) {
-    const original = withPdfIndex((db) =>
-      db
-        .prepare("SELECT sha256,signature FROM documents WHERE id=?")
-        .get(doc.id),
-    );
-    if (!original || original.signature !== `${doc.bytes}:${doc.mtime_ns}`)
-      throw new LibraryError(409, "색인의 원본 정보가 달라졌습니다.");
-    path = await verifyRelocatedPdf(
-      mapping.root,
-      doc.relative_path,
-      Number(doc.bytes),
-      String(original.sha256),
-    );
-  } else {
-    path = await resolvePdfPath(doc.path, root);
-    const info = await stat(path, { bigint: true });
-    if (`${info.size}:${info.mtimeNs}` !== `${doc.bytes}:${doc.mtime_ns}`)
-      throw new LibraryError(409, "원본 파일이 변경되었습니다.");
-  }
-  return {
-    path,
-    signature: `${doc.bytes}:${doc.mtime_ns}`,
-    actualSignature: await stat(path, { bigint: true }).then(
-      (s) => `${s.size}:${s.mtimeNs}`,
-    ),
-  };
-}
 export async function pdfConnectionState() {
   try {
     const c = await config();

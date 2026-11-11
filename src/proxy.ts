@@ -18,8 +18,7 @@ export async function proxy(request: NextRequest) {
   // OAuth verifier returns still run the SDK exchange on these paths.
   if (
     (request.nextUrl.pathname === "/connect/mcp" ||
-      request.nextUrl.pathname === "/" ||
-      request.nextUrl.pathname.startsWith("/reader/")) &&
+      request.nextUrl.pathname === "/") &&
     !request.nextUrl.searchParams.has("neon_auth_session_verifier")
   )
     return NextResponse.next();
@@ -27,4 +26,4 @@ export async function proxy(request: NextRequest) {
   // login page separate from "/", which is also the Google callback target.
   return getAuth().middleware({ loginUrl: "/auth/sign-in" })(request);
 }
-export const config = { matcher: ["/", "/connect/mcp", "/reader/:path*"] };
+export const config = { matcher: ["/", "/connect/mcp"] };

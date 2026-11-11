@@ -124,8 +124,7 @@ export function LibraryApp({
   today: string;
   preview?: boolean;
   ownerId?: string;
-  initialView?: "home" | "pdf";
-  initialOperationsOpen?: boolean;
+  initialView?: "home" | "books";
   onLibraryView?: () => void;
 }) {
   const replica = useReplicaDataOptional();
@@ -177,9 +176,7 @@ export function LibraryApp({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [data, ownerId, preview]);
-  const [view, setView] = useState<View>(
-    initialView === "pdf" ? "books" : initialView,
-  );
+  const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [readingIndex, setReadingIndex] = useState(0);

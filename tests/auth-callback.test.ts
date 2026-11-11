@@ -31,7 +31,6 @@ it.each([
   "/?view=pdf",
   "/?view=pdf&panel=operations",
   "/connect/mcp?state=chatgpt-state",
-  "/reader/11111111-1111-4111-8111-111111111111?page=42&signature=abc%3A123",
 ])(
   "exchanges the Google callback on %s and preserves its return parameters",
   async (path) => {
@@ -131,13 +130,11 @@ it("lets the PDF entry render its owner-checked sign-in without dropping the des
   expect(response.status).toBe(200);
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });
-it("keeps a first-time private PDF visit on its reader entry so its sign-in can retain the page", async () => {
-  const response = await proxy(
-    new NextRequest(
-      "https://library.example.ts.net/reader/11111111-1111-4111-8111-111111111111?page=42&signature=abc%3A123",
-    ),
-  );
-  expect(response.status).toBe(200);
-  expect(response.headers.get("x-middleware-next")).toBe("1");
-  expect(response.headers.get("location")).toBeNull();
+it("does not intercept removed PDF reader routes", () => {
+  expect(
+    unstable_doesProxyMatch({
+      config,
+      url: "https://library.example.test/reader/11111111-1111-4111-8111-111111111111",
+    }),
+  ).toBe(false);
 });

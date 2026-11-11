@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { runtimeEnvironment, unlockProfile } from "./start-private-pc.mjs";
+import { runtimeEnvironment, unlockProfile } from "./runtime-profile.mjs";
 import { catalogWorkerEnvironment } from "./catalog-worker.mjs";
 
 const MAX_OUTPUT = 64 * 1024;

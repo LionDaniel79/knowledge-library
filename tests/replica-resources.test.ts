@@ -128,7 +128,7 @@ it("never silently falls back to the network for unregistered saved-data routes"
     expect((await response.json()).record.raw.original).toBe("보존");
     expect((await libraryRequest("/api/new-stored-data")).status).toBe(501);
     expect(network).not.toHaveBeenCalled();
-    await expect(libraryRequest("/api/pdf")).rejects.toThrow("offline");
+    await expect(libraryRequest("/api/book-lookup")).rejects.toThrow("offline");
     expect(network).toHaveBeenCalledOnce();
   } finally {
     unregister();

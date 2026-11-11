@@ -18,13 +18,11 @@ export function ReplicaEntry({
   available,
   today,
   initialView = "home",
-  initialOperationsOpen = false,
   returnPath = "/",
 }: {
   available: boolean;
   today?: string;
-  initialView?: "home" | "pdf";
-  initialOperationsOpen?: boolean;
+  initialView?: "home" | "books";
   returnPath?: string;
 }) {
   const [screen, setScreen] = useState<{
@@ -39,7 +37,6 @@ export function ReplicaEntry({
   const [clientToday, setClientToday] = useState(today ?? todayInSeoul());
   const [clientEntry, setClientEntry] = useState({
     view: initialView,
-    operations: initialOperationsOpen,
     path: returnPath,
   });
   useEffect(() => {
@@ -448,7 +445,6 @@ export function ReplicaEntry({
           today={clientToday}
           ownerId={screen.owner}
           initialView={clientEntry.view}
-          initialOperationsOpen={clientEntry.operations}
         />
       </>
     );
