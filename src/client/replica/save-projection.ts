@@ -67,8 +67,16 @@ export function projectLibrarySave(
   if (command.type === "startReading")
     return {
       ...data,
+      books: result.book
+        ? data.books.map((book) =>
+            book.id === result.book!.id && book.version < result.book!.version
+              ? { ...book, ...result.book }
+              : book,
+          )
+        : data.books,
       cycles: upsert(data.cycles, {
-        ...result,
+        id: result.id,
+        version: result.version,
         bookId: p.bookId,
         status: "reading",
         startedOn: p.startedOn ?? null,

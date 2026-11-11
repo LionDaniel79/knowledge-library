@@ -308,7 +308,7 @@ export async function prepareOptimistic(
         throw new ReplicaQueryError(409, "이미 있는 책장입니다.");
       put("library_shelves", { id, name, created_at: at });
     } else if (cmd.type === "startReading") {
-      await own("library_books", p.bookId);
+      const book = await own("library_books", p.bookId);
       put("library_cycles", {
         id,
         book_id: p.bookId,
@@ -319,6 +319,29 @@ export async function prepareOptimistic(
         version: 1,
         created_at: at,
       });
+      if (book.bookshelves?.includes("책 대기열")) {
+        const updated = {
+          ...book,
+          bookshelves: book.bookshelves.filter(
+            (s: string) => s !== "책 대기열",
+          ),
+          version: book.version + 1,
+        };
+        put("library_books", updated);
+        put("library_revisions", {
+          id: noteContextId(body.requestId, "revision-book", 0),
+          entity_id: book.id,
+          action: cmd.type,
+          before_data: book,
+          after_data: updated,
+          created_at: at,
+        });
+        result.book = {
+          id: book.id,
+          version: updated.version,
+          bookshelves: updated.bookshelves,
+        };
+      }
     } else if (
       ["updateProgress", "completeReading", "editCompletion"].includes(cmd.type)
     ) {

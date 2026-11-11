@@ -7,7 +7,7 @@ import { createReplicaCoordinator } from "./coordinator";
 import { createSyncTransport, SyncHttpError } from "./transport";
 import { queueReplicaCommand, type ReadingSnapshot } from "./outbox";
 import type { Library } from "../../lib/domain";
-import { projectCycle } from "../../lib/replica/projections";
+import { projectBook, projectCycle } from "../../lib/replica/projections";
 import type { QueuedChange } from "./optimistic";
 import { migrateLegacyDrafts } from "./conflicts";
 import { withReplicaLeader } from "./leadership";
@@ -346,17 +346,36 @@ export function createLibraryRuntime(
     },
     async withPendingReading(library: Library): Promise<Library> {
       const cycles = new Map(library.cycles.map((c) => [c.id, c]));
+      const books = new Map(library.books.map((b) => [b.id, b]));
       for (const entry of (await storage.listOutbox()).sort(
         (a, b) => a.order - b.order,
-      ))
-        for (const effect of (entry.command as QueuedChange).effects ?? [])
+      )) {
+        const change = entry.command as QueuedChange;
+        for (const effect of change.effects ?? []) {
           if (
             effect.entity === "library_cycles" &&
             effect.after &&
-            cycles.has(effect.after.id)
+            (cycles.has(effect.after.id) ||
+              (change.body.type === "startReading" &&
+                books.has(effect.after.book_id)))
           )
             cycles.set(effect.after.id, projectCycle(effect.after));
-      return { ...library, cycles: [...cycles.values()] };
+          if (
+            change.body.type === "startReading" &&
+            effect.entity === "library_books" &&
+            effect.after
+          ) {
+            const book = books.get(effect.after.id);
+            if (book && book.version < effect.after.version)
+              books.set(book.id, { ...book, ...projectBook(effect.after) });
+          }
+        }
+      }
+      return {
+        ...library,
+        books: [...books.values()],
+        cycles: [...cycles.values()],
+      };
     },
     async queue(
       path: string,
