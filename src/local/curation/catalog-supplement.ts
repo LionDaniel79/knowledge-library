@@ -7,7 +7,7 @@ import {
 import { withSyncWrite } from "../../server/sync/write";
 import { bookSelect } from "../../server/book-records";
 import { mirrorCover } from "../../server/cover-mirrors";
-import type { Database } from "../../server/library-store";
+import { LibraryError, type Database } from "../../server/library-store";
 import { collectBookReference, type CollectedBook } from "./catalog";
 import { carryCuration } from "../../server/book-curation-history";
 type Provider = "yes24" | "library";
@@ -69,11 +69,20 @@ export async function supplementBook(
     c.kind === "bibliography" &&
     (c.state === "hidden" || (c.value?.coverUrl && c.value.coverUrl !== cover));
   let coverReady = false;
+  let existingCoverReview = false;
   if (book.coverUrl?.startsWith("https://"))
     try {
       await storeCover(db, owner, book.coverUrl);
-    } catch {
-      retry = true;
+    } catch (error) {
+      // Invalid/unsupported images cannot recover by repeating the same URL.
+      // Keep the existing cover and require review; network/server failures
+      // retain the existing backoff instead of being marked successful.
+      if (
+        error instanceof LibraryError &&
+        [400, 404, 413].includes(error.status)
+      )
+        existingCoverReview = true;
+      else retry = true;
     }
   if (
     cover &&
@@ -152,7 +161,7 @@ export async function supplementBook(
     const work = current.enrichment?.catalogSupplement;
     const state = retry
       ? "pending"
-      : records.length && !compatible.length
+      : existingCoverReview || (records.length && !compatible.length)
         ? "review"
         : "complete";
     const enrichment = {
@@ -163,6 +172,9 @@ export async function supplementBook(
               ...work,
               state,
               attempts: (work.attempts ?? 0) + 1,
+              ...(existingCoverReview
+                ? { coverReview: "existing_cover_unavailable" }
+                : {}),
               nextAttemptAt: retry
                 ? Date.now() +
                   Math.min(

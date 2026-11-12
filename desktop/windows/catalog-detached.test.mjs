@@ -28,6 +28,96 @@ const progress = (values = {}) => ({
   ...values,
 });
 
+test("resumes deferred catalog work at its checkpoint without polling or unlimited retries", async (t) => {
+  let now = Date.parse("2026-11-12T00:00:00.000Z");
+  const timers = new Map();
+  const clock = {
+    now: () => now,
+    setTimeout(fn, delay) {
+      const handle = {};
+      timers.set(handle, { fn, delay });
+      return handle;
+    },
+    clearTimeout(handle) {
+      timers.delete(handle);
+    },
+  };
+  const f = fixture(t, { clock });
+  for (let retry = 0; retry < 3; retry++) {
+    f.children
+      .at(-1)
+      .child.finish(
+        progress({
+          checked: 0,
+          completed: 0,
+          retryAt: new Date(now + 60000).toISOString(),
+        }),
+      );
+    await flush();
+    assert.equal(timers.size, 1);
+    const [handle, timer] = [...timers][0];
+    assert.equal(timer.delay, 60000);
+    timers.delete(handle);
+    now += 60000;
+    timer.fn();
+    await flush();
+    assert.equal(f.children.length, retry + 2);
+  }
+  f.children
+    .at(-1)
+    .child.finish(
+      progress({
+        checked: 0,
+        completed: 0,
+        retryAt: new Date(now + 60000).toISOString(),
+      }),
+    );
+  await flush();
+  assert.equal(timers.size, 0);
+  assert.equal(f.controller.status.retryLimitReached, true);
+});
+
+test("invalid retry timestamps cannot schedule work and stopping cancels a valid timer", async (t) => {
+  const timers = new Map();
+  const now = Date.parse("2026-11-12T00:00:00.000Z");
+  const clock = {
+    now: () => now,
+    setTimeout(fn, delay) {
+      const h = {};
+      timers.set(h, { fn, delay });
+      return h;
+    },
+    clearTimeout(h) {
+      timers.delete(h);
+    },
+  };
+  const f = fixture(t, { clock });
+  f.children[0].child.finish(
+    progress({
+      checked: 0,
+      completed: 0,
+      retryAt: "private invalid timestamp",
+    }),
+  );
+  await flush();
+  assert.equal(timers.size, 0);
+  f.notify();
+  await flush();
+  f.children
+    .at(-1)
+    .child.finish(
+      progress({
+        checked: 0,
+        completed: 0,
+        retryAt: new Date(now + 60000).toISOString(),
+      }),
+    );
+  await flush();
+  assert.equal(timers.size, 1);
+  await f.controller.stop();
+  assert.equal(timers.size, 0);
+});
+
 function fixture(t, options = {}) {
   const directory = mkdtempSync(join(tmpdir(), "catalog-detached-"));
   t.after(() => {

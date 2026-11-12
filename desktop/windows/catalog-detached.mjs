@@ -17,6 +17,9 @@ import { startDetachedLogos } from "./logos-detached.mjs";
 
 const MAX_OUTPUT = 64 * 1024;
 const MAX_PASSES = 1000;
+const MAX_RETRIES = 3;
+const MIN_RETRY = 60_000;
+const MAX_RETRY = 7 * 86_400_000;
 
 // The existing collector is deliberately one-shot. It writes a private
 // checkpoint, so this wrapper exposes only its fresh aggregate stats to the
@@ -116,11 +119,21 @@ function lastStats(chunks, overflow) {
       !value ||
       typeof value !== "object" ||
       Array.isArray(value) ||
-      Object.keys(value).sort().join(",") !==
-        "at,checked,completed,failed,pending" ||
+      Object.keys(value)
+        .filter((key) => key !== "retryAt")
+        .sort()
+        .join(",") !== "at,checked,completed,failed,pending" ||
       typeof value.at !== "string" ||
       !Number.isFinite(Date.parse(value.at)) ||
       new Date(value.at).toISOString() !== value.at
+    )
+      return null;
+    if (
+      value.retryAt !== undefined &&
+      (typeof value.retryAt !== "string" ||
+        (value.retryAt !== "" &&
+          (!Number.isFinite(Date.parse(value.retryAt)) ||
+            new Date(value.retryAt).toISOString() !== value.retryAt)))
     )
       return null;
     for (const field of ["checked", "completed", "pending", "failed"])
@@ -138,6 +151,7 @@ function lastStats(chunks, overflow) {
       completed: value.completed,
       pending: value.pending,
       failed: value.failed,
+      retryAt: value.retryAt ?? "",
     };
   } catch {
     return null;
@@ -188,6 +202,7 @@ export function startDetachedCatalog(
   const watchDirectory = options.watch || watch;
   const decrypt = options.unlockProfile || unlockProfile;
   const terminate = options.terminate || terminateCatalog;
+  const clock = options.clock ?? { now: Date.now, setTimeout, clearTimeout };
   const debounceMs = options.debounceMs ?? 200;
   const maxPasses = options.maxPasses ?? MAX_PASSES;
   if (
@@ -228,7 +243,11 @@ export function startDetachedCatalog(
   let child = null,
     watcher,
     debounce,
-    forceStop;
+    forceStop,
+    retryTimer;
+  let retries = 0,
+    retryAt = "",
+    retryLimitReached = false;
   let stopped = false,
     busy = false,
     queued = false,
@@ -244,12 +263,22 @@ export function startDetachedCatalog(
     resolveDone = resolve;
   });
   const snapshot = () => ({
-    state: stopped ? "stopped" : busy ? "running" : failed ? "failed" : "idle",
+    state: stopped
+      ? "stopped"
+      : busy
+        ? "running"
+        : failed
+          ? "failed"
+          : retryTimer !== undefined
+            ? "waiting"
+            : "idle",
     running: child !== null,
     queued,
     passes,
     runs,
     limitReached,
+    retryAt,
+    retryLimitReached,
     totals: { ...totals },
   });
   const report = (event, stats) => {
@@ -274,6 +303,9 @@ export function startDetachedCatalog(
       busy = false;
       queued = false;
       clearTimeout(debounce);
+      clock.clearTimeout(retryTimer);
+      retryTimer = undefined;
+      retryAt = "";
       watcher?.close();
       options.signal?.removeEventListener("abort", stop);
       if (child) {
@@ -302,6 +334,9 @@ export function startDetachedCatalog(
   };
   const begin = () => {
     if (stopped) return;
+    clock.clearTimeout(retryTimer);
+    retryTimer = undefined;
+    retryAt = "";
     busy = true;
     failed = false;
     limitReached = false;
@@ -342,6 +377,28 @@ export function startDetachedCatalog(
       }
       limitReached = Boolean(progressing && passes === maxPasses);
       busy = false;
+      const delay = Date.parse(stats?.retryAt) - clock.now();
+      const resumable =
+        stats &&
+        !failed &&
+        !limitReached &&
+        Number.isFinite(delay) &&
+        delay > 0 &&
+        delay <= MAX_RETRY;
+      retryLimitReached = Boolean(resumable && retries >= MAX_RETRIES);
+      if (resumable && !retryLimitReached && !queued) {
+        retryAt = stats.retryAt;
+        retryTimer = clock.setTimeout(
+          () => {
+            retryTimer = undefined;
+            retries++;
+            begin();
+          },
+          Math.max(MIN_RETRY, delay),
+        );
+        report("waiting");
+        return;
+      }
       report("waiting");
       if (queued) {
         queued = false;
@@ -387,6 +444,8 @@ export function startDetachedCatalog(
       const next = notificationFingerprint(notification);
       if (next === null || next === fingerprint) return;
       fingerprint = next;
+      retries = 0;
+      retryLimitReached = false;
       if (busy) {
         queued = true;
         report("queued");
