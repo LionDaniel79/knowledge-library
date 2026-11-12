@@ -240,7 +240,7 @@ it("discovers title/author/publisher candidates with quota reservations and reus
               publisher: book.publisher,
               cover: "",
               goodsSortNm: "eBook",
-              publicationDate: "2020",
+              publishDate: "2020",
               edition: "Second edition",
             },
           ],

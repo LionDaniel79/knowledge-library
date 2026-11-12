@@ -28,6 +28,94 @@ const titleIdentity = (a: string, b: string) =>
   text(a) === text(b) &&
   JSON.stringify(a.normalize("NFKC").match(/\d+/g)) ===
     JSON.stringify(b.normalize("NFKC").match(/\d+/g));
+/** Same work may use a different medium/year. Ambiguous equal-score works stay in review. */
+export function decideAutomaticCandidate(
+  book: LogosCompletionBook,
+  records: LogosCandidate[],
+) {
+  const words = (s: string) =>
+    s
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/(?:지음|엮음|옮김|저자)/g, " ")
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  const author = (a: string, b: string) =>
+    text(a) === text(b) ||
+    words(a).sort().join(" ") === words(b).sort().join(" ");
+  const ranked = records
+    .filter(
+      (r) =>
+        r.facts?.title &&
+        (!r.isbn || !r.facts.isbn || isbn13(r.isbn) === isbn13(r.facts.isbn)),
+    )
+    .map((r) => {
+      const a = text(book.title),
+        b = text(r.facts.title);
+      const title =
+        a === b ||
+        (Math.min(a.length, b.length) > 15 &&
+          (a.startsWith(b) || b.startsWith(a)) &&
+          Math.min(a.length, b.length) / Math.max(a.length, b.length) > 0.85);
+      const volumes = (s: string) =>
+        JSON.stringify(
+          s
+            .normalize("NFKC")
+            .match(/\d+|\b[IVX]{1,5}\b|[상중하](?=권|\s*\))/g) ?? [],
+        );
+      const hasAuthor = !!book.author.trim() && !!r.facts.author?.trim(),
+        sameAuthor = hasAuthor && author(book.author, r.facts.author);
+      const pub =
+        !!book.publisher.trim() &&
+        text(book.publisher) === text(r.facts.publisher ?? "");
+      const sameIsbn =
+        !!isbn13(book.isbn) && isbn13(book.isbn) === isbn13(r.facts.isbn ?? "");
+      return {
+        r,
+        score:
+          !title ||
+          volumes(book.title) !== volumes(r.facts.title) ||
+          (hasAuthor && !sameAuthor)
+            ? 0
+            : sameIsbn
+              ? 120
+              : sameAuthor
+                ? 100 + (pub ? 10 : 0)
+                : pub
+                  ? 90
+                  : 0,
+      };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0],
+    second = ranked[1];
+  const sameEdition =
+    best &&
+    isbn13(book.isbn) &&
+    isbn13(book.isbn) === isbn13(best.r.facts.isbn ?? "");
+  const tie =
+    best &&
+    second &&
+    best.score - second.score < 5 &&
+    !(isbn13(best.r.isbn) && isbn13(best.r.isbn) === isbn13(second.r.isbn));
+  return best && !tie
+    ? {
+        state: "certain" as const,
+        record: best.r,
+        candidates: ranked.map((x) => x.r),
+        alternateEdition: !sameEdition,
+        reason: sameEdition
+          ? "동일 ISBN 및 저작물 일치"
+          : "제목과 저자 또는 출판사 일치 · 대체 판본 자료",
+      }
+    : {
+        state: ranked.length ? ("review" as const) : ("missing" as const),
+        record: undefined,
+        candidates: ranked.map((x) => x.r),
+        alternateEdition: true,
+        reason: "저작물 근거 부족 또는 동점 후보",
+      };
+}
 export function decideLogosCandidate(
   book: LogosCompletionBook,
   records: LogosCandidate[],

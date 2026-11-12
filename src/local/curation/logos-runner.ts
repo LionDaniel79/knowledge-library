@@ -25,6 +25,7 @@ export async function runLogosCompletion(options: {
     book: LogosCompletionBook,
     decision: Decision,
   ) => Promise<"complete" | "stale" | "excluded" | "cover_failed">;
+  decide?: typeof decideLogosCandidate;
 }) {
   if (
     !options.owner ||
@@ -174,7 +175,10 @@ export async function runLogosCompletion(options: {
         await atomicWriteJson(path, checkpoint);
       }
       stats.considered++;
-      const decision = decideLogosCandidate(book, checkpoint.records);
+      const decision = (options.decide ?? decideLogosCandidate)(
+        book,
+        checkpoint.records,
+      );
       stats[decision.state]++;
       if (options.apply && !checkpoint.applied) {
         const state = await options.applyDecision(book, decision);

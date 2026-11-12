@@ -13,6 +13,7 @@ import { collectBookReference } from "../local/curation/catalog";
 import { isbn13 } from "../lib/bibliography";
 import { CatalogQuotaError } from "../local/curation/api-quota";
 import { logosClassification } from "../lib/logos-classification";
+import { applyAutomaticBibliography } from "./auto-bibliography";
 
 /** Trusted local operator configuration; never accept this value from a web request. */
 export async function resolveLogosOwner(
@@ -127,6 +128,27 @@ export async function applyLogosCompletion(
     throw new LibraryError(403, "로고스 보완 등록이 아직 허용되지 않았습니다.");
   if (!owner || owner.length > 128)
     throw new LibraryError(401, "로그인이 필요합니다.");
+  if ("reason" in decision && decision.state === "certain" && decision.record) {
+    try {
+      const result = await applyAutomaticBibliography(
+        db,
+        owner,
+        book.id,
+        book.version,
+        decision.record,
+        download,
+      );
+      return result.state === "applied" || result.state === "unchanged"
+        ? "complete"
+        : result.state === "stale"
+          ? "stale"
+          : "excluded";
+    } catch (e) {
+      if (e instanceof LibraryError && [401, 403, 429].includes(e.status))
+        throw e;
+      return "cover_failed";
+    }
+  }
   async function eligible(executor: Executor, lock = false) {
     const row = (
       await executor.query(

@@ -3,6 +3,7 @@ import { libraryRequest } from "@/client/replica/request";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
+import { AutoBibliographyPanel } from "./auto-bibliography-panel";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { useReplicaDataOptional } from "./replica/provider";
 import { writeStartup } from "@/client/replica/startup-cache";
@@ -1558,6 +1559,13 @@ export function LibraryApp({
             </div>
           </div>
           <CatalogAttribution value={detailBook.enrichment?.catalogSelection} />
+          {!preview && (
+            <AutoBibliographyPanel
+              key={detailBook.id + ":auto-bibliography"}
+              bookId={detailBook.id}
+              onChanged={refresh}
+            />
+          )}
           <details className="book-evidence">
             <summary>근거 보기</summary>
             <dl>

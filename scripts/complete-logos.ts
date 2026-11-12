@@ -15,6 +15,7 @@ import { logosLookup } from "../src/local/curation/logos-providers";
 import { runLogosCompletion } from "../src/local/curation/logos-runner";
 import { readCoverCapacity } from "../src/server/book-covers";
 import { logosClassification } from "../src/lib/logos-classification";
+import { decideAutomaticCandidate } from "../src/local/curation/logos-discovery";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -112,6 +113,7 @@ if (args.includes("--help")) {
         )
         .map(logosCompletionBook);
       const stats = await runLogosCompletion({
+        decide: decideAutomaticCandidate,
         owner,
         dir,
         books,
