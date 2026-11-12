@@ -66,6 +66,7 @@ function snapshot(value: unknown): Snapshot | null {
 export function BookRecommendations(props: {
   ownerId: string;
   revision?: unknown;
+  excludedBookIds?: readonly string[];
   onOpenBook: (id: string) => void;
 }) {
   // A different signed-in owner must never briefly see the previous owner's cache.
@@ -74,10 +75,12 @@ export function BookRecommendations(props: {
 function OwnerRecommendations({
   ownerId,
   revision,
+  excludedBookIds = [],
   onOpenBook,
 }: {
   ownerId: string;
   revision?: unknown;
+  excludedBookIds?: readonly string[];
   onOpenBook: (id: string) => void;
 }) {
   const id = useId();
@@ -257,7 +260,10 @@ function OwnerRecommendations({
     if (!requestId.current) rememberRequest(crypto.randomUUID());
     void load("POST");
   }
-  const items = saved.recommendations.filter((r) => r.format === format);
+  const excluded = new Set(excludedBookIds);
+  const items = saved.recommendations.filter(
+    (r) => r.format === format && !excluded.has(r.bookId),
+  );
   const index = items.length ? indices[format] % items.length : 0;
   const recommendation = items[index];
   const book =

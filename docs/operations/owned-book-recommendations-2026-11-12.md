@@ -15,3 +15,7 @@ Migration042 is additive and rerunnable, with minimal SELECT/INSERT/UPDATE runti
 Validation:835 unit tests passed,4 existing conditional skips;16 focused browser tests passed. Typecheck, production build and formatting passed. Tests include mixed-format quotas, stale/foreign/noncandidate IDs, shared budgets, replay/lease uncertainty,30-day boundaries, changed eligibility, offline/cache recovery and home-only calendar replacement. Independent review identified mixed-format starvation and failed-request cache hydration; both were corrected and regression-tested.
 
 No live paid OpenAI call was made. Provider tests use synthetic responses and metadata only. Real provider/model availability, live recommendation quality and physical phone/tablet interaction were not independently exercised. Remote GitHub CI remains subject to the existing account allowance.
+
+## Completed-book visibility guard
+
+The candidate, final-publication and saved-result server queries exclude all completed/reading cycles regardless of completion date. Regression tests now explicitly cover old and undated completions. The home carousel also receives the device's completed ID summary and current local cycles; these IDs are filtered immediately from visible cached/server recommendations while unsent changes synchronize. This does not issue another paid request or change reading records. Twelve related unit tests and17 browser tests passed; typecheck/build passed.

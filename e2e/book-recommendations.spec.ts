@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   bundle = (
     await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {BookRecommendations} from './src/components/book-recommendations';import {LibraryApp} from './src/components/library-app';const root=createRoot(document.getElementById('root'));window.renderRecommendations=(owner,revision)=>root.render(<BookRecommendations ownerId={owner} revision={revision} onOpenBook={id => document.getElementById('opened').textContent = id}/>);if(window.app)root.render(<LibraryApp initial={window.fixture} today="2026-11-12" ownerId="owner-a" preview/>);else window.renderRecommendations(window.owner ?? "owner-a",0);`,
+        contents: `import {createRoot} from 'react-dom/client';import {BookRecommendations} from './src/components/book-recommendations';import {LibraryApp} from './src/components/library-app';const root=createRoot(document.getElementById('root'));window.renderRecommendations=(owner,revision,excludedBookIds=[])=>root.render(<BookRecommendations ownerId={owner} revision={revision} excludedBookIds={excludedBookIds} onOpenBook={id => document.getElementById('opened').textContent = id}/>);if(window.app)root.render(<LibraryApp initial={window.fixture} today="2026-11-12" ownerId="owner-a" preview/>);else window.renderRecommendations(window.owner ?? "owner-a",0);`,
         resolveDir: process.cwd(),
         loader: "tsx",
       },
@@ -484,4 +484,40 @@ test("failed latest request still applies canonical filtering of read or deleted
   expect(cached.recommendations).toEqual([]);
   expect(cached.updatedAt).toBe(saved.updatedAt);
   expect(methods).toEqual(["GET"]);
+});
+
+test("local completed and reading IDs hide stale cached/server recommendations immediately without paid refresh", async ({
+  page,
+}) => {
+  let posts = 0;
+  await page.route("https://library.test/api/book-recommendations", (route) => {
+    if (route.request().method() === "POST") posts++;
+    return route.fulfill({ json: saved });
+  });
+  await mount(page);
+  await expect(
+    page.getByRole("button", { name: "종이 첫 책 상세 보기" }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (window as any).renderRecommendations("owner-a", 0, [
+      "recommended-0",
+      "recommended-1",
+    ]),
+  );
+  await expect(
+    page.getByRole("button", { name: "종이 첫 책 상세 보기" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "종이 다음 책 상세 보기" }),
+  ).toHaveCount(0);
+  await page.evaluate(() =>
+    (window as any).renderRecommendations("owner-a", 1, [
+      "recommended-0",
+      "recommended-1",
+    ]),
+  );
+  await expect(
+    page.getByRole("button", { name: "종이 첫 책 상세 보기" }),
+  ).toHaveCount(0);
+  expect(posts).toBe(0);
 });
