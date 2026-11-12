@@ -39,6 +39,14 @@ const record: any = {
   toc: ["Chapter one"],
 };
 it("accepts alternate print editions but blocks author/volume conflicts and tied editions", () => {
+  expect(
+    decideAutomaticCandidate(source, [
+      {
+        ...record,
+        facts: { ...record.facts, title: source.title + " Study Guide" },
+      },
+    ]).state,
+  ).toBe("missing");
   expect(decideAutomaticCandidate(source, [record])).toMatchObject({
     state: "certain",
     alternateEdition: true,
@@ -109,6 +117,18 @@ it("stores provenance, keeps/undoes selected fields safely, preserves later read
       async () => image,
     );
     expect(result.state).toBe("applied");
+    expect(
+      (
+        await applyAutomaticBibliography(
+          f.db,
+          "owner",
+          b.id,
+          2,
+          { ...record, url: record.url + "4" },
+          async () => image,
+        )
+      ).state,
+    ).toBe("protected");
     let current = await readAutomaticBibliography(f.db, "owner", b.id);
     expect(current.application.alternateEdition).toBe(true);
     const kept = await decideAutomaticBibliography(f.db, "owner", {

@@ -97,6 +97,7 @@ export async function applyAutomaticBibliography(
     return { state: "stale" };
   if (
     initial.enrichment?.rejectedBibliography?.includes(key) ||
+    initial.enrichment?.autoBibliography?.fields?.length > 0 ||
     initial.enrichment?.autoBibliography?.fingerprint === key
   )
     return { state: "protected" };
@@ -131,7 +132,10 @@ export async function applyAutomaticBibliography(
     )
       return { state: "protected" };
     if (!b || Number(b.version) !== version) return { state: "stale" };
-    if (b.enrichment?.rejectedBibliography?.includes(key))
+    if (
+      b.enrichment?.rejectedBibliography?.includes(key) ||
+      b.enrichment?.autoBibliography?.fields?.length > 0
+    )
       return { state: "protected" };
     if (
       b.sourceData?.app === "Local PDF" &&

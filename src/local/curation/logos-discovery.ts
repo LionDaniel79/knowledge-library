@@ -51,11 +51,7 @@ export function decideAutomaticCandidate(
     .map((r) => {
       const a = text(book.title),
         b = text(r.facts.title);
-      const title =
-        a === b ||
-        (Math.min(a.length, b.length) > 15 &&
-          (a.startsWith(b) || b.startsWith(a)) &&
-          Math.min(a.length, b.length) / Math.max(a.length, b.length) > 0.85);
+    const title = a === b;
       const volumes = (s: string) =>
         JSON.stringify(
           s
