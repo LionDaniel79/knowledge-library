@@ -532,14 +532,46 @@ export function createLibraryStore(db: Database) {
             .object({
               bookId: z.string().uuid(),
               startedOn: dateInput.nullable().default(null),
+              completedWithoutDates: z.boolean().default(false),
             })
             .parse(cmd.payload);
           const book = await ownBook(p.bookId);
+          const existing = p.completedWithoutDates
+            ? (
+                await tx.query(
+                  "SELECT " +
+                    cycleSelect +
+                    " FROM library_cycles WHERE owner_id=$1 AND book_id=$2 ORDER BY (status='completed') DESC FOR UPDATE",
+                  [owner, p.bookId],
+                )
+              ).rows
+            : [];
+          if (
+            p.completedWithoutDates &&
+            !existing.some((c) => c.status === "completed") &&
+            existing.some((c) => c.status === "reading")
+          )
+            throw new LibraryError(
+              409,
+              "진행 중인 독서 기록은 기존 완독 기능으로 완료해 주세요. 날짜와 진행 기록은 유지됩니다.",
+            );
+          const completed = existing.find((c) => c.status === "completed");
+          if (completed)
+            throw new LibraryError(
+              409,
+              "이미 완독 기록이 있습니다. 기존 기록은 유지됩니다.",
+            );
           after = (
             await tx.query(
-              "INSERT INTO library_cycles(id,owner_id,book_id,status,started_on) VALUES($1,$2,$3,'reading',$4) RETURNING " +
+              "INSERT INTO library_cycles(id,owner_id,book_id,status,started_on) VALUES($1,$2,$3,$4,$5) RETURNING " +
                 cycleSelect,
-              [id, owner, p.bookId, p.startedOn],
+              [
+                id,
+                owner,
+                p.bookId,
+                p.completedWithoutDates ? "completed" : "reading",
+                p.completedWithoutDates ? null : p.startedOn,
+              ],
             )
           ).rows[0];
           if (book.bookshelves.includes("책 대기열")) {

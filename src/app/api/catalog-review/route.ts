@@ -2,6 +2,7 @@ import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
 import { failure } from "@/server/http";
 import { validateWriteOrigin } from "@/server/access";
+import { catalogReviewSummary } from "@/server/catalog-review-summary";
 import {
   readCatalogReviews,
   decideCatalogReview,
@@ -9,6 +10,11 @@ import {
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
+    if (new URL(request.url).searchParams.get("summary") === "1")
+      return Response.json(
+        await catalogReviewSummary(database, await requireOwner()),
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
     return Response.json(
       await readCatalogReviews(
         database,

@@ -181,7 +181,14 @@ export function LibraryForm({
       };
     } else if (editor.kind === "start") {
       type = "startReading";
-      payload = { bookId: editor.book.id, startedOn: text("date") || null };
+      const completedWithoutDates =
+        (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
+        "undated";
+      payload = {
+        bookId: editor.book.id,
+        startedOn: completedWithoutDates ? null : text("date") || null,
+        ...(completedWithoutDates ? { completedWithoutDates: true } : {}),
+      };
     } else {
       type =
         editor.kind === "progress"
@@ -731,6 +738,17 @@ export function LibraryForm({
                   ? "저장 안내 확인"
                   : "저장하기"}
           </button>
+          {editor.kind === "start" && (
+            <button
+              type="submit"
+              name="completion"
+              value="undated"
+              className="secondary"
+              disabled={busy || topicBusy || conflict}
+            >
+              완독
+            </button>
+          )}
         </footer>
       </form>
       {confirmDelete && (
