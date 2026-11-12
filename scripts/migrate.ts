@@ -69,7 +69,13 @@ try {
     await readFile("db/040_desktop_pdf_purge_scope_evidence.sql", "utf8"),
   );
   await client.query(await readFile("db/041_logos_format.sql", "utf8"));
+  await client.query(await readFile("db/042_book_recommendations.sql", "utf8"));
   if (role) {
+    await client.query(
+      'GRANT SELECT,INSERT,UPDATE ON library_book_recommendations,library_book_recommendation_requests TO "' +
+        role +
+        '"',
+    );
     await client.query(
       'REVOKE ALL ON library_desktop_purge_scope_evidence FROM "' + role + '"',
     );

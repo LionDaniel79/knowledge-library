@@ -5915,3 +5915,137 @@ textarea {
   grid-column: 1 / -1;
   margin: 0;
 }
+
+.book-recommendations {
+  min-width: 0;
+  align-self: start;
+  padding: 25px;
+}
+.book-recommendations .section-heading {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.book-recommendations .section-heading h2 {
+  font-size: 20px;
+  line-height: 1.4;
+}
+.recommendation-intro,
+.recommendation-basis,
+.recommendation-date {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.recommendation-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 20px 0;
+}
+.recommendation-tabs button {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  padding: 9px 4px;
+  font-size: 13px;
+}
+.recommendation-tabs button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper, #fff);
+  border-color: var(--ink);
+}
+.recommendation-carousel {
+  touch-action: pan-y;
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+.recommendation-book {
+  text-align: center;
+}
+.recommendation-book-link {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  max-width: 100%;
+}
+.recommendation-book-link .book-cover,
+.recommendation-empty .book-cover {
+  width: 135px;
+  height: 188px;
+  flex: none;
+  margin: 0 auto 10px;
+  user-select: none;
+}
+.recommendation-book-link h3 {
+  font-size: 17px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.recommendation-book-link p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+.recommendation-book-link .recommendation-reason {
+  width: 100%;
+  margin: 18px 0 8px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.recommendation-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 15px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.recommendation-empty {
+  padding: 8px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.recommendation-basis {
+  margin: 20px 0 5px;
+  font-size: 11px;
+}
+.recommendation-date {
+  font-size: 11px;
+  margin: 0 0 14px;
+}
+.recommendation-error,
+.recommendation-status {
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.recommendation-error {
+  color: #9e3f32;
+}
+.recommendation-refresh {
+  width: 100%;
+  justify-content: center;
+}
+.book-recommendations button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+@media (max-width: 600px) {
+  .book-recommendations {
+    padding: 20px;
+  }
+}

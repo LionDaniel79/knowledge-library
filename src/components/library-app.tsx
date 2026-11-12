@@ -45,6 +45,7 @@ import { BookCover } from "./book-cover";
 import { QueuedBooks, RecentCompletedBooks } from "./dashboard-books";
 import { ReadingCarousel } from "./reading-carousel";
 import { ReadingCalendar } from "./reading-calendar";
+import { BookRecommendations } from "./book-recommendations";
 import { MonthCompletedBooks } from "./month-completed-books";
 import { LibraryForm, type Editor } from "./library-forms";
 import { Modal } from "./modal";
@@ -1004,15 +1005,10 @@ export function LibraryApp({
                         )}
                       </section>
                     </div>
-                    <ReadingCalendar
-                      library={data}
-                      month={month}
-                      setMonth={setMonth}
-                      selected={selected}
-                      setSelected={setSelected}
-                      onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                    <BookRecommendations
+                      revision={data}
+                      ownerId={ownerId}
                       onOpenBook={setDetail}
-                      today={today}
                     />
                   </div>
                   <QueuedBooks library={data} renderBook={bookCard} />
