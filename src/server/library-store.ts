@@ -336,6 +336,7 @@ export function createLibraryStore(db: Database) {
         let before: unknown = null;
         let after: unknown;
         let changedBook: MutationResult["book"];
+        let changedBooks: MutationResult["changedBooks"];
         async function ownBook(bookId: string) {
           const row = (
             await tx.query(
@@ -352,6 +353,8 @@ export function createLibraryStore(db: Database) {
           const p = z
             .object({ name: z.string().trim().min(1).max(80) })
             .parse(cmd.payload);
+          if (p.name === "미분류")
+            throw new LibraryError(400, "미분류는 기본 상태입니다.");
           if (defaultShelves.includes(p.name))
             throw new LibraryError(409, "이미 있는 책장입니다.");
           const existing = await tx.query(
@@ -366,6 +369,66 @@ export function createLibraryStore(db: Database) {
               [id, owner, p.name],
             )
           ).rows[0];
+        } else if (cmd.type === "deleteShelf") {
+          const p = z
+            .object({ name: z.string().trim().min(1).max(80) })
+            .parse(cmd.payload);
+          if (defaultShelves.includes(p.name) || p.name === "미분류")
+            throw new LibraryError(
+              400,
+              "기본 책장과 미분류는 삭제할 수 없습니다.",
+            );
+          const shelf = (
+            await tx.query(
+              "DELETE FROM library_shelves WHERE owner_id=$1 AND name=$2 RETURNING id,name",
+              [owner, p.name],
+            )
+          ).rows[0];
+          if (!shelf) throw new LibraryError(404, "책장을 찾을 수 없습니다.");
+          id = shelf.id;
+          before = shelf;
+          after = null;
+          changedBooks = [];
+          const books = (
+            await tx.query(
+              "SELECT " +
+                bookSelect +
+                " FROM library_books WHERE owner_id=$1 AND $2=ANY(bookshelves) ORDER BY id FOR UPDATE",
+              [owner, p.name],
+            )
+          ).rows;
+          for (const book of books) {
+            const updated = (
+              await tx.query(
+                "UPDATE library_books SET bookshelves=array_remove(bookshelves,$3),version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING " +
+                  bookSelect,
+                [owner, book.id, p.name],
+              )
+            ).rows[0];
+            await carryCuration(
+              tx,
+              owner,
+              book.id,
+              String(book.version),
+              String(updated.version),
+            );
+            await tx.query(
+              "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",
+              [
+                randomUUID(),
+                owner,
+                book.id,
+                cmd.type,
+                JSON.stringify(book),
+                JSON.stringify(updated),
+              ],
+            );
+            changedBooks.push({
+              id: updated.id,
+              version: updated.version,
+              bookshelves: updated.bookshelves,
+            });
+          }
         } else if (cmd.type === "addBook" || cmd.type === "editBook") {
           const p = bookInput.parse(cmd.payload);
           if (p.coverUrl.startsWith("/api/book-covers/")) {
@@ -861,6 +924,7 @@ export function createLibraryStore(db: Database) {
           id,
           version,
           ...(changedBook ? { book: changedBook } : {}),
+          ...(changedBooks ? { changedBooks } : {}),
         };
         await tx.query(
           "UPDATE library_operations SET result=$3 WHERE owner_id=$1 AND request_id=$2",

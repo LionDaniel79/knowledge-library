@@ -6049,3 +6049,97 @@ textarea {
     padding: 20px;
   }
 }
+
+/* Bookshelf membership dropdown. */
+.shelf-dropdown {
+  position: relative;
+  padding: 12px;
+}
+.shelf-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.shelf-dropdown-trigger > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shelf-dropdown-panel {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 6px 20px #24332a0d;
+}
+.shelf-dropdown-search {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.shelf-dropdown-search input {
+  min-width: 0;
+  flex: 1;
+  width: 0;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  font-size: 16px;
+}
+.shelf-dropdown-search button {
+  flex-shrink: 0;
+  min-width: 58px;
+}
+.shelf-dropdown-all {
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.shelf-dropdown-options {
+  max-height: min(280px, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.shelf-dropdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px;
+}
+.shelf-dropdown-row label {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.shelf-dropdown-row span {
+  overflow-wrap: anywhere;
+}
+.shelf-dropdown-delete {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+}
+.shelf-dropdown-delete:hover {
+  color: #a42a2a;
+  background: #fff0f0;
+}

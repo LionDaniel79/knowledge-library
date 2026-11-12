@@ -224,19 +224,32 @@ test("preserves shelf selection after a conflicting save and explicit comparison
   await page
     .getByRole("button", { name: "질문으로 살아가는 시간", exact: true })
     .click();
-  await page.getByLabel("책 대기열", { exact: true }).check();
-  await page.getByRole("button", { name: "책장 선택 저장" }).click();
-  await expect(page.getByLabel("책 대기열", { exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "책장 선택", exact: true }).click();
+  await page.getByRole("checkbox", { name: "책 대기열", exact: true }).check();
+  await page
+    .locator(".shelf-picker")
+    .getByRole("button", { name: "완료", exact: true })
+    .click();
+  await expect(
+    page.getByRole("checkbox", { name: "책 대기열", exact: true }),
+  ).toBeChecked();
   await expect(page.getByRole("alert")).toContainText("변경되었습니다");
   await expect(
-    page.getByRole("button", { name: "책장 선택 저장" }),
+    page
+      .locator(".shelf-picker")
+      .getByRole("button", { name: "완료", exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("button", { name: "최신 책장을 확인했습니다. 내 선택 유지" })
     .click();
-  await page.getByRole("button", { name: "책장 선택 저장" }).click();
+  await page
+    .locator(".shelf-picker")
+    .getByRole("button", { name: "완료", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "책장 선택 저장" }),
+    page
+      .locator(".shelf-picker")
+      .getByRole("button", { name: "완료", exact: true }),
   ).toHaveCount(0);
   expect(posts).toBe(2);
 });

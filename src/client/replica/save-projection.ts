@@ -64,6 +64,19 @@ export function projectLibrarySave(
       ...data,
       shelves: [...new Set([...(data.shelves ?? []), p.name.trim()])],
     };
+  if (command.type === "deleteShelf") {
+    const changed = new Map(result.changedBooks?.map((b) => [b.id, b]));
+    return {
+      ...data,
+      shelves: data.shelves?.filter((s) => s !== p.name.trim()),
+      books: data.books.map((book) => {
+        const patch = changed.get(book.id);
+        return patch && book.version < patch.version
+          ? { ...book, ...patch }
+          : book;
+      }),
+    };
+  }
   if (command.type === "startReading")
     return {
       ...data,

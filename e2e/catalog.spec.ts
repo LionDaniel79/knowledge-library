@@ -54,6 +54,7 @@ test("book sorting, editor and shelves preserve existing bibliographic fields", 
   await expect(
     provenance.getByText("분류 출처", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "책장 선택", exact: true }).click();
   await expect(page.getByLabel("책 대기열", { exact: true })).toBeVisible();
   await expect(
     page.getByLabel("내 인생 최고의 책들", { exact: true }),
@@ -71,6 +72,7 @@ test("book sorting, editor and shelves preserve existing bibliographic fields", 
   await page
     .getByRole("combobox", { name: "책 분야", exact: true })
     .selectOption("100");
+  await page.getByRole("button", { name: "책장 선택", exact: true }).click();
   await page.getByLabel("책 대기열", { exact: true }).check();
   await expect(page.getByLabel("종이책", { exact: true })).toBeChecked();
 });

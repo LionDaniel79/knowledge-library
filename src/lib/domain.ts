@@ -153,6 +153,7 @@ export interface MutationResult {
   id: string;
   version: number;
   book?: Pick<Book, "id" | "version" | "bookshelves">;
+  changedBooks?: Pick<Book, "id" | "version" | "bookshelves">[];
 }
 export function validDate(v: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
@@ -261,6 +262,7 @@ export const commandInput = z.object({
     "addBook",
     "editBook",
     "createShelf",
+    "deleteShelf",
     "startReading",
     "updateProgress",
     "completeReading",

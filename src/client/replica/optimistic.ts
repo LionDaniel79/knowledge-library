@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defaultShelves } from "../../lib/catalog";
 import { noteContextId } from "../../lib/note-context";
 import { bookDeletionInput } from "../../lib/book-deletion";
 import { introductionSchema } from "../../lib/book-introduction";
@@ -304,9 +305,60 @@ export async function prepareOptimistic(
       }
     } else if (cmd.type === "createShelf") {
       const name = z.string().trim().min(1).max(80).parse(p.name);
+      if (name === "미분류")
+        throw new ReplicaQueryError(400, "미분류는 기본 상태입니다.");
       if ((await repository.shelves()).includes(name))
         throw new ReplicaQueryError(409, "이미 있는 책장입니다.");
       put("library_shelves", { id, name, created_at: at });
+    } else if (cmd.type === "deleteShelf") {
+      const name = z.string().trim().min(1).max(80).parse(p.name);
+      if (defaultShelves.includes(name) || name === "미분류")
+        throw new ReplicaQueryError(
+          400,
+          "기본 책장과 미분류는 삭제할 수 없습니다.",
+        );
+      const shelf = (await repository.all("library_shelves")).find(
+        (s) => s.name === name,
+      );
+      if (!shelf) throw new ReplicaQueryError(404, "책장을 찾을 수 없습니다.");
+      entityId = shelf.id;
+      body.entityId = shelf.id;
+      base = shelf;
+      remove("library_shelves", shelf);
+      put("library_revisions", {
+        id: body.requestId,
+        entity_id: shelf.id,
+        action: cmd.type,
+        before_data: shelf,
+        after_data: null,
+        created_at: at,
+      });
+      const changedBooks = [];
+      const books = (await repository.all("library_books"))
+        .filter((b) => b.bookshelves?.includes(name))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      for (const [i, book] of books.entries()) {
+        const updated = {
+          ...book,
+          bookshelves: book.bookshelves.filter((s: string) => s !== name),
+          version: book.version + 1,
+        };
+        put("library_books", updated);
+        put("library_revisions", {
+          id: noteContextId(body.requestId, "revision-book", i),
+          entity_id: book.id,
+          action: cmd.type,
+          before_data: book,
+          after_data: updated,
+          created_at: at,
+        });
+        changedBooks.push({
+          id: book.id,
+          version: updated.version,
+          bookshelves: updated.bookshelves,
+        });
+      }
+      result = { id: shelf.id, version: 1, changedBooks };
     } else if (cmd.type === "startReading") {
       const book = await own("library_books", p.bookId);
       if (p.completedWithoutDates) {

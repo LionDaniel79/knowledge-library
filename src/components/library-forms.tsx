@@ -45,6 +45,7 @@ export function LibraryForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [topicBusy, setTopicBusy] = useState(false);
+  const [shelfBusy, setShelfBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const book = editor.kind === "book" ? editor.book : undefined;
   const [editBase, setEditBase] = useState(() =>
@@ -115,7 +116,7 @@ export function LibraryForm({
       : [];
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (uploading || topicBusy || busy) return;
+    if (uploading || topicBusy || shelfBusy || busy) return;
     if (preview) {
       setError(
         "미리보기에서는 저장하지 않습니다. 내 서재에 로그인하면 사용할 수 있습니다.",
@@ -268,13 +269,13 @@ export function LibraryForm({
           : ""
       }
       anchor={editor.kind === "note" ? editor.anchor : undefined}
-      canClose={!busy && !topicBusy}
+      canClose={!busy && !topicBusy && !shelfBusy}
       onClose={() => {
-        if (!busy && !topicBusy) onClose();
+        if (!busy && !topicBusy && !shelfBusy) onClose();
       }}
     >
       <form ref={formRef} className="editor-form" onSubmit={submit}>
-        <fieldset className="editor-fields" disabled={busy}>
+        <fieldset className="editor-fields" disabled={busy || shelfBusy}>
           {preview && (
             <div className="notice">
               예시 화면입니다. 입력을 살펴볼 수 있으며 실제 서재에는 저장되지
@@ -446,7 +447,35 @@ export function LibraryForm({
                 library={library}
                 selected={shelves}
                 onChange={setShelves}
-                onSave={onSave}
+                onSave={async (command) => {
+                  setShelfBusy(true);
+                  try {
+                    await onSave(command);
+                    if (book && command.type === "deleteShelf") {
+                      const name = (command.payload as { name: string }).name;
+                      const baseShelves = editBase?.bookshelves ?? [];
+                      if (baseShelves.includes(name)) {
+                        // Only the acknowledged shelf removal changed the saved base.
+                        // Keep other base fields and all user input for conflict checks.
+                        setBaseVersion(
+                          (version) => (version ?? book.version) + 1,
+                        );
+                        setEditBase((base) =>
+                          base?.formats
+                            ? {
+                                ...base,
+                                bookshelves: baseShelves.filter(
+                                  (shelf) => shelf !== name,
+                                ),
+                              }
+                            : base,
+                        );
+                      }
+                    }
+                  } finally {
+                    setShelfBusy(false);
+                  }
+                }}
                 preview={preview}
               />
               {!!duplicates.length && (
@@ -724,12 +753,15 @@ export function LibraryForm({
           <button
             type="button"
             className="secondary"
-            disabled={busy || topicBusy}
+            disabled={busy || topicBusy || shelfBusy}
             onClick={onClose}
           >
             취소
           </button>
-          <button className="primary" disabled={busy || topicBusy || conflict}>
+          <button
+            className="primary"
+            disabled={busy || topicBusy || shelfBusy || conflict}
+          >
             {topicBusy
               ? "주제 생성 중…"
               : busy
