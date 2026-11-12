@@ -33,6 +33,9 @@ it("includes every owner application table and its complete safe column set", as
     )
   ).rows;
   const serverOnly = new Set([
+    // Recommendation leases/candidate IDs stay server-side; only9 hydrated results use the dedicated API.
+    "library_book_recommendations",
+    "library_book_recommendation_requests",
     "library_mcp_codes",
     "library_mcp_tokens",
     "library_assist_workers",
@@ -89,6 +92,12 @@ it("strips server credential columns and rejects client injection and unknown fi
     projectSyncRow("library_books", { id: "b", new_unreviewed_field: "value" }),
   ).toThrow();
   expect(() => validatePublicRow("library_mcp_tokens" as any, {})).toThrow();
+  expect(() =>
+    validatePublicRow("library_book_recommendation_requests" as any, {}),
+  ).toThrow();
+  expect(() =>
+    validatePublicRow("library_book_recommendations" as any, {}),
+  ).toThrow();
 });
 it("keeps composite keys, owner-only keys, revision precision and cursor ownership", () => {
   expect(
