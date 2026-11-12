@@ -7,7 +7,7 @@ import {
   librarySearchTerm,
 } from "../../server/catalog-provider";
 import { atomicWriteJson } from "../atomic-json";
-import { reserveCatalogRequest } from "./api-quota";
+import { reserveCatalogRequest, CatalogQuotaError } from "./api-quota";
 import { parseYes24Records, readYes24Response } from "./yes24-batch";
 import { supplementLookup } from "./supplement-providers";
 import type { LogosCandidate, LogosCompletionBook } from "./logos-discovery";
@@ -99,7 +99,10 @@ export function logosLookup(options: {
         let found: LogosCandidate[];
         if (provider === "library") {
           if (!response.ok)
-            throw Error("도서관 후보 검색을 완료하지 못했습니다.");
+            throw Object.assign(
+              Error("도서관 후보 검색을 완료하지 못했습니다."),
+              { status: response.status },
+            );
           found = parseLibraryTitleSearch(await response.json()).books.map(
             (r) => ({
               provider: "도서관 정보나루",
@@ -151,6 +154,11 @@ export function logosLookup(options: {
         });
         records.push(...found);
       } catch (e) {
+        if (
+          e instanceof CatalogQuotaError ||
+          [401, 403, 429].includes((e as { status?: number })?.status ?? 0)
+        )
+          throw e;
         errors.push(e);
       }
     }

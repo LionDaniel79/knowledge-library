@@ -144,9 +144,14 @@ export async function applyLogosCompletion(
           ? "stale"
           : "excluded";
     } catch (e) {
-      if (e instanceof LibraryError && [401, 403, 429].includes(e.status))
-        throw e;
-      return "cover_failed";
+      if (
+        (e instanceof LibraryError &&
+          [400, 404, 413, 502].includes(e.status)) ||
+        (e instanceof Error &&
+          ["AbortError", "TimeoutError", "TypeError"].includes(e.name))
+      )
+        return "cover_failed";
+      throw e;
     }
   }
   async function eligible(executor: Executor, lock = false) {
