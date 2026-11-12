@@ -13,7 +13,7 @@ export const compactBookSelect = bookSelect
   )
   .replace(
     "enrichment,",
-    "jsonb_build_object('catalogSelection',enrichment->'catalogSelection') AS enrichment,",
+    "jsonb_build_object('catalogSelection',enrichment->'catalogSelection','autoBibliography',jsonb_build_object('provider',enrichment#>'{autoBibliography,provider}','url',enrichment#>'{autoBibliography,url}','fields',enrichment#>'{autoBibliography,fields}')) AS enrichment,",
   );
 export async function attachCatalogCoverSources(
   tx: Executor,

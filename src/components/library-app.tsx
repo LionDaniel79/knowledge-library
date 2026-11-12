@@ -569,7 +569,11 @@ export function LibraryApp({
         )}
       </div>
       <BookCover book={book} />
-      <CatalogAttribution value={book.enrichment?.catalogSelection} compact />
+      <CatalogAttribution
+        value={book.enrichment?.catalogSelection}
+        automatic={book.enrichment}
+        compact
+      />
       <strong>{book.title}</strong>
       <span>{book.author || "저자 미입력"}</span>
       <div className="shelf-meta">
@@ -1558,7 +1562,10 @@ export function LibraryApp({
               </dl>
             </div>
           </div>
-          <CatalogAttribution value={detailBook.enrichment?.catalogSelection} />
+          <CatalogAttribution
+            value={detailBook.enrichment?.catalogSelection}
+            automatic={detailBook.enrichment}
+          />
           {!preview && (
             <AutoBibliographyPanel
               key={detailBook.id + ":auto-bibliography"}
