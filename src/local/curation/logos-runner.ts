@@ -155,7 +155,7 @@ export async function runLogosCompletion(options: {
           // A malformed provider JSON response belongs to this resource. Never
           // apply an empty result for it, leak the payload, or block later books.
           // Quota and other service-wide failures retain the existing safe stop.
-          if (!(error instanceof SyntaxError)) throw error;
+          if (!(error instanceof SyntaxError) && ![400,404,422].includes((error as {status?:number})?.status ?? 0)) throw error;
           const attempts = (checkpoint?.lookupRetry?.attempts ?? 0) + 1;
           const nextAttemptAt =
             attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);

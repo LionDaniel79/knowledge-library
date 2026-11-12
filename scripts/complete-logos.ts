@@ -108,6 +108,7 @@ if (args.includes("--help")) {
       const books = rows
         .filter(
           (r) =>
+            !r.enrichment?.autoBibliography &&
             r.enrichment?.logosCompletion?.fingerprint !==
             logosCompletionFingerprint(logosCompletionBook(r)),
         )
