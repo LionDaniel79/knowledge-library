@@ -393,3 +393,37 @@ it("blocks an oversized reading history before reserving money instead of silent
     ).rows,
   ).toEqual([]);
 });
+
+it("excludes all completed history, including old and undated completions, from new and saved recommendations", async () => {
+  const owner = "recommend-all-completed";
+  const ids = await ownerFixture(owner, 4);
+  for (const [i, date] of [
+    [0, "2010-01-01"],
+    [1, null],
+  ] as const)
+    await f.db.query(
+      "INSERT INTO library_cycles(id,owner_id,book_id,status,completed_on) VALUES($1,$2,$3,'completed',$4)",
+      [randomUUID(), owner, ids[i], date],
+    );
+  let captured!: OwnedRecommendationInput;
+  const store = createBookRecommendationStore(f.db, {
+    config,
+    estimate,
+    generate: async (input) => {
+      captured = input;
+      return success(input);
+    },
+  });
+  const page = await store.refresh(owner, { requestId: randomUUID() });
+  expect(
+    captured.candidates.some((b) => b.id === ids[0] || b.id === ids[1]),
+  ).toBe(false);
+  const chosen = page.recommendations[0].bookId;
+  await f.db.query(
+    "INSERT INTO library_cycles(id,owner_id,book_id,status,completed_on) VALUES($1,$2,$3,'completed',NULL)",
+    [randomUUID(), owner, chosen],
+  );
+  expect(
+    (await store.read(owner)).recommendations.some((b) => b.bookId === chosen),
+  ).toBe(false);
+});

@@ -1006,6 +1006,16 @@ export function LibraryApp({
                       </section>
                     </div>
                     <BookRecommendations
+                      excludedBookIds={[
+                        ...(data.readingSummary?.completedIds ?? []),
+                        ...data.cycles
+                          .filter(
+                            (c) =>
+                              c.status === "completed" ||
+                              c.status === "reading",
+                          )
+                          .map((c) => c.bookId),
+                      ]}
                       revision={data}
                       ownerId={ownerId}
                       onOpenBook={setDetail}
