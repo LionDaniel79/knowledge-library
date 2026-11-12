@@ -13,6 +13,51 @@ beforeAll(async () => {
 });
 afterAll(async () => fixture?.pg.close());
 
+it("reuses an older PDF cover only with a bound document and matching edition, preserving newer review decisions", async () => {
+  for (const [index, blocked] of [false, true, true].entries()) {
+    const owner = "pdf-stale-" + index;
+    const { library, book } = await setup(owner);
+    const document = randomUUID();
+    await fixture.db.query(
+      "UPDATE library_books SET source_data=$2,author='저자',publisher='출판사',version=2 WHERE id=$1",
+      [book.id, JSON.stringify({ app: "Local PDF", recordId: document })],
+    );
+    await fixture.db.query(
+      "INSERT INTO library_documents(id,owner_id,book_id,root,path,relative_path,bytes,mtime_ns,processing_scope) VALUES($1,$2,$3,'root','book.pdf','book.pdf',1,'1','full')",
+      [document, owner, book.id],
+    );
+    await fixture.db.query(
+      `UPDATE library_reference_sources SET facts=jsonb_set(facts,'{title}','"내 책"') WHERE owner_id=$1`,
+      [owner],
+    );
+    if (index === 1)
+      await fixture.db.query("UPDATE library_books SET isbn='' WHERE id=$1", [
+        book.id,
+      ]);
+    if (index === 2)
+      await fixture.db.query(
+        "UPDATE library_curation_items SET source_version='2',state='hidden' WHERE owner_id=$1",
+        [owner],
+      );
+    const before = (
+      await fixture.db.query(
+        "SELECT to_jsonb(b) value FROM library_books b WHERE id=$1",
+        [book.id],
+      )
+    ).rows;
+    const result = (await library.snapshot(owner)).books[0];
+    expect(!!result.catalogCoverUrl).toBe(!blocked);
+    expect(
+      (
+        await fixture.db.query(
+          "SELECT to_jsonb(b) value FROM library_books b WHERE id=$1",
+          [book.id],
+        )
+      ).rows,
+    ).toEqual(before);
+  }
+});
+
 async function setup(owner: string) {
   await storeCoverMirror(
     fixture.db,

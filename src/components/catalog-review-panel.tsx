@@ -40,6 +40,19 @@ export function CatalogReviewPanel({
     JSON.stringify([status, q]),
   );
   const offset = paging.offset;
+  const [summary, setSummary] = useState<any>(null);
+  useEffect(() => {
+    const c = new AbortController();
+    libraryRequest("/api/catalog-review?summary=1", {
+      signal: c.signal,
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        if (r.ok) setSummary(await r.json());
+      })
+      .catch(() => {});
+    return () => c.abort();
+  }, [revision]);
   useEffect(() => {
     if (!paging.ready) return;
     setError("");
@@ -108,6 +121,69 @@ export function CatalogReviewPanel({
   }
   return (
     <section className="catalog-review">
+      <p>
+        확인 대기는 검토할 후보가 있는 도서 수입니다. 전체 미완료 도서 수와
+        다릅니다.
+      </p>
+      {summary && (
+        <div style={{ overflowX: "auto" }}>
+          <table>
+            <caption>
+              형식별 도서정보 현황 · 여러 형식의 책은 각 형식에 포함
+            </caption>
+            <thead>
+              <tr>
+                {[
+                  "형식",
+                  "전체",
+                  "표시 가능한 표지",
+                  "분류 지정",
+                  "공식 검증 분류",
+                  "확인 대기 도서",
+                  "검토 후보",
+                  "보완 완료 표시 없음",
+                ].map((t) => (
+                  <th key={t}>{t}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {summary.formats.map((s: any) => (
+                <tr key={s.format}>
+                  <th>
+                    {
+                      (
+                        {
+                          paper: "종이책",
+                          logos: "로고스",
+                          ebook: "전자책",
+                          pdf: "PDF",
+                        } as any
+                      )[s.format]
+                    }
+                  </th>
+                  {[
+                    "total",
+                    "covers",
+                    "classified",
+                    "verified",
+                    "reviewBooks",
+                    "candidates",
+                    "incomplete",
+                  ].map((k) => (
+                    <td key={k}>{s[k]}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p>
+            분류 지정에는 임시 분류가 포함됩니다. 보완 완료 표시 없음은 오류
+            건수가 아닙니다.
+          </p>
+          <a href="/logos/covers">로고스 표지 후보 확인</a>
+        </div>
+      )}
       <div className="catalog-controls">
         <label>
           상태

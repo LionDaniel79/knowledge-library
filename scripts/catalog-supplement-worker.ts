@@ -49,6 +49,7 @@ try {
       completed: 0,
       pending: 0,
       failed: 0,
+      retryAt: "",
     };
     try {
       const identified = (
@@ -116,6 +117,23 @@ try {
         }
         await new Promise((r) => setTimeout(r, 1100));
       }
+      // A finite pass can finish before existing claims/backoff become due.
+      // Publish the next eligible checkpoint so the detached supervisor can
+      // resume without polling, resetting attempts, or collecting again now.
+      const next = (
+        await db.query(
+          `SELECT min(coalesce((enrichment->'catalogSupplement'->>'nextAttemptAt')::bigint,0)) AS at FROM library_active_books b WHERE enrichment->'catalogSupplement'->>'scope'=$1 AND enrichment->'catalogSupplement'->>'state'='pending' AND NOT EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND(d.processing_scope<>'full' OR d.material_kind~*'paper|periodical|journal|thesis'))`,
+          [scope],
+        )
+      ).rows[0]?.at;
+      if (
+        next !== null &&
+        next !== undefined &&
+        Number.isSafeInteger(Number(next))
+      )
+        stats.retryAt = new Date(
+          Math.max(Date.now() + 60000, Number(next)),
+        ).toISOString();
     } catch {
       stats.failed++;
     }

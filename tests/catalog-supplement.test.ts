@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { testDatabase } from "./helpers/database";
-import { createLibraryStore } from "../src/server/library-store";
+import { createLibraryStore, LibraryError } from "../src/server/library-store";
 import {
   catalogSupplementProof,
   catalogEditionProof,
@@ -25,6 +25,54 @@ const facts = {
   isbn: "9780306406157",
   coverUrl: "https://image.yes24.com/1.jpg",
 };
+it("quarantines permanent existing-cover failures while retaining transient retries and book data", async () => {
+  for (const status of [400, 404, 413, 502]) {
+    const owner = randomUUID();
+    const added = await createLibraryStore(f.db).mutate(owner, {
+      type: "addBook",
+      requestId: randomUUID(),
+      payload: { ...facts, formats: ["paper"] },
+    });
+    const book = (
+      await f.db.query(`SELECT ${bookSelect} FROM library_books WHERE id=$1`, [
+        added.id,
+      ])
+    ).rows[0];
+    const before = JSON.stringify([
+      book.title,
+      book.author,
+      book.coverUrl,
+      book.version,
+    ]);
+    const result = await supplementBook(
+      f.db,
+      owner,
+      book,
+      [],
+      false,
+      async () => {
+        throw new LibraryError(status, "fixture cover failure");
+      },
+    );
+    expect(result.state).toBe(status === 502 ? "pending" : "review");
+    const after = (
+      await f.db.query(`SELECT ${bookSelect} FROM library_books WHERE id=$1`, [
+        added.id,
+      ])
+    ).rows[0];
+    expect(
+      JSON.stringify([
+        after.title,
+        after.author,
+        after.coverUrl,
+        after.version,
+      ]),
+    ).toBe(before);
+    expect(after.enrichment.catalogSupplement.coverReview).toBe(
+      status === 502 ? undefined : "existing_cover_unavailable",
+    );
+  }
+});
 it("allows missing facts for a matching ISBN, but preserves conflicting editions", () => {
   expect(
     catalogSupplementProof({ ...facts, author: "", publisher: "" }, facts)

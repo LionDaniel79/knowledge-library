@@ -233,13 +233,15 @@ export function startDetachedLogos(
   const snapshot = () => ({
     state: stopped
       ? "stopped"
-      : busy
-        ? "running"
-        : failed
-          ? "failed"
-          : retryTimer !== undefined
-            ? "waiting"
-            : "idle",
+      : config.collectionPaused === true
+        ? "paused"
+        : busy
+          ? "running"
+          : failed
+            ? "failed"
+            : retryTimer !== undefined
+              ? "waiting"
+              : "idle",
     running: child !== null,
     queued,
     passes,
@@ -300,7 +302,13 @@ export function startDetachedLogos(
     return done;
   };
   const begin = () => {
-    if (stopped || busy || retryTimer !== undefined) return;
+    if (
+      stopped ||
+      config.collectionPaused === true ||
+      busy ||
+      retryTimer !== undefined
+    )
+      return;
     queued = false;
     busy = true;
     failed = false;

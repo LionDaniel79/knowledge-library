@@ -5,6 +5,8 @@ import { downloadCover } from "./cover-download";
 import { withSyncWrite } from "./sync/write";
 import { prepareCover, storePreparedCover } from "./book-covers";
 import { randomUUID } from "node:crypto";
+import { bookSelect } from "./book-records";
+import { carryCuration } from "./book-curation-history";
 
 const input = z
   .object({
@@ -34,7 +36,7 @@ export async function saveVerifiedLogosCover(
   return withSyncWrite(db, owner, async (tx) => {
     const b = (
       await tx.query(
-        "SELECT id,version,cover_url,enrichment,source_data->>'app' AS app FROM library_books b WHERE owner_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=b.owner_id AND e.id=b.id AND e.state='excluded') FOR UPDATE",
+        `SELECT ${bookSelect},source_data->>'app' AS app FROM library_books b WHERE owner_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=b.owner_id AND e.id=b.id AND e.state='excluded') FOR UPDATE`,
         [owner, p.bookId],
       )
     ).rows[0];
@@ -56,19 +58,42 @@ export async function saveVerifiedLogosCover(
     ).rows[0];
     if (
       b.enrichment?.coverRemoved ||
-      (b.cover_url &&
-        b.cover_url !== p.coverUrl &&
+      (b.coverUrl &&
+        b.coverUrl !== p.coverUrl &&
         provenance?.object_key !== p.coverUrl &&
-        b.cover_url !== "/api/book-covers/" + mirror?.asset_id)
+        b.coverUrl !== "/api/book-covers/" + mirror?.asset_id)
     )
       throw new LibraryError(409, "기존 표지를 자동 교체할 수 없습니다.");
     const asset = await storePreparedCover(tx, owner, image);
-    const changed = b.cover_url !== asset.url;
+    const changed = b.coverUrl !== asset.url;
     if (changed)
       await tx.query(
         "UPDATE library_books SET cover_url=$3,version=version+1 WHERE owner_id=$1 AND id=$2",
         [owner, p.bookId, asset.url],
       );
+    if (changed) {
+      await carryCuration(
+        tx,
+        owner,
+        p.bookId,
+        String(b.version),
+        String(Number(b.version) + 1),
+      );
+      await tx.query(
+        "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'logosCover',$4,$5)",
+        [
+          randomUUID(),
+          owner,
+          p.bookId,
+          JSON.stringify(b),
+          JSON.stringify({
+            ...b,
+            coverUrl: asset.url,
+            version: Number(b.version) + 1,
+          }),
+        ],
+      );
+    }
     await tx.query(
       "INSERT INTO library_cover_mirrors(id,owner_id,source,asset_id) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,source) DO NOTHING",
       [randomUUID(), owner, p.coverUrl, asset.id],

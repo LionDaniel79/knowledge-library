@@ -309,11 +309,22 @@ export async function prepareOptimistic(
       put("library_shelves", { id, name, created_at: at });
     } else if (cmd.type === "startReading") {
       const book = await own("library_books", p.bookId);
+      if (p.completedWithoutDates) {
+        const cycles = await repository.all("library_cycles");
+        if (cycles.some((c) => c.book_id === p.bookId))
+          throw new ReplicaQueryError(
+            409,
+            "기존 독서 기록이 있습니다. 기존 기록에서 확인해 주세요.",
+          );
+      }
       put("library_cycles", {
         id,
         book_id: p.bookId,
-        status: "reading",
-        started_on: p.startedOn == null ? null : dateInput.parse(p.startedOn),
+        status: p.completedWithoutDates ? "completed" : "reading",
+        started_on:
+          p.completedWithoutDates || p.startedOn == null
+            ? null
+            : dateInput.parse(p.startedOn),
         completed_on: null,
         current_page: 0,
         version: 1,

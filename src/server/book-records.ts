@@ -3,6 +3,7 @@ import type { Book } from "../lib/domain";
 import { isbn13 } from "../lib/bibliography";
 import { secureImage } from "./catalog-provider";
 import { attachStoredCovers } from "./cover-mirrors";
+import { catalogEditionProof } from "../lib/catalog-supplement";
 export const bookSelect =
   'id,title,author,publisher,isbn,formats,total_pages AS "totalPages",shelf,tags,category,classification,bookshelves,cover_url AS "coverUrl",enrichment,version,created_at AS "createdAt",source_data AS "sourceData"';
 export const compactBookSelect = bookSelect
@@ -22,7 +23,8 @@ export async function attachCatalogCoverSources(
   if (!books.length) return;
   const covers = await tx.query(
     `SELECT c.source_id, c.value->>'coverUrl' AS url, c.value->>'isbn' AS isbn,
-              r.facts->>'isbn' AS reference_isbn
+              r.facts->>'isbn' AS reference_isbn, r.facts,
+              c.source_version=b.version::text AS current_version
        FROM library_curation_items c
        JOIN library_books b ON b.owner_id=c.owner_id AND b.id::text=c.source_id
        JOIN library_reference_sources r ON r.owner_id=c.owner_id
@@ -31,7 +33,13 @@ export async function attachCatalogCoverSources(
          AND r.source_version=c.source_version
        WHERE c.owner_id=$1 AND c.source_id=ANY($2::text[]) AND c.source_kind='book' AND c.kind='bibliography'
          AND c.origin='provider' AND c.state='active' AND r.edition_match='isbn'
-         AND c.source_version=b.version::text AND coalesce(c.value->>'coverUrl','')<>''
+         AND (c.source_version=b.version::text OR (
+           b.source_data->>'app'='Local PDF' AND c.reviewed_by IS NULL
+           AND c.source_version ~ '^[0-9]{1,10}$' AND c.source_version::bigint<b.version
+           AND coalesce(b.enrichment->>'coverRemoved','false')<>'true'
+           AND EXISTS(SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id AND d.book_id=b.id AND d.id::text=b.source_data->>'recordId' AND d.processing_scope='full')
+           AND NOT EXISTS(SELECT 1 FROM library_curation_items n WHERE n.owner_id=c.owner_id AND n.source_kind='book' AND n.source_id=c.source_id AND n.kind='bibliography' AND n.state<>'rolled_back' AND n.source_version ~ '^[0-9]{1,10}$' AND n.source_version::bigint>c.source_version::bigint)
+         )) AND coalesce(c.value->>'coverUrl','')<>''
          AND (coalesce(b.source_data->>'app','')<>'Local PDF' OR EXISTS (
            SELECT 1 FROM library_documents d WHERE d.owner_id=b.owner_id
              AND d.book_id=b.id AND d.processing_scope='full'))
@@ -42,6 +50,18 @@ export async function attachCatalogCoverSources(
   for (const candidate of covers.rows) {
     const book = byId.get(candidate.source_id);
     if (!book || book.catalogCoverUrl) continue;
+    if (
+      !candidate.current_version &&
+      (!book.author?.trim() ||
+        !book.publisher?.trim() ||
+        !candidate.facts?.author?.trim() ||
+        !candidate.facts?.publisher?.trim() ||
+        !catalogEditionProof(
+          { ...book, isbn: book.isbn ?? "" },
+          candidate.facts,
+        ).certain)
+    )
+      continue;
     const isbn = isbn13(book.isbn),
       url = secureImage(candidate.url);
     if (

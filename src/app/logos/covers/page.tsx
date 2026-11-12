@@ -9,6 +9,8 @@ type Book = {
   publication_date?: string;
   version: number;
   candidates?: {
+    provider?: string;
+    url?: string;
     isbn: string;
     publicationYear?: string;
     edition?: string;
@@ -27,6 +29,9 @@ export default function LogosCoversPage() {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [approved, setApproved] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   async function load(next: number) {
@@ -82,6 +87,27 @@ export default function LogosCoversPage() {
                 .filter((c) => c.facts.coverUrl)
                 .map((candidate, index) => (
                   <label key={index} style={{ display: "block" }}>
+                    {candidate.facts.coverUrl.startsWith("https://") && (
+                      <img
+                        src={candidate.facts.coverUrl}
+                        alt={candidate.facts.title + " 표지 후보"}
+                        width={80}
+                        height={110}
+                        style={{ objectFit: "contain" }}
+                        onError={() =>
+                          setImageErrors((old) => ({
+                            ...old,
+                            [candidate.facts.coverUrl]: true,
+                          }))
+                        }
+                      />
+                    )}
+                    {imageErrors[candidate.facts.coverUrl] && (
+                      <span role="alert">
+                        미리보기 이미지를 불러오지 못했습니다. 다른 후보를
+                        선택할 수 있습니다.
+                      </span>
+                    )}
                     <input
                       type="radio"
                       name={book.id}
@@ -92,10 +118,17 @@ export default function LogosCoversPage() {
                           [book.id]: candidate.facts.coverUrl,
                         }));
                         setApproved((old) => ({ ...old, [book.id]: false }));
+                        setErrors((old) => ({ ...old, [book.id]: "" }));
                       }}
                     />
                     {candidate.facts.title} · {candidate.facts.author} ·{" "}
                     {candidate.facts.publisher} · ISBN {candidate.isbn}
+                    {candidate.url?.startsWith("https://") && (
+                      <a href={candidate.url} target="_blank" rel="noreferrer">
+                        {" "}
+                        · {candidate.provider ?? "출처 확인"}
+                      </a>
+                    )}
                     {[
                       candidate.publicationYear,
                       candidate.edition,
@@ -117,9 +150,11 @@ export default function LogosCoversPage() {
               style={{ width: "100%" }}
               placeholder="https://..."
               value={urls[book.id] ?? ""}
-              onChange={(e) =>
-                setUrls((o) => ({ ...o, [book.id]: e.target.value }))
-              }
+              onChange={(e) => {
+                setUrls((o) => ({ ...o, [book.id]: e.target.value }));
+                setApproved((o) => ({ ...o, [book.id]: false }));
+                setErrors((o) => ({ ...o, [book.id]: "" }));
+              }}
             />
           </label>
           <label>
@@ -133,10 +168,13 @@ export default function LogosCoversPage() {
             해당 책과 판본이 일치하는 표지임을 확인했습니다.
           </label>
           <button
-            disabled={busy || !approved[book.id] || !urls[book.id]}
+            disabled={
+              busy || saving[book.id] || !approved[book.id] || !urls[book.id]
+            }
             onClick={async () => {
-              setBusy(true);
-              setError("");
+              if (saving[book.id]) return;
+              setSaving((o) => ({ ...o, [book.id]: true }));
+              setErrors((o) => ({ ...o, [book.id]: "" }));
               setNotice("");
               try {
                 const r = await fetch("/api/logos/covers", {
@@ -154,16 +192,27 @@ export default function LogosCoversPage() {
                 const data = await r.json();
                 if (!r.ok) throw Error(data.error ?? "표지 저장 실패");
                 setItems((old) => old.filter((x) => x.id !== book.id));
+                setOffset((old) =>
+                  old === null ? null : Math.max(0, old - 1),
+                );
                 setNotice(book.title + " 표지 이미지를 저장했습니다.");
               } catch (e) {
-                setError(e instanceof Error ? e.message : "표지 저장 실패");
+                setErrors((o) => ({
+                  ...o,
+                  [book.id]: e instanceof Error ? e.message : "표지 저장 실패",
+                }));
               } finally {
-                setBusy(false);
+                setSaving((o) => ({ ...o, [book.id]: false }));
               }
             }}
           >
-            표지 저장
+            {saving[book.id] ? "저장 중…" : "표지 저장"}
           </button>
+          {errors[book.id] && (
+            <p role="alert" style={{ color: "crimson" }}>
+              {errors[book.id]}
+            </p>
+          )}
         </section>
       ))}
       {offset !== null && (
