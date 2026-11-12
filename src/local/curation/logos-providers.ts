@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isbn13 } from "../../lib/bibliography";
-import { parseLibraryTitleSearch } from "../../server/catalog-provider";
+import {
+  parseLibraryTitleSearch,
+  librarySearchTerm,
+} from "../../server/catalog-provider";
 import { atomicWriteJson } from "../atomic-json";
 import { reserveCatalogRequest } from "./api-quota";
 import { parseYes24Records, readYes24Response } from "./yes24-batch";
@@ -69,7 +72,9 @@ export function logosLookup(options: {
       if (provider === "library") {
         url.search = new URLSearchParams({
           authKey: key,
-          ...query,
+          title: librarySearchTerm(query.title),
+          author: librarySearchTerm(query.author),
+          publisher: librarySearchTerm(query.publisher),
           pageNo: "1",
           pageSize: "10",
           format: "json",

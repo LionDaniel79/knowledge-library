@@ -137,6 +137,12 @@ export function parseLibraryTitleSearch(json: any): LibraryTitleSearch {
   }
   return { numFound: Number(response.numFound), books };
 }
+export const librarySearchTerm = (value: string) =>
+  value
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 export async function lookupLibraryTitle(
   title: string,
   key: string,
@@ -146,18 +152,10 @@ export async function lookupLibraryTitle(
     throw Error("제목과 인증키를 확인해 주세요.");
   // Unbalanced filename punctuation can produce HTTP 200 with an empty body.
   // Only the search query is normalized; exact edition checks retain the title.
-  const query = title
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const query = librarySearchTerm(title);
   if (query.length < 2) throw Error("검색 가능한 제목을 확인해 주세요.");
   if (author.length > 200) throw Error("저자 검색 조건을 확인해 주세요.");
-  const authorQuery = author
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const authorQuery = librarySearchTerm(author);
   const url = new URL("https://data4library.kr/api/srchBooks");
   url.searchParams.set("authKey", key);
   url.searchParams.set("title", query);

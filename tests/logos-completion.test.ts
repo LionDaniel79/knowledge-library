@@ -221,6 +221,9 @@ it("discovers title/author/publisher candidates with quota reservations and reus
       reservations.push(p);
     },
     fetcher: async (input) => {
+      const sent = new URL(String(input));
+      if (sent.hostname === "data4library.kr")
+        expect(sent.searchParams.get("title")).toBe("A History Volume 1");
       const url = new URL(String(input));
       requests.push(url);
       if (url.hostname === "data4library.kr")
