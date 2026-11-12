@@ -11,8 +11,14 @@ import {
   type LogosCandidate,
 } from "../local/curation/logos-discovery";
 import { isbn13 } from "../lib/bibliography";
+import {
+  identityFrontierReady,
+  resolvePdfIdentity,
+  type PdfIdentity,
+} from "../local/curation/pdf-identity";
 const extra = ["publicationYear", "description", "toc", "referenceIsbn"];
 const fields = [
+  "isbn",
   "author",
   "publisher",
   "coverUrl",
@@ -42,7 +48,7 @@ async function book(tx: any, owner: string, id: string) {
 }
 async function save(tx: any, owner: string, b: any, next: any, action: string) {
   await tx.query(
-    "UPDATE library_books SET author=$3,publisher=$4,cover_url=$5,category=$6,classification=$7,enrichment=$8,version=version+1 WHERE owner_id=$1 AND id=$2",
+    "UPDATE library_books SET author=$3,publisher=$4,cover_url=$5,category=$6,classification=$7,enrichment=$8,isbn=$9,version=version+1 WHERE owner_id=$1 AND id=$2",
     [
       owner,
       b.id,
@@ -52,6 +58,7 @@ async function save(tx: any, owner: string, b: any, next: any, action: string) {
       next.category,
       JSON.stringify(next.classification),
       JSON.stringify(next.enrichment),
+      next.isbn,
     ],
   );
   await carryCuration(
@@ -84,6 +91,7 @@ export async function applyAutomaticBibliography(
   version: number,
   record: LogosCandidate,
   download = downloadCover,
+  identity?: PdfIdentity,
 ) {
   const key = fingerprint(record);
   // Existing covers and reader removals always win. Fetch outside the write lock.
@@ -101,7 +109,24 @@ export async function applyAutomaticBibliography(
     initial.enrichment?.autoBibliography?.fingerprint === key
   )
     return { state: "protected" };
-  const decision = decideAutomaticCandidate(initial as any, [record]);
+  const frontier =
+    identity &&
+    initial.sourceData?.recordId === identity.id &&
+    identityFrontierReady(identity) &&
+    identity.candidates.length === 1 &&
+    identity.candidates[0].isbn === isbn13(record.isbn ?? "") &&
+    identity.candidates[0].evidence.some(
+      (e) => e.labelled && !e.secondaryContext,
+    );
+  const decision = decideAutomaticCandidate(
+    {
+      ...initial,
+      ...(frontier && !initial.isbn
+        ? { isbn: identity!.candidates[0].isbn }
+        : {}),
+    } as any,
+    [record],
+  );
   if (
     (
       await db.query(
@@ -160,6 +185,14 @@ export async function applyAutomaticBibliography(
     const next = structuredClone(b);
     next.enrichment = { ...b.enrichment };
     const values: any = {};
+    if (
+      !b.isbn &&
+      frontier &&
+      resolvePdfIdentity({ ...identity!, title: b.title, author: b.author }, [
+        record,
+      ]).state === "verified"
+    )
+      values.isbn = isbn13(record.isbn ?? "");
     if (!b.author) values.author = record.facts.author;
     if (!b.publisher) values.publisher = record.facts.publisher;
     if (
@@ -212,7 +245,16 @@ export async function applyAutomaticBibliography(
       provider: record.provider,
       url: record.url,
       reason: decision.reason,
-      alternateEdition: decision.alternateEdition,
+      alternateEdition: !b.isbn || decision.alternateEdition,
+      ...(frontier
+        ? {
+            pdfIdentity: {
+              documentId: identity!.id,
+              signature: identity!.signature,
+              evidence: identity!.candidates[0],
+            },
+          }
+        : {}),
       appliedAt: new Date().toISOString(),
       fields: Object.keys(afterValues),
       beforeValues,

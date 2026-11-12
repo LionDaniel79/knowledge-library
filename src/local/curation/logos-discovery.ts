@@ -51,7 +51,7 @@ export function decideAutomaticCandidate(
     .map((r) => {
       const a = text(book.title),
         b = text(r.facts.title);
-    const title = a === b;
+      const title = a === b;
       const volumes = (s: string) =>
         JSON.stringify(
           s
@@ -65,12 +65,29 @@ export function decideAutomaticCandidate(
         text(book.publisher) === text(r.facts.publisher ?? "");
       const sameIsbn =
         !!isbn13(book.isbn) && isbn13(book.isbn) === isbn13(r.facts.isbn ?? "");
+      const pdf = (book as unknown as { formats?: string[] }).formats?.includes(
+        "pdf",
+      );
+      const core = (s: string) =>
+        text(s.replace(/[\[(][^\])]*[\])]/g, "").split(/[=:]/)[0]);
+      const compatibleTitle =
+        core(book.title).length >= (/[가-힣]/.test(book.title) ? 4 : 8) &&
+        (core(book.title).startsWith(core(r.facts.title)) ||
+          core(r.facts.title).startsWith(core(book.title))) &&
+        !/study guide|workbook|해설서|요약본/i.test(r.facts.title);
+      const differentScripts =
+        /[가-힣]/.test(book.author) !== /[가-힣]/.test(r.facts.author ?? "");
+      const pdfIsbn =
+        pdf &&
+        sameIsbn &&
+        compatibleTitle &&
+        (!hasAuthor || sameAuthor || differentScripts);
       return {
         r,
         score:
-          !title ||
+          (!title && !pdfIsbn) ||
           volumes(book.title) !== volumes(r.facts.title) ||
-          (hasAuthor && !sameAuthor)
+          (hasAuthor && !sameAuthor && !pdfIsbn)
             ? 0
             : sameIsbn
               ? 120

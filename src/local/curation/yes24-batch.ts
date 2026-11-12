@@ -62,6 +62,10 @@ export function parseYes24Records(
         url: `https://www.yes24.com/product/goods/${b.itemId}`,
         isbn,
         title: providerText(b.title).slice(0, 300),
+        publicationYear:
+          /^\d{4}/.exec(
+            String(b.publishDate ?? b.publicationDate ?? ""),
+          )?.[0] ?? "",
         facts: {
           title: providerText(b.title).slice(0, 300),
           author: providerText(b.author).slice(0, 300),

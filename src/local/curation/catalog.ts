@@ -26,6 +26,7 @@ export interface CollectedBook {
     classification?: Record<string, unknown>;
   };
   description?: string;
+  publicationYear?: string;
   descriptionFormat?: "plain-text-v1";
   toc?: string[];
 }
