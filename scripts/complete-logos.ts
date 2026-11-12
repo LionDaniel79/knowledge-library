@@ -16,6 +16,7 @@ import { runLogosCompletion } from "../src/local/curation/logos-runner";
 import { readCoverCapacity } from "../src/server/book-covers";
 import { logosClassification } from "../src/lib/logos-classification";
 import { decideAutomaticCandidate } from "../src/local/curation/logos-discovery";
+import { atomicWriteJson } from "../src/local/atomic-json";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -110,10 +111,14 @@ if (args.includes("--help")) {
           (r) =>
             !r.enrichment?.autoBibliography &&
             r.enrichment?.logosCompletion?.fingerprint !==
-            logosCompletionFingerprint(logosCompletionBook(r)),
+              logosCompletionFingerprint(logosCompletionBook(r)),
         )
         .map(logosCompletionBook);
+      const investigated = new Set<string>();
       const stats = await runLogosCompletion({
+        onInvestigated: (book) => {
+          investigated.add(book.id);
+        },
         decide: decideAutomaticCandidate,
         owner,
         dir,
@@ -129,6 +134,10 @@ if (args.includes("--help")) {
         }),
         applyDecision: (book, decision) =>
           applyLogosCompletion(db, owner, book, decision),
+      });
+      await atomicWriteJson(join(dir, "last-pass-books.json"), {
+        at: new Date().toISOString(),
+        ids: [...investigated],
       });
       console.log(JSON.stringify(stats));
       if (["error", "quota"].includes(stats.stopped)) process.exitCode = 1;

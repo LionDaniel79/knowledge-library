@@ -26,6 +26,7 @@ export async function runLogosCompletion(options: {
     decision: Decision,
   ) => Promise<"complete" | "stale" | "excluded" | "cover_failed">;
   decide?: typeof decideLogosCandidate;
+  onInvestigated?: (book: LogosCompletionBook) => void;
 }) {
   if (
     !options.owner ||
@@ -155,7 +156,13 @@ export async function runLogosCompletion(options: {
           // A malformed provider JSON response belongs to this resource. Never
           // apply an empty result for it, leak the payload, or block later books.
           // Quota and other service-wide failures retain the existing safe stop.
-          if (!(error instanceof SyntaxError) && ![400,404,422].includes((error as {status?:number})?.status ?? 0)) throw error;
+          if (
+            !(error instanceof SyntaxError) &&
+            ![400, 404, 422].includes(
+              (error as { status?: number })?.status ?? 0,
+            )
+          )
+            throw error;
           const attempts = (checkpoint?.lookupRetry?.attempts ?? 0) + 1;
           const nextAttemptAt =
             attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
@@ -166,6 +173,7 @@ export async function runLogosCompletion(options: {
           };
           await atomicWriteJson(path, checkpoint);
           stats.considered++;
+          options.onInvestigated?.(book);
           stats.failed++;
           stats.pending++;
           if (attempts >= 3) stats.quarantined++;
@@ -175,6 +183,7 @@ export async function runLogosCompletion(options: {
         await atomicWriteJson(path, checkpoint);
       }
       stats.considered++;
+      options.onInvestigated?.(book);
       const decision = (options.decide ?? decideLogosCandidate)(
         book,
         checkpoint.records,

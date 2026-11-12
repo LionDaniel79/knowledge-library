@@ -48,8 +48,13 @@ const progressDir = join(
   createHash("sha256").update(owner).digest("hex"),
 );
 await mkdir(progressDir, { recursive: true });
-let release:()=>void;
-try{release=acquireYes24Lock(join(cache,"pdf-auto","worker.sqlite"));}catch{console.log(JSON.stringify({stopped:'busy',processed:0,applied:0}));process.exit(0);}
+let release: () => void;
+try {
+  release = acquireYes24Lock(join(cache, "pdf-auto", "worker.sqlite"));
+} catch {
+  console.log(JSON.stringify({ stopped: "busy", processed: 0, applied: 0 }));
+  process.exit(0);
+}
 const p = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 1,
@@ -83,6 +88,7 @@ const stats: any = {
   legacyReused: 0,
   cacheReused: 0,
 };
+const investigated = new Set<string>();
 const fetcher: typeof fetch = async (...a) => {
   const h = new URL(String(a[0])).hostname;
   if (
@@ -148,6 +154,7 @@ try {
         continue;
       }
       stats.processed++;
+      investigated.add(b.id);
       await atomicWriteJson(
         progressPath,
         pdfProgressResult(previous, unavailableKey, "source_unavailable"),
@@ -174,6 +181,7 @@ try {
         continue;
       }
       stats.processed++;
+      investigated.add(b.id);
       await atomicWriteJson(
         progressPath,
         pdfProgressResult(previous, unavailableKey, "source_unavailable"),
@@ -257,6 +265,7 @@ try {
     }
     if (evidence.state === "excluded") {
       stats.processed++;
+      investigated.add(b.id);
       await checkpoint("source_unavailable");
       stats.sourceUnavailable++;
       continue;
@@ -310,6 +319,7 @@ try {
       }
     }
     stats.processed++;
+    investigated.add(b.id);
     const key = createHash("sha256")
         .update(
           JSON.stringify([b.id, b.version, d.signature, evidence.candidates]),
@@ -468,5 +478,9 @@ try {
     join(out, apply ? "applied.json" : "preview.json"),
     JSON.stringify(stats, null, 2),
   );
+  await atomicWriteJson(join(out, "investigated.json"), {
+    at: new Date().toISOString(),
+    ids: [...investigated],
+  });
   console.log(JSON.stringify(stats));
 }
