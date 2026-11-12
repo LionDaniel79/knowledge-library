@@ -65,7 +65,7 @@ test("filtered select all preserves hidden memberships and completes in one writ
   await expect(picker.getByRole("textbox")).not.toBeFocused();
   await picker.getByLabel("신학", { exact: true }).check();
   expect(await page.evaluate(() => (window as any).commands)).toEqual([]);
-  await picker.getByRole("textbox").fill("신학");
+  await picker.getByRole("textbox").fill("학");
   await picker.getByLabel("전체선택", { exact: true }).check();
   await picker.getByRole("button", { name: "완료", exact: true }).click();
   await expect(
@@ -79,6 +79,37 @@ test("filtered select all preserves hidden memberships and completes in one writ
     "신학",
     "신학 연구",
   ]);
+});
+
+test("checking a partial search switches to completion without creating the search term", async ({
+  page,
+}) => {
+  const picker = await mount(page);
+  await picker.getByRole("button", { name: "책장 선택", exact: true }).click();
+  const search = picker.getByRole("textbox");
+  await search.fill("학");
+  await expect(
+    picker.getByRole("button", { name: "생성", exact: true }),
+  ).toBeEnabled();
+  await picker.getByLabel("신학", { exact: true }).check();
+  await expect(search).toHaveValue("학");
+  await expect(
+    picker.getByRole("button", { name: "완료", exact: true }),
+  ).toBeEnabled();
+  await search.fill("학 새");
+  await expect(
+    picker.getByRole("button", { name: "생성", exact: true }),
+  ).toBeEnabled();
+  await search.fill("학");
+  await picker.getByLabel("신학", { exact: true }).uncheck();
+  await expect(
+    picker.getByRole("button", { name: "완료", exact: true }),
+  ).toBeEnabled();
+  await picker.getByLabel("신학", { exact: true }).check();
+  await picker.getByRole("button", { name: "완료", exact: true }).click();
+  const commands = await page.evaluate(() => (window as any).commands);
+  expect(commands.map((c: any) => c.type)).toEqual(["editBook"]);
+  expect(commands[0].payload.bookshelves).toEqual(["보존", "신학"]);
 });
 
 test("book editor preserves field drafts and advances only the shelf deletion base before final save", async ({
@@ -128,8 +159,9 @@ test("clearing to unclassified is saved only on completion and a failed save pre
 }) => {
   const picker = await mount(page);
   await picker.getByRole("button", { name: "책장 선택", exact: true }).click();
+  await picker.getByRole("textbox").fill("분류");
   await picker.getByLabel("미분류", { exact: true }).check();
-  await expect(picker.getByLabel("보존", { exact: true })).not.toBeChecked();
+  await expect(picker.getByRole("textbox")).toHaveValue("분류");
   await page.evaluate(() => ((window as any).failSave = true));
   await picker.getByRole("button", { name: "완료", exact: true }).click();
   await expect(picker.getByRole("alert")).toContainText("저장 실패");
@@ -159,7 +191,7 @@ test("new shelf creation selects it without losing memberships; unchanged comple
   await picker.getByRole("textbox").fill("새 책장");
   await picker.getByRole("button", { name: "생성", exact: true }).click();
   await expect(picker.getByLabel("새 책장", { exact: true })).toBeChecked();
-  await expect(picker.getByLabel("보존", { exact: true })).toBeChecked();
+  await expect(picker.getByRole("textbox")).toHaveValue("새 책장");
   await picker.getByRole("button", { name: "완료", exact: true }).click();
   const commands = await page.evaluate(() => (window as any).commands);
   expect(commands.map((c: any) => c.type)).toEqual(["createShelf", "editBook"]);

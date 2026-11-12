@@ -33,6 +33,7 @@ export function ShelfPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [selectionIntent, setSelectionIntent] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
   const [original, setOriginal] = useState<string[]>([]);
   const [added, setAdded] = useState<string[]>([]);
@@ -60,11 +61,12 @@ export function ShelfPicker({
   );
   const name = query.trim();
   const canCreate =
+    !selectionIntent &&
     !!name &&
     name !== unclassifiedShelf &&
     !shelves.some((shelf) => normalized(shelf) === normalized(name));
   const changed = !sameShelfSelection(draft, original);
-  const canComplete = draft.length > 0 || changed;
+  const canComplete = draft.length > 0 || changed || selectionIntent;
   const allVisible =
     !!visible.length && visible.every((shelf) => draft.includes(shelf));
   const partlyVisible =
@@ -111,7 +113,7 @@ export function ShelfPicker({
         setAdded((values) => [...new Set([...values, name])]);
         setDeleted((values) => values.filter((shelf) => shelf !== name));
         setDraft((values) => changeShelfSelection(values, name, true));
-        setQuery("");
+        setSelectionIntent(true);
       } else {
         if (changed) {
           await onConfirm?.(draft);
@@ -149,6 +151,7 @@ export function ShelfPicker({
       setAdded((values) => values.filter((value) => value !== shelf));
       setDraft((values) => values.filter((value) => value !== shelf));
       setOriginal((values) => values.filter((value) => value !== shelf));
+      setSelectionIntent(true);
       onChange(selected.filter((value) => value !== shelf));
     } catch (e) {
       setError(e instanceof Error ? e.message : "책장을 삭제하지 못했습니다.");
@@ -187,6 +190,7 @@ export function ShelfPicker({
           setOriginal(initial);
           setDraft(initial);
           setQuery("");
+          setSelectionIntent(false);
           setError("");
           setOpen(true);
           // Keyboard users can type immediately. Touch/pointer opening never summons the keyboard.
@@ -210,7 +214,10 @@ export function ShelfPicker({
               maxLength={80}
               value={query}
               disabled={busy}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSelectionIntent(false);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -238,9 +245,10 @@ export function ShelfPicker({
                   if (element) element.indeterminate = partlyVisible;
                 }}
                 disabled={busy}
-                onChange={() =>
-                  setDraft((values) => toggleVisibleShelves(values, visible))
-                }
+                onChange={() => {
+                  setDraft((values) => toggleVisibleShelves(values, visible));
+                  setSelectionIntent(true);
+                }}
               />
               전체선택
             </label>
@@ -256,7 +264,10 @@ export function ShelfPicker({
                   type="checkbox"
                   checked={!draft.length}
                   disabled={busy}
-                  onChange={() => setDraft([])}
+                  onChange={() => {
+                    setDraft([]);
+                    setSelectionIntent(true);
+                  }}
                 />
                 <span>{unclassifiedShelf}</span>
               </label>
@@ -268,15 +279,16 @@ export function ShelfPicker({
                     type="checkbox"
                     checked={draft.includes(shelf)}
                     disabled={busy}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setDraft((values) =>
                         changeShelfSelection(
                           values,
                           shelf,
                           event.target.checked,
                         ),
-                      )
-                    }
+                      );
+                      setSelectionIntent(true);
+                    }}
                   />
                   <span>{shelf}</span>
                 </label>
