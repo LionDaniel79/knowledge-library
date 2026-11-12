@@ -3,6 +3,7 @@ import { logosBatch, type LogosRow } from "../lib/logos-contract";
 import type { Database, Executor } from "./library-store";
 import { LibraryError } from "./library-store";
 import { withSyncWrite } from "./sync/write";
+import { logosClassification } from "../lib/logos-classification";
 const key = (r: LogosRow) => JSON.stringify(["Logos", r.resourceId]);
 const deterministicId = (owner: string, sourceKey: string) => {
   const h = createHash("sha256")
@@ -87,6 +88,10 @@ export async function applyLogos(db: Database, owner: string, raw: unknown) {
       title: x.title,
       author: x.author,
       publisher: x.publisher,
+      ...(logosClassification({ resourceType: x.resourceType ?? "" }) ?? {
+        category: "",
+        classification: {},
+      }),
       license_kind: x.license,
       source_metadata: {
         series: x.series,
@@ -110,7 +115,7 @@ export async function applyLogos(db: Database, owner: string, raw: unknown) {
       },
     }));
     const added = await tx.query(
-      "INSERT INTO library_books(id,owner_id,title,author,publisher,formats,shelf,tags,source_key,source_data) SELECT x.id,$1,x.title,x.author,x.publisher,ARRAY['logos'],'Logos',ARRAY['Logos'],x.source_key,x.source_data FROM jsonb_to_recordset($2::jsonb) AS x(id uuid,title text,author text,publisher text,source_key text,source_data jsonb) ON CONFLICT(owner_id,source_key) DO NOTHING RETURNING id",
+      "INSERT INTO library_books(id,owner_id,title,author,publisher,formats,shelf,tags,source_key,source_data,category,classification) SELECT x.id,$1,x.title,x.author,x.publisher,ARRAY['logos'],'Logos',ARRAY['Logos'],x.source_key,x.source_data,x.category,x.classification FROM jsonb_to_recordset($2::jsonb) AS x(id uuid,title text,author text,publisher text,source_key text,source_data jsonb,category text,classification jsonb) ON CONFLICT(owner_id,source_key) DO NOTHING RETURNING id",
       [owner, JSON.stringify(rows)],
     );
     await tx.query(

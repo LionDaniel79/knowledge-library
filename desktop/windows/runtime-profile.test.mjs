@@ -15,6 +15,21 @@ const profile = {
   YES24_API_KEY: "fixture",
 };
 
+test("registered-IP limits survive both detached environment boundaries", () => {
+  const env = catalogWorkerEnvironment(
+    runtimeEnvironment(
+      {
+        ...configuration,
+        DATA4LIBRARY_IP_REGISTERED: "true",
+        DATA4LIBRARY_DAILY_LIMIT: "30000",
+      },
+      profile,
+    ),
+  );
+  assert.equal(env.DATA4LIBRARY_IP_REGISTERED, "true");
+  assert.equal(env.DATA4LIBRARY_DAILY_LIMIT, "30000");
+});
+
 test("detached collectors need no web login, PDF paths, or private PC origin", () => {
   const environment = runtimeEnvironment(configuration, profile);
   assert.equal(environment.DATABASE_URL, profile.DATABASE_URL);

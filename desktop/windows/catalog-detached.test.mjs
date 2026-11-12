@@ -27,6 +27,13 @@ const progress = (values = {}) => ({
   failed: 0,
   ...values,
 });
+test("maintenance pause prevents startup and notification-triggered collection", async (t) => {
+  const f = fixture(t, { config: { collectionPaused: true } });
+  f.notify();
+  await flush();
+  assert.equal(f.children.length, 0);
+  assert.equal(f.controller.status.state, "paused");
+});
 
 test("resumes deferred catalog work at its checkpoint without polling or unlimited retries", async (t) => {
   let now = Date.parse("2026-11-12T00:00:00.000Z");
@@ -44,15 +51,13 @@ test("resumes deferred catalog work at its checkpoint without polling or unlimit
   };
   const f = fixture(t, { clock });
   for (let retry = 0; retry < 3; retry++) {
-    f.children
-      .at(-1)
-      .child.finish(
-        progress({
-          checked: 0,
-          completed: 0,
-          retryAt: new Date(now + 60000).toISOString(),
-        }),
-      );
+    f.children.at(-1).child.finish(
+      progress({
+        checked: 0,
+        completed: 0,
+        retryAt: new Date(now + 60000).toISOString(),
+      }),
+    );
     await flush();
     assert.equal(timers.size, 1);
     const [handle, timer] = [...timers][0];
@@ -63,15 +68,13 @@ test("resumes deferred catalog work at its checkpoint without polling or unlimit
     await flush();
     assert.equal(f.children.length, retry + 2);
   }
-  f.children
-    .at(-1)
-    .child.finish(
-      progress({
-        checked: 0,
-        completed: 0,
-        retryAt: new Date(now + 60000).toISOString(),
-      }),
-    );
+  f.children.at(-1).child.finish(
+    progress({
+      checked: 0,
+      completed: 0,
+      retryAt: new Date(now + 60000).toISOString(),
+    }),
+  );
   await flush();
   assert.equal(timers.size, 0);
   assert.equal(f.controller.status.retryLimitReached, true);
@@ -103,15 +106,13 @@ test("invalid retry timestamps cannot schedule work and stopping cancels a valid
   assert.equal(timers.size, 0);
   f.notify();
   await flush();
-  f.children
-    .at(-1)
-    .child.finish(
-      progress({
-        checked: 0,
-        completed: 0,
-        retryAt: new Date(now + 60000).toISOString(),
-      }),
-    );
+  f.children.at(-1).child.finish(
+    progress({
+      checked: 0,
+      completed: 0,
+      retryAt: new Date(now + 60000).toISOString(),
+    }),
+  );
   await flush();
   assert.equal(timers.size, 1);
   await f.controller.stop();
@@ -199,6 +200,7 @@ function fixture(t, options = {}) {
   const configFile = join(directory, "pc-runtime.json");
   if (options.fromFile)
     writeFileSync(configFile, "\uFEFF" + JSON.stringify(config));
+  Object.assign(config, options.config ?? {});
   const controller = startDetachedCatalog(
     options.fromFile ? configFile : config,
     notification,

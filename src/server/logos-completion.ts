@@ -12,6 +12,7 @@ import { carryCuration } from "./book-curation-history";
 import { collectBookReference } from "../local/curation/catalog";
 import { isbn13 } from "../lib/bibliography";
 import { CatalogQuotaError } from "../local/curation/api-quota";
+import { logosClassification } from "../lib/logos-classification";
 
 /** Trusted local operator configuration; never accept this value from a web request. */
 export async function resolveLogosOwner(
@@ -171,9 +172,19 @@ export async function applyLogosCompletion(
       );
     }
     const enrichment = { ...row.enrichment, logosCompletion: provenance };
+    const category = !protectedCuration
+      ? logosClassification({ ...row, resourceType: current.resourceType })
+      : null;
     await tx.query(
-      "UPDATE library_books SET cover_url=$3,enrichment=$4,version=version+1 WHERE owner_id=$1 AND id=$2",
-      [owner, book.id, coverUrl, JSON.stringify(enrichment)],
+      "UPDATE library_books SET cover_url=$3,enrichment=$4,category=$5,classification=$6,version=version+1 WHERE owner_id=$1 AND id=$2",
+      [
+        owner,
+        book.id,
+        coverUrl,
+        JSON.stringify(enrichment),
+        category?.category ?? row.category,
+        JSON.stringify(category?.classification ?? row.classification),
+      ],
     );
     await carryCuration(
       tx,
@@ -205,6 +216,7 @@ export async function applyLogosCompletion(
         JSON.stringify({
           ...row,
           coverUrl,
+          ...(category ?? {}),
           enrichment,
           version: row.version + 1,
         }),

@@ -25,6 +25,12 @@ const stats = (changes = {}) => ({
   retryAt: "",
   ...changes,
 });
+test("maintenance pause preserves checkpoints without starting Logos on notifications", async (t) => {
+  const f = fixture(t, { collectionPaused: true });
+  await f.notify();
+  assert.equal(f.children.length, 0);
+  assert.equal(f.controller.status.state, "paused");
+});
 
 function fixture(t, changes = {}, extra = {}) {
   const config = {

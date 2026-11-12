@@ -265,13 +265,15 @@ export function startDetachedCatalog(
   const snapshot = () => ({
     state: stopped
       ? "stopped"
-      : busy
-        ? "running"
-        : failed
-          ? "failed"
-          : retryTimer !== undefined
-            ? "waiting"
-            : "idle",
+      : config.collectionPaused === true
+        ? "paused"
+        : busy
+          ? "running"
+          : failed
+            ? "failed"
+            : retryTimer !== undefined
+              ? "waiting"
+              : "idle",
     running: child !== null,
     queued,
     passes,
@@ -333,7 +335,7 @@ export function startDetachedCatalog(
     return done;
   };
   const begin = () => {
-    if (stopped) return;
+    if (stopped || config.collectionPaused === true) return;
     clock.clearTimeout(retryTimer);
     retryTimer = undefined;
     retryAt = "";

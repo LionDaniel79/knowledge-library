@@ -11,6 +11,9 @@ const allowed = [
   "YES24_API_KEY",
   "DATA4LIBRARY_KEY",
   "GOOGLE_BOOKS_API_KEY",
+  "DATA4LIBRARY_DAILY_LIMIT",
+  "DATA4LIBRARY_IP_REGISTERED",
+  "YES24_DAILY_LIMIT",
 ];
 
 export function runtimeEnvironment(c, profile) {
@@ -30,6 +33,13 @@ export function runtimeEnvironment(c, profile) {
     if (process.env[key]) env[key] = process.env[key];
   for (const key of allowed)
     if (typeof profile[key] === "string") env[key] = profile[key];
+  // Non-secret operator settings belong to the detached runtime configuration.
+  for (const key of [
+    "DATA4LIBRARY_DAILY_LIMIT",
+    "DATA4LIBRARY_IP_REGISTERED",
+    "YES24_DAILY_LIMIT",
+  ])
+    if (typeof c[key] === "string") env[key] = c[key];
   for (const key of ["DATABASE_URL", "LIBRARY_OWNER_EMAIL"])
     if (!env[key]) throw Error("Connection settings missing.");
   return {
