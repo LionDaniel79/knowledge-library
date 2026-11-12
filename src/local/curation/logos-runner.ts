@@ -27,6 +27,7 @@ export async function runLogosCompletion(options: {
   ) => Promise<"complete" | "stale" | "excluded" | "cover_failed">;
   decide?: typeof decideLogosCandidate;
   onInvestigated?: (book: LogosCompletionBook) => void;
+  shouldStop?: () => boolean;
 }) {
   if (
     !options.owner ||
@@ -63,7 +64,7 @@ export async function runLogosCompletion(options: {
   try {
     for (const [index, book] of options.books.entries()) {
       activeIndex = index;
-      if (options.signal?.aborted) {
+      if (options.signal?.aborted || options.shouldStop?.()) {
         stats.stopped = "paused";
         stats.pending += options.books.length - index;
         break;

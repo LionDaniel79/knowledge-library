@@ -119,6 +119,9 @@ if (args.includes("--help")) {
         onInvestigated: (book) => {
           investigated.add(book.id);
         },
+        shouldStop: () =>
+          !!process.env.COLLECTION_STOP_AT &&
+          Date.now() >= Number(process.env.COLLECTION_STOP_AT),
         decide: decideAutomaticCandidate,
         owner,
         dir,

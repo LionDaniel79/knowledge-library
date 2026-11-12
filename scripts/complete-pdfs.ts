@@ -123,6 +123,13 @@ try {
   ).rows;
   await attachCatalogCovers(db, owner, rows);
   for (const b of rows) {
+    if (
+      process.env.COLLECTION_STOP_AT &&
+      Date.now() >= Number(process.env.COLLECTION_STOP_AT)
+    ) {
+      stats.stopped = "paused";
+      break;
+    }
     if (stats.processed >= limit) break;
     if (
       b.author &&

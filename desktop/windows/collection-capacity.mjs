@@ -8,6 +8,13 @@ export const capacityFor = (stage) => {
 };
 export function batchAllowance(stage, kind, slot, reserved = 0) {
   const caps = capacityFor(stage);
+  if (
+    !Number.isSafeInteger(reserved) ||
+    reserved < 0 ||
+    reserved > caps[kind] ||
+    reserved % 100
+  )
+    throw Error("Invalid reserved capacity");
   if (!["logos", "pdf"].includes(kind)) throw Error("Invalid collector");
   if (kind === "logos" && slot === "evening" && caps.logosSlots < 2) return 0;
   const session = kind === "logos" ? 300 : caps.pdf;
