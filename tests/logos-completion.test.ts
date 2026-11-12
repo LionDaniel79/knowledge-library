@@ -130,6 +130,7 @@ it("checkpoints bounded candidate lookups, resumes without provider calls, and a
 
 it("persists a sanitized stop and retries a failed provider instead of caching it as missing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "logos-error-"));
+  let failure: unknown;
   try {
     const options = {
       owner: "owner",
@@ -138,12 +139,16 @@ it("persists a sanitized stop and retries a failed provider instead of caching i
       online: true,
       apply: false,
       limit: 1,
+      onFailure: (error: unknown) => {
+        failure = error;
+      },
       lookup: async () => {
         throw Error("credential=secret");
       },
       applyDecision: async () => "complete" as const,
     };
     expect((await runLogosCompletion(options)).stopped).toBe("error");
+    expect(failure).toBeInstanceOf(Error);
     expect(await readFile(join(dir, "status.json"), "utf8")).not.toContain(
       "secret",
     );

@@ -28,6 +28,7 @@ export async function runLogosCompletion(options: {
   decide?: typeof decideLogosCandidate;
   onInvestigated?: (book: LogosCompletionBook) => void;
   shouldStop?: () => boolean;
+  onFailure?: (error: unknown) => void;
 }) {
   if (
     !options.owner ||
@@ -211,6 +212,7 @@ export async function runLogosCompletion(options: {
       }
     }
   } catch (error) {
+    options.onFailure?.(error);
     stats.stopped = error instanceof CatalogQuotaError ? "quota" : "error";
     if (error instanceof CatalogQuotaError) stats.retryAt = error.retryAt;
     // Neither provider exceptions nor credentials are serialized to disk/logs.

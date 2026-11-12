@@ -19,6 +19,7 @@ import { decideAutomaticCandidate } from "../src/local/curation/logos-discovery"
 import { applyAutomaticBibliography } from "../src/server/auto-bibliography";
 import { acquireYes24Lock } from "../src/local/curation/yes24-batch";
 import { atomicWriteJson } from "../src/local/atomic-json";
+import { collectionExclusions } from "../src/local/curation/collection-exclusions";
 import {
   pdfProgressFingerprint,
   pdfProgressReady,
@@ -36,6 +37,7 @@ const root = process.env.LIBRARY_PDF_ROOT!,
   cache = process.env.CATALOG_CACHE_DIR!,
   owner = process.env.LIBRARY_CATALOG_OWNER_ID!,
   out = process.env.PDF_AUTO_REPORT_DIR!;
+const excluded = await collectionExclusions(process.env.COLLECTION_LEDGER, "pdf");
 if (!root || !index || !cache || !owner || !out)
   throw Error("PDF operator configuration required");
 if (apply && process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
@@ -123,6 +125,7 @@ try {
   ).rows;
   await attachCatalogCovers(db, owner, rows);
   for (const b of rows) {
+    if (excluded.has(b.id)) continue;
     if (
       process.env.COLLECTION_STOP_AT &&
       Date.now() >= Number(process.env.COLLECTION_STOP_AT)

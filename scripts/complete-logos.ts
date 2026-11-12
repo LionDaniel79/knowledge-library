@@ -17,6 +17,7 @@ import { readCoverCapacity } from "../src/server/book-covers";
 import { logosClassification } from "../src/lib/logos-classification";
 import { decideAutomaticCandidate } from "../src/local/curation/logos-discovery";
 import { atomicWriteJson } from "../src/local/atomic-json";
+import { collectionExclusions } from "../src/local/curation/collection-exclusions";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -51,6 +52,10 @@ if (args.includes("--help")) {
   process.once("SIGINT", () => controller.abort());
   process.once("SIGTERM", () => controller.abort());
   try {
+    const excluded = await collectionExclusions(
+      process.env.COLLECTION_LEDGER,
+      "logos",
+    );
     const owner = await resolveLogosOwner(db, {
       id: process.env.LIBRARY_CATALOG_OWNER_ID,
       email: process.env.LIBRARY_OWNER_EMAIL,
@@ -109,13 +114,31 @@ if (args.includes("--help")) {
       const books = rows
         .filter(
           (r) =>
+            !excluded.has(r.id) &&
             !r.enrichment?.autoBibliography &&
             r.enrichment?.logosCompletion?.fingerprint !==
               logosCompletionFingerprint(logosCompletionBook(r)),
         )
         .map(logosCompletionBook);
       const investigated = new Set<string>();
+      let failure: unknown;
       const stats = await runLogosCompletion({
+        onFailure: (error) => {
+          const e = error as {
+            name?: unknown;
+            status?: unknown;
+            code?: unknown;
+          } | null;
+          failure = {
+            name: /^[A-Za-z]{1,50}$/.test(String(e?.name ?? ""))
+              ? e?.name
+              : "Error",
+            status: Number.isInteger(e?.status) ? e?.status : undefined,
+            code: /^[A-Z0-9_]{1,50}$/.test(String(e?.code ?? ""))
+              ? e?.code
+              : undefined,
+          };
+        },
         onInvestigated: (book) => {
           investigated.add(book.id);
         },
@@ -139,6 +162,7 @@ if (args.includes("--help")) {
           applyLogosCompletion(db, owner, book, decision),
       });
       await atomicWriteJson(join(dir, "last-pass-books.json"), {
+        failure,
         at: new Date().toISOString(),
         ids: [...investigated],
       });
