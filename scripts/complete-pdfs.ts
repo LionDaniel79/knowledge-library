@@ -48,7 +48,8 @@ const progressDir = join(
   createHash("sha256").update(owner).digest("hex"),
 );
 await mkdir(progressDir, { recursive: true });
-const release = acquireYes24Lock(join(cache, "pdf-auto", "worker.sqlite"));
+let release:()=>void;
+try{release=acquireYes24Lock(join(cache,"pdf-auto","worker.sqlite"));}catch{console.log(JSON.stringify({stopped:'busy',processed:0,applied:0}));process.exit(0);}
 const p = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 1,
