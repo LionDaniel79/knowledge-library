@@ -11,3 +11,13 @@ Existing displayed covers, automatic adoption records and user removals are pres
 Preview and apply reports distinguish searched, eligible, adopted, source unavailable, review, missing and request-budget stop. A budget stop is not proof of completion. Lookup failures are not silently reclassified as no candidates on subsequent runs. Provider credentials, full paths and page excerpts belong only in the private evidence directory.
 
 The general/PDF scheduled collector remains paused. Logos scheduling and its checkpoints are independent. Coordinate finite PDF runs outside Logos execution; both reuse the shared quota ledger. No PDF-wide re-OCR, file movement or database migration is required.
+
+## Incremental Windows operation
+
+Owner-scoped `pdf-auto/progress` checkpoints record missing/review results for seven days and source-unavailable results for one day. Resource failures back off, then defer for seven days after three attempts. Changed metadata, source signatures, OCR evidence or relevant provider-cache files permit earlier reconsideration. Existing legacy attempt files can seed these checkpoints without another provider call. Expired checkpoints bypass stale local result files and use the provider cache expiry policy. Successful adoptions and user rejections remain protected by the existing database provenance.
+
+The limit now counts investigated books, not just eligible adoptions. Checkpoint skips and legacy-cache migration do not consume that investigation allowance. Books with covers remain eligible for missing metadata; displayed covers are explicitly preserved. A private single-worker SQLite lock prevents concurrent PDF runs.
+
+Windows operation uses a separate `KnowledgeLibrary-PDF-Bounded` Task Scheduler task, initially 50 investigated books per day at 15:00 Korea time. It requires the current user to be logged in; missed starts may run after login, but the launcher skips while the Logos task or its controller reports running. It does not automatically retry skipped or failed launches. A daily guard prevents duplicate launches; authentication/quota/database failures create a private halt marker. Raising the private dailyLimit to 100 requires a separate operator decision after observing stable operation. The general collector pause is unchanged.
+
+Use Task Scheduler to disable/enable this PDF task without altering Logos. Wait for an active finite batch to finish before maintenance. Inspect the private scheduled-status report and resolve the cause of a halt marker before clearing it; never remove checkpoints or quota history as a way to resume.

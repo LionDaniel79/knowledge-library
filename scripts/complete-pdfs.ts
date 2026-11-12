@@ -17,6 +17,15 @@ import { readCachedPdfCandidates } from "../src/local/curation/pdf-cached-candid
 import { logosLookup } from "../src/local/curation/logos-providers";
 import { decideAutomaticCandidate } from "../src/local/curation/logos-discovery";
 import { applyAutomaticBibliography } from "../src/server/auto-bibliography";
+import { acquireYes24Lock } from "../src/local/curation/yes24-batch";
+import { atomicWriteJson } from "../src/local/atomic-json";
+import {
+  pdfProgressFingerprint,
+  pdfProgressReady,
+  pdfProgressResult,
+  pdfCandidateStamp,
+  type PdfProgress,
+} from "../src/local/curation/pdf-progress";
 const args = process.argv.slice(2),
   apply = args.includes("--apply"),
   limit = Number(args[args.indexOf("--limit") + 1] || 20);
@@ -32,6 +41,14 @@ if (!root || !index || !cache || !owner || !out)
 if (apply && process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
   throw Error("Writes disabled");
 await mkdir(out, { recursive: true });
+const progressDir = join(
+  cache,
+  "pdf-auto",
+  "progress",
+  createHash("sha256").update(owner).digest("hex"),
+);
+await mkdir(progressDir, { recursive: true });
+const release = acquireYes24Lock(join(cache, "pdf-auto", "worker.sqlite"));
 const p = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 1,
@@ -61,6 +78,9 @@ const stats: any = {
   withoutIsbnApplied: 0,
   calls: { library: 0, yes24: 0, images: 0 },
   stopped: "complete",
+  skippedCheckpoint: 0,
+  legacyReused: 0,
+  cacheReused: 0,
 };
 const fetcher: typeof fetch = async (...a) => {
   const h = new URL(String(a[0])).hostname;
@@ -96,25 +116,41 @@ try {
   ).rows;
   await attachCatalogCovers(db, owner, rows);
   for (const b of rows) {
-    if (stats.eligible >= limit || stats.processed >= Math.max(limit * 3, 60))
-      break;
+    if (stats.processed >= limit) break;
     if (
-      b.coverUrl ||
-      b.catalogCoverUrl ||
-      b.storedCoverUrl ||
-      b.sourceData?.cover ||
-      b.enrichment?.coverRemoved
+      b.author &&
+      b.publisher &&
+      b.category &&
+      b.enrichment?.auto_description &&
+      b.enrichment?.auto_toc?.length &&
+      b.enrichment?.auto_publicationYear &&
+      (b.isbn || b.enrichment?.auto_referenceIsbn)
     )
       continue;
     stats.scanned++;
     const d = local
       .prepare("SELECT * FROM documents WHERE id=?")
       .get(b.sourceData.recordId) as any;
+    const progressPath = join(progressDir, b.id + ".json");
+    let previous: PdfProgress | undefined;
+    try {
+      previous = JSON.parse(await readFile(progressPath, "utf8"));
+    } catch {}
+    const unavailableKey = pdfProgressFingerprint(b, d, undefined);
     if (
       !d ||
       d.processing_scope !== "full" ||
       /paper|periodical|journal|thesis/.test(d.material_kind)
     ) {
+      if (!pdfProgressReady(previous, unavailableKey)) {
+        stats.skippedCheckpoint++;
+        continue;
+      }
+      stats.processed++;
+      await atomicWriteJson(
+        progressPath,
+        pdfProgressResult(previous, unavailableKey, "source_unavailable"),
+      );
       stats.sourceUnavailable++;
       continue;
     }
@@ -132,6 +168,15 @@ try {
       )
         throw Error();
     } catch {
+      if (!pdfProgressReady(previous, unavailableKey)) {
+        stats.skippedCheckpoint++;
+        continue;
+      }
+      stats.processed++;
+      await atomicWriteJson(
+        progressPath,
+        pdfProgressResult(previous, unavailableKey, "source_unavailable"),
+      );
       stats.sourceUnavailable++;
       continue;
     }
@@ -154,7 +199,64 @@ try {
       },
       pages,
     );
+    const legacyKey = createHash("sha256")
+      .update(
+        JSON.stringify([b.id, b.version, d.signature, evidence.candidates]),
+      )
+      .digest("hex");
+    let legacy: any;
+    try {
+      legacy = JSON.parse(
+        await readFile(
+          join(
+            process.env.PDF_AUTO_LEGACY_REPORT_DIR ?? out,
+            legacyKey + ".json",
+          ),
+          "utf8",
+        ),
+      );
+    } catch {}
+    const fingerprintEvidence = evidence;
+    const makeFingerprint = async () =>
+      pdfProgressFingerprint(
+        b,
+        d,
+        fingerprintEvidence,
+        JSON.stringify([
+          legacy?.records,
+          await pdfCandidateStamp(join(cache, "pdf-auto", "providers"), b),
+        ]),
+      );
+    const fingerprint = await makeFingerprint();
+    const checkpoint = async (state: string) =>
+      atomicWriteJson(
+        progressPath,
+        pdfProgressResult(previous, await makeFingerprint(), state),
+      );
+    if (!pdfProgressReady(previous, fingerprint)) {
+      stats.skippedCheckpoint++;
+      continue;
+    }
+    if (!previous && legacy?.records) {
+      const checked = decideAutomaticCandidate(
+        {
+          ...b,
+          resourceId: d.id,
+          publicationDate: "",
+          edition: "",
+          resourceType: "",
+        },
+        legacy.records,
+      );
+      if (checked.state !== "certain") {
+        await checkpoint(checked.state);
+        stats.legacyReused++;
+        continue;
+      }
+    }
     if (evidence.state === "excluded") {
+      stats.processed++;
+      await checkpoint("source_unavailable");
       stats.sourceUnavailable++;
       continue;
     }
@@ -177,10 +279,16 @@ try {
                 path: d.path,
                 pages: absent,
                 pageCount: d.page_count,
-                cache: join(out, "frontier"),
+                cache:
+                  process.env.PDF_FRONTIER_CACHE_DIR ?? join(out, "frontier"),
               }),
               encoding: "utf8",
               windowsHide: true,
+              env: {
+                ...process.env,
+                PYTHONUTF8: "1",
+                PYTHONIOENCODING: "utf-8",
+              },
               timeout: 180000,
               maxBuffer: 4000000,
             },
@@ -188,7 +296,9 @@ try {
         );
         if (reply.error) throw Error();
         stats.supplemented += reply.pages.length;
-        stats.ocr += reply.pages.filter((x: any) => x.ocr).length;
+        stats.ocr += reply.pages.filter(
+          (x: any) => x.ocr && !x.cacheHit,
+        ).length;
         const replaced = new Set(reply.pages.map((x: any) => x.pageNumber));
         evidence = extractPdfIdentity(evidence, [
           ...pages.filter((x) => !replaced.has(x.pageNumber)),
@@ -206,15 +316,23 @@ try {
         .digest("hex"),
       attempt = join(out, key + ".json");
     let records: any[] = [];
+    const expired =
+      previous?.fingerprint === fingerprint &&
+      previous.nextAttemptAt <= Date.now();
+    const changed = !!previous && previous.fingerprint !== fingerprint;
     try {
       const previous = JSON.parse(await readFile(attempt, "utf8"));
       if (previous.state === "lookup_error") {
-        stats.errors++;
-        continue;
+        throw Error("Lookup retry due");
       }
+      if (expired || changed) throw Error("Lookup expired or changed");
       records = previous.records;
+      stats.cacheReused++;
     } catch {
-      const hit = await readCachedPdfCandidates(cache, b, evidence);
+      const hit =
+        expired || changed
+          ? { records: [], titleResults: [] }
+          : await readCachedPdfCandidates(cache, b, evidence);
       records = [
         ...hit.records,
         ...hit.titleResults.flatMap((x) =>
@@ -247,6 +365,7 @@ try {
         } catch (e: any) {
           if (e.status && [400, 404, 422].includes(e.status)) {
             stats.errors++;
+            await checkpoint("error");
             await writeFile(
               attempt,
               JSON.stringify({ records: [], state: "lookup_error" }),
@@ -281,6 +400,7 @@ try {
     );
     if (decision.state !== "certain") {
       stats[decision.state === "review" ? "review" : "missing"]++;
+      await checkpoint(decision.state);
       continue;
     }
     stats.eligible++;
@@ -303,15 +423,23 @@ try {
           decision.record!,
           (url) => downloadCover(url, fetcher),
           evidence,
+          !!(
+            b.coverUrl ||
+            b.catalogCoverUrl ||
+            b.storedCoverUrl ||
+            b.sourceData?.cover
+          ),
         );
       } catch (e: any) {
         if ([400, 404, 413, 502].includes(e.status)) {
           stats.errors++;
+          await checkpoint("error");
           continue;
         }
         throw e;
       }
       if (result.state === "applied") {
+        await checkpoint("applied");
         stats.applied++;
         if (
           !b.isbn &&
@@ -324,7 +452,7 @@ try {
           stats.fields[f] = (stats.fields[f] ?? 0) + 1;
           if (f === "coverUrl") stats.cover++;
         }
-      }
+      } else await checkpoint(result.state);
     }
   }
 } catch (e: any) {
@@ -334,6 +462,7 @@ try {
 } finally {
   local.close();
   await p.end();
+  release();
   await writeFile(
     join(out, apply ? "applied.json" : "preview.json"),
     JSON.stringify(stats, null, 2),

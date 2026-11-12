@@ -92,6 +92,7 @@ export async function applyAutomaticBibliography(
   record: LogosCandidate,
   download = downloadCover,
   identity?: PdfIdentity,
+  preserveDisplayedCover = false,
 ) {
   const key = fingerprint(record);
   // Existing covers and reader removals always win. Fetch outside the write lock.
@@ -139,6 +140,7 @@ export async function applyAutomaticBibliography(
   if (decision.state !== "certain") return { state: "review" };
   let image: Awaited<ReturnType<typeof prepareCover>> | undefined;
   if (
+    !preserveDisplayedCover &&
     !initial.coverUrl &&
     !initial.sourceData?.cover &&
     !initial.enrichment?.coverRemoved &&

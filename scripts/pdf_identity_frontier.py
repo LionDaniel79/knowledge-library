@@ -14,7 +14,7 @@ def supplement(request):
         if len(pdf)!=count:raise ValueError('Page count changed')
         for n in pages:
           key=hashlib.sha256(json.dumps([str(path),before.st_size,before.st_mtime_ns,n]).encode()).hexdigest();target=cache/(key+'.json')
-          if target.exists():result.append(json.loads(target.read_text(encoding='utf8')));continue
+          if target.exists():result.append({**json.loads(target.read_text(encoding='utf8')),'cacheHit':True});continue
           page=pdf[n-1]
           try:
             textpage=page.get_textpage()
