@@ -23,6 +23,7 @@ import {
   type CollectedBook,
 } from "../src/local/curation/catalog";
 import { lookupLibraryTitle } from "../src/server/catalog-provider";
+import { readCachedPdfCandidates } from "../src/local/curation/pdf-cached-candidates";
 import type { Database } from "../src/server/library-store";
 
 const args = process.argv.slice(2),
@@ -202,7 +203,7 @@ try {
   );
   const books = (
     await pool.query(
-      "SELECT b.id,b.title,b.author,b.isbn,b.version,d.id AS document_id FROM library_active_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND d.processing_scope='full' AND trim(b.isbn)='' ORDER BY b.id",
+      "SELECT b.id,b.title,b.author,b.publisher,b.isbn,b.version,d.id AS document_id FROM library_active_books b JOIN library_documents d ON d.owner_id=b.owner_id AND d.book_id=b.id WHERE b.owner_id=$1 AND d.processing_scope='full' AND trim(b.isbn)='' ORDER BY b.id",
       [owner],
     )
   ).rows;
@@ -280,12 +281,16 @@ try {
         if (record) records.push(record);
       }
     }
-    const resolution = resolvePdfIdentity(evidence, records);
-    if (!online) {
-      resolution.state = "not_queried";
-      resolution.reason = "오프라인 조사 완료: 제공자 조회 전";
-      stats.notQueried++;
+    const offline = !online
+      ? await readCachedPdfCandidates(cacheRoot, b, evidence)
+      : null;
+    if (offline) {
+      records.push(...offline.records);
+      titleResults.push(...offline.titleResults);
     }
+    const resolution =
+      offline?.resolution ?? resolvePdfIdentity(evidence, records);
+    if (!online && resolution.state === "not_queried") stats.notQueried++;
     if (online && !isbnOnly && resolution.state !== "verified") {
       // Title matches remain review candidates: no binding, translation, or edition is inferred.
       for (const query of identitySearchQueries(b.title, b.author)) {
