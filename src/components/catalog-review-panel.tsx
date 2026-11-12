@@ -46,7 +46,7 @@ export function CatalogReviewPanel({
     libraryRequest("/api/catalog-review?summary=1", {
       signal: c.signal,
       cache: "no-store",
-    })
+    }, {preferServer:true})
       .then(async (r) => {
         if (r.ok) setSummary(await r.json());
       })
