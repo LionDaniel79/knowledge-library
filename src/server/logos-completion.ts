@@ -64,6 +64,58 @@ export function logosCompletionBook(row: any): LogosCompletionBook {
     resourceType: raw.resourceType ?? "",
   };
 }
+
+/** Bounded, offline classification; independent of ISBN/provider availability. */
+export async function applyLogosResourceClassification(
+  db: Database,
+  owner: string,
+  id: string,
+  expectedVersion: number,
+) {
+  if (process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
+    throw new LibraryError(403, "로고스 보완 등록이 아직 허용되지 않았습니다.");
+  return withSyncWrite(db, owner, async (tx) => {
+    const row = (
+      await tx.query(
+        `SELECT ${bookSelect} FROM library_books b WHERE owner_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=b.owner_id AND e.id=b.id AND e.state='excluded') FOR UPDATE`,
+        [owner, id],
+      )
+    ).rows[0];
+    if (!row || row.sourceData?.app !== "Logos") return "excluded";
+    if (Number(row.version) !== expectedVersion) return "stale";
+    const proposed = logosClassification({
+      ...row,
+      resourceType: row.sourceData?.raw?.resourceType ?? "",
+    });
+    if (!proposed) return "unchanged";
+    await tx.query(
+      "UPDATE library_books SET category=$3,classification=$4,version=version+1 WHERE owner_id=$1 AND id=$2",
+      [owner, id, proposed.category, JSON.stringify(proposed.classification)],
+    );
+    await carryCuration(
+      tx,
+      owner,
+      id,
+      String(row.version),
+      String(Number(row.version) + 1),
+    );
+    await tx.query(
+      "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'logosClassification',$4,$5)",
+      [
+        randomUUID(),
+        owner,
+        id,
+        JSON.stringify(row),
+        JSON.stringify({
+          ...row,
+          ...proposed,
+          version: Number(row.version) + 1,
+        }),
+      ],
+    );
+    return "applied";
+  });
+}
 export async function applyLogosCompletion(
   db: Database,
   owner: string,

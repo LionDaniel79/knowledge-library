@@ -6,6 +6,7 @@ import { createPoolDatabase } from "../src/server/sync/pool-database";
 import { bookSelect } from "../src/server/book-records";
 import {
   applyLogosCompletion,
+  applyLogosResourceClassification,
   logosCompletionBook,
   logosCompletionFingerprint,
   resolveLogosOwner,
@@ -13,6 +14,7 @@ import {
 import { logosLookup } from "../src/local/curation/logos-providers";
 import { runLogosCompletion } from "../src/local/curation/logos-runner";
 import { readCoverCapacity } from "../src/server/book-covers";
+import { logosClassification } from "../src/lib/logos-classification";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -57,6 +59,7 @@ if (args.includes("--help")) {
     );
     if (
       apply &&
+      !args.includes("--classify-only") &&
       (!coverCapacity.remainingAssets || !coverCapacity.remainingBytes)
     )
       throw Error("표지 저장 공간이 부족합니다. 저장 용량 검토 후 재개하세요.");
@@ -71,31 +74,62 @@ if (args.includes("--help")) {
         [owner],
       )
     ).rows;
-    const books = rows
-      .filter(
-        (r) =>
-          r.enrichment?.logosCompletion?.fingerprint !==
-          logosCompletionFingerprint(logosCompletionBook(r)),
-      )
-      .map(logosCompletionBook);
-    const stats = await runLogosCompletion({
-      owner,
-      dir,
-      books,
-      online,
-      apply,
-      limit,
-      signal: controller.signal,
-      lookup: logosLookup({
-        dir: join(dir, "providers"),
-        libraryKey: process.env.DATA4LIBRARY_KEY,
-        yes24Key: process.env.YES24_API_KEY,
-      }),
-      applyDecision: (book, decision) =>
-        applyLogosCompletion(db, owner, book, decision),
-    });
-    console.log(JSON.stringify(stats));
-    if (["error", "quota"].includes(stats.stopped)) process.exitCode = 1;
+    if (args.includes("--classify-only")) {
+      const selected = rows
+        .filter((r) =>
+          logosClassification({
+            ...r,
+            resourceType: r.sourceData?.raw?.resourceType ?? "",
+          }),
+        )
+        .slice(0, limit);
+      let applied = 0;
+      if (apply)
+        for (const row of selected)
+          if (
+            (await applyLogosResourceClassification(
+              db,
+              owner,
+              row.id,
+              Number(row.version),
+            )) === "applied"
+          )
+            applied++;
+      console.log(
+        JSON.stringify({
+          mode: "classify-only",
+          considered: selected.length,
+          applied,
+          externalRequests: 0,
+        }),
+      );
+    } else {
+      const books = rows
+        .filter(
+          (r) =>
+            r.enrichment?.logosCompletion?.fingerprint !==
+            logosCompletionFingerprint(logosCompletionBook(r)),
+        )
+        .map(logosCompletionBook);
+      const stats = await runLogosCompletion({
+        owner,
+        dir,
+        books,
+        online,
+        apply,
+        limit,
+        signal: controller.signal,
+        lookup: logosLookup({
+          dir: join(dir, "providers"),
+          libraryKey: process.env.DATA4LIBRARY_KEY,
+          yes24Key: process.env.YES24_API_KEY,
+        }),
+        applyDecision: (book, decision) =>
+          applyLogosCompletion(db, owner, book, decision),
+      });
+      console.log(JSON.stringify(stats));
+      if (["error", "quota"].includes(stats.stopped)) process.exitCode = 1;
+    }
   } finally {
     await pool.end();
   }

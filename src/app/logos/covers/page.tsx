@@ -118,6 +118,7 @@ export default function LogosCoversPage() {
                           [book.id]: candidate.facts.coverUrl,
                         }));
                         setApproved((old) => ({ ...old, [book.id]: false }));
+                        setErrors((old) => ({ ...old, [book.id]: "" }));
                       }}
                     />
                     {candidate.facts.title} · {candidate.facts.author} ·{" "}
@@ -152,6 +153,7 @@ export default function LogosCoversPage() {
               onChange={(e) => {
                 setUrls((o) => ({ ...o, [book.id]: e.target.value }));
                 setApproved((o) => ({ ...o, [book.id]: false }));
+                setErrors((o) => ({ ...o, [book.id]: "" }));
               }}
             />
           </label>
