@@ -3754,6 +3754,29 @@ textarea {
   flex: 0 0 8.5rem;
   white-space: nowrap;
 }
+@media (max-width: 700px) {
+  .heading-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 8.5rem;
+    width: 100%;
+    max-width: none;
+    justify-content: initial;
+  }
+  .heading-actions > .sync-button {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .heading-actions > .primary {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+  .heading-actions > .sync-summary {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
 .replica-opening {
   max-width: 680px;
   margin: 15vh auto;
