@@ -19,7 +19,7 @@ export function SyncButton({ onError }: { onError: (error: Error) => void }) {
       aria-label="동기화"
       aria-busy={busy}
       disabled={!replica || busy}
-      title={replica?.status.error || "다른 메뉴를 사용해도 계속 동기화합니다."}
+      title={replica?.status.error || (busy ? "동기화 중" : "동기화")}
       onClick={() => {
         if (replica)
           void replica.runtime
@@ -38,20 +38,20 @@ export function SyncSummary() {
   const r = useReplicaOptional();
   if (!r) return null;
   const s = r.status;
-  const label = syncLabel(s, r.ready);
+  const busy = busyPhases.includes(s.phase);
+  const label = busy ? "" : syncLabel(s, r.ready);
   return (
     <span
       className="sync-summary"
       role="status"
+      aria-hidden={busy}
       title={
         s.error ||
         (s.lastSyncedAt ? new Date(s.lastSyncedAt).toLocaleString("ko-KR") : "")
       }
     >
       {label}
-      {busyPhases.includes(s.phase) &&
-        " · 다른 메뉴를 사용해도 계속 동기화합니다."}
-      {r.authRequired && (
+      {!busy && r.authRequired && (
         <>
           {" "}
           · <a href="/auth/sign-in">로그인</a>

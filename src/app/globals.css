@@ -3739,8 +3739,20 @@ textarea {
 .sync-summary {
   font-size: 0.78rem;
   color: var(--muted, #66736c);
-  white-space: normal;
-  overflow-wrap: anywhere;
+  flex: 0 0 9rem;
+  inline-size: 9rem;
+  min-block-size: 1.25em;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sync-button {
+  box-sizing: border-box;
+  inline-size: 8.5rem;
+  min-inline-size: 8.5rem;
+  flex: 0 0 8.5rem;
+  white-space: nowrap;
 }
 .replica-opening {
   max-width: 680px;
@@ -6142,4 +6154,22 @@ textarea {
 .shelf-dropdown-delete:hover {
   color: #a42a2a;
   background: #fff0f0;
+}
+
+/* Whiteboard connection details stay inside connection management. */
+.wb-connection-details {
+  margin-top: 8px;
+}
+.wb-connection-details > summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.wb-connection-details > section {
+  padding: 0 10px 10px;
+}
+.wb-connection-details .memo-group-detail + .memo-group-detail {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 8px;
 }

@@ -1,39 +1,55 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { LibraryRuntime } from "@/client/replica/runtime";
 import { useReplicaOptional } from "./provider";
 import { acquireReplicaImage } from "@/client/replica/image-urls";
 export function useReplicaImage(assetId: string | undefined) {
   const replica = useReplicaOptional(),
     ready = !!replica?.ready,
-    key = (assetId ?? "") + ":" + (replica?.revision ?? 0);
+    runtime = replica?.runtime;
+  const retained = useRef<{ release: () => void } | undefined>(undefined);
   const [image, setImage] = useState<{
-    key: string;
+    runtime?: LibraryRuntime;
+    assetId?: string;
     url?: string;
     error?: boolean;
-  }>({ key: "" });
+  }>({});
   useEffect(() => {
-    if (!ready || !assetId || !replica) return;
-    let cancelled = false,
-      release: (() => void) | undefined;
-    void acquireReplicaImage(replica.runtime.storage, assetId)
+    // Revision changes revalidate the same image without revoking its URL.
+    return () => {
+      retained.current?.release();
+      retained.current = undefined;
+    };
+  }, [ready, assetId, runtime]);
+  useEffect(() => {
+    if (!ready || !assetId || !runtime) return;
+    let cancelled = false;
+    void acquireReplicaImage(runtime.storage, assetId)
       .then((value) => {
         if (cancelled) value.release();
         else {
-          release = value.release;
-          setImage({ key, url: value.url });
+          // Acquire before releasing so unchanged assets keep the same blob URL.
+          retained.current?.release();
+          retained.current = value;
+          setImage({ runtime, assetId, url: value.url });
         }
       })
       .catch(() => {
-        if (!cancelled) setImage({ key, error: true });
+        if (!cancelled) {
+          retained.current?.release();
+          retained.current = undefined;
+          setImage({ runtime, assetId, error: true });
+        }
       });
     return () => {
       cancelled = true;
-      release?.();
     };
-  }, [ready, assetId, key, replica?.runtime]);
+  }, [ready, assetId, runtime, replica?.revision]);
+  const current =
+    ready && image.runtime === runtime && image.assetId === assetId;
   return {
-    url: image.key === key ? image.url : undefined,
-    error: image.key === key && image.error,
+    url: current ? image.url : undefined,
+    error: current && image.error,
     local: ready,
   };
 }

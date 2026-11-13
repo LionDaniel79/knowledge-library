@@ -1959,24 +1959,6 @@ export function WhiteboardPanel({
           }}
         />
       </div>
-      {!!focusGroups.length && (
-        <section
-          className="panel wb-relationship-detail"
-          aria-label="연결된 메모 내용"
-        >
-          {focusGroups.map((group) => (
-            <MemoGroupDetail
-              key={group.id}
-              compact
-              group={group}
-              onOpen={onOpen}
-              busy={linkBusy}
-              onSave={editSelectedConnection}
-              onRemove={(c) => void removeConnection(c)}
-            />
-          ))}
-        </section>
-      )}
       <details className="wb-connection-list">
         <summary>
           <span className="wb-connection-counts">
@@ -2090,6 +2072,24 @@ export function WhiteboardPanel({
             </button>
           </div>
         ))}
+        {!!focusGroups.length && (
+          <details className="wb-connection-details">
+            <summary>선택한 연결 상세·수정</summary>
+            <section aria-label="연결된 메모 내용">
+              {focusGroups.map((group) => (
+                <MemoGroupDetail
+                  key={group.id}
+                  compact
+                  group={group}
+                  onOpen={onOpen}
+                  busy={linkBusy}
+                  onSave={editSelectedConnection}
+                  onRemove={(c) => void removeConnection(c)}
+                />
+              ))}
+            </section>
+          </details>
+        )}
         {boxesResource.error && (
           <p role="alert">
             {boxesResource.error}{" "}

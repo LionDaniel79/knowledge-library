@@ -204,7 +204,6 @@ export function LibraryApp({
     book?: Book;
     error?: string;
     complete?: boolean;
-    revision: Library;
   } | null>(null);
   const remote = !!data.catalog;
   const needle =
@@ -240,7 +239,7 @@ export function LibraryApp({
       ? (data.catalog.formatCounts[format] ?? 0)
       : data.books.filter((b) => b.formats.includes(format)).length;
   const detailBook = remote
-    ? detailState?.id === detail && detailState.revision === data
+    ? detailState?.id === detail
       ? detailState.book
       : undefined
     : data.books.find((b) => b.id === detail);
@@ -261,13 +260,16 @@ export function LibraryApp({
   useEffect(() => {
     if (!remote || !detail) return;
     const controller = new AbortController();
-    setDetailState({
+    // Keep the open detail mounted while a changed overview is revalidated.
+    // Catalog entries can be partial and must not replace the loaded book.
+    setDetailState((previous) => ({
       id: detail,
       book:
+        (previous?.id === detail ? previous.book : undefined) ??
         catalog.items.find((b) => b.id === detail) ??
         data.books.find((b) => b.id === detail),
-      revision: data,
-    });
+      complete: false,
+    }));
     void libraryRequest("/api/books/" + detail, {
       signal: controller.signal,
       cache: "no-store",
@@ -277,7 +279,7 @@ export function LibraryApp({
         if (!res.ok)
           throw Error(book.error ?? "책 정보를 불러오지 못했습니다.");
         if (!controller.signal.aborted)
-          setDetailState({ id: detail, book, revision: data, complete: true });
+          setDetailState({ id: detail, book, complete: true });
       })
       .catch((e) => {
         if (!controller.signal.aborted)
@@ -285,7 +287,6 @@ export function LibraryApp({
             id: detail,
             book: previous?.id === detail ? previous.book : undefined,
             error: e.message,
-            revision: data,
           }));
       });
     return () => controller.abort();

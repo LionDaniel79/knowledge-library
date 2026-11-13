@@ -957,81 +957,104 @@ for (const width of [390, 1280])
     await expect(page.locator(".wb-note")).toHaveCount(0);
   });
 
-test("connection management reveals an editable memo group without creating extra relationships", async ({
-  page,
-}, testInfo) => {
-  const f = await mount(page, connectedFixture);
-  await page.locator(".wb-connection-counts").click();
-  await page
-    .getByRole("button", {
-      name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
-      exact: true,
-    })
-    .click();
-  await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(2);
-  await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(1);
-  const detail = page.getByRole("region", { name: "연결된 메모 내용" });
-  await expect(detail.locator(".preserve-text:visible")).toHaveCount(0);
-  await expect(detail.locator("select:visible")).toHaveCount(0);
-  await expect(
-    detail.locator(":scope > .memo-group-detail > .memo-group-note"),
-  ).toHaveCount(0);
-  await page.screenshot({
-    path: testInfo.outputPath("connection-group-compact.png"),
-    fullPage: true,
+for (const width of [390, 1280])
+  test(`connection management keeps editable details collapsed inside management at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    const f = await mount(page, connectedFixture);
+    await page.locator(".wb-connection-counts").click();
+    await page
+      .getByRole("button", {
+        name: "첫 생각 ↔ 둘째 생각 보드에서 보기",
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(2);
+    await expect(page.locator(".wb-canvas-shell .wb-group")).toHaveCount(1);
+    const manager = page.locator(".wb-connection-list");
+    await expect(page.locator(".wb-relationship-detail")).toHaveCount(0);
+    await expect(
+      page.locator("div:has(> .wb-canvas-shell) + .wb-connection-list"),
+    ).toHaveCount(1);
+    const disclosure = manager.locator(".wb-connection-details");
+    const detail = disclosure.locator('section[aria-label="연결된 메모 내용"]');
+    await expect(disclosure).not.toHaveAttribute("open", "");
+    await expect(detail).not.toBeVisible();
+    await expect(manager.locator(".memo-box-edge summary:visible")).toHaveCount(
+      0,
+    );
+    await disclosure.locator(":scope > summary").click();
+    await expect(detail).toBeVisible();
+    await expect(detail.locator(".preserve-text:visible")).toHaveCount(0);
+    await expect(detail.locator("select:visible")).toHaveCount(0);
+    await expect(
+      detail.locator(":scope > .memo-group-detail > .memo-group-note"),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("connection-group-compact.png"),
+      fullPage: true,
+    });
+    await detail.locator(".memo-box-edge summary").first().click();
+    await expect(detail.locator(".memo-box-edge .memo-group-note")).toHaveCount(
+      2,
+    );
+    await detail.locator(".memo-group-note summary").first().click();
+    await expect(detail).toContainText("본문에만 나오는 수용의 의미");
+    await expect(detail).toContainText("두 번째 내 생각");
+    await expect(
+      detail.locator(".memo-group-note").first().locator(".preserve-text"),
+    ).toBeVisible();
+    await expect(
+      detail.locator(".memo-group-note").nth(1).locator(".preserve-text"),
+    ).not.toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath("connection-group.png"),
+      fullPage: true,
+    });
+    await detail
+      .getByRole("combobox", { name: "관계", exact: true })
+      .selectOption("supports");
+    await detail
+      .getByRole("textbox", { name: "연결 이유", exact: true })
+      .fill("새 주장을 뒷받침한다");
+    await disclosure.locator(":scope > summary").click();
+    await expect(detail).not.toBeVisible();
+    await disclosure.locator(":scope > summary").click();
+    await expect(
+      detail.getByRole("textbox", { name: "연결 이유", exact: true }),
+    ).toHaveValue("새 주장을 뒷받침한다");
+    await detail.locator(".memo-box-edge summary").first().click();
+    await expect(
+      detail.getByRole("textbox", { name: "연결 이유", exact: true }),
+    ).not.toBeVisible();
+    await detail.locator(".memo-box-edge summary").first().click();
+    await expect(
+      detail.getByRole("textbox", { name: "연결 이유", exact: true }),
+    ).toHaveValue("새 주장을 뒷받침한다");
+    await detail
+      .getByRole("button", { name: "연결 수정 저장", exact: true })
+      .click();
+    await expect
+      .poll(() => f.state.connections[0].reason)
+      .toBe("새 주장을 뒷받침한다");
+    expect(f.state.connections[0].relation).toBe("supports");
+    expect(f.state.connections).toHaveLength(1);
+    expect(f.state.board.data.groups).toHaveLength(0);
+    expect(f.calls.some((c) => c.type === "saveWhiteboard")).toBe(false);
+    expect(f.calls.some((c) => c.type === "connectWhiteboardNotes")).toBe(
+      false,
+    );
+    await page
+      .getByRole("button", { name: "전체 보드 보기", exact: true })
+      .click();
+    await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(5);
   });
-  await detail.locator(".memo-box-edge summary").first().click();
-  await expect(detail.locator(".memo-box-edge .memo-group-note")).toHaveCount(
-    2,
-  );
-  await detail.locator(".memo-group-note summary").first().click();
-  await expect(detail).toContainText("본문에만 나오는 수용의 의미");
-  await expect(detail).toContainText("두 번째 내 생각");
-  await expect(
-    detail.locator(".memo-group-note").first().locator(".preserve-text"),
-  ).toBeVisible();
-  await expect(
-    detail.locator(".memo-group-note").nth(1).locator(".preserve-text"),
-  ).not.toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: testInfo.outputPath("connection-group.png"),
-    fullPage: true,
-  });
-  await detail
-    .getByRole("combobox", { name: "관계", exact: true })
-    .selectOption("supports");
-  await detail
-    .getByRole("textbox", { name: "연결 이유", exact: true })
-    .fill("새 주장을 뒷받침한다");
-  await detail.locator(".memo-box-edge summary").first().click();
-  await expect(
-    detail.getByRole("textbox", { name: "연결 이유", exact: true }),
-  ).not.toBeVisible();
-  await detail.locator(".memo-box-edge summary").first().click();
-  await expect(
-    detail.getByRole("textbox", { name: "연결 이유", exact: true }),
-  ).toHaveValue("새 주장을 뒷받침한다");
-  await detail
-    .getByRole("button", { name: "연결 수정 저장", exact: true })
-    .click();
-  await expect
-    .poll(() => f.state.connections[0].reason)
-    .toBe("새 주장을 뒷받침한다");
-  expect(f.state.connections[0].relation).toBe("supports");
-  expect(f.state.connections).toHaveLength(1);
-  expect(f.state.board.data.groups).toHaveLength(0);
-  expect(f.calls.some((c) => c.type === "saveWhiteboard")).toBe(false);
-  expect(f.calls.some((c) => c.type === "connectWhiteboardNotes")).toBe(false);
-  await page
-    .getByRole("button", { name: "전체 보드 보기", exact: true })
-    .click();
-  await expect(page.locator(".wb-canvas-shell .wb-note")).toHaveCount(5);
-});
 for (const seeded of [false, true])
   test(`hiding in the shared editor preserves placements, camera and scroll (${seeded ? "saved" : "legacy"} layout)`, async ({
     page,
