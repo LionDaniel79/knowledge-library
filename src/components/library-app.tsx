@@ -43,6 +43,7 @@ import {
 } from "@/lib/domain";
 import { authClient } from "@/lib/auth-client";
 import { BookCover } from "./book-cover";
+import { MyBookshelves } from "./my-bookshelves";
 import { QueuedBooks, RecentCompletedBooks } from "./dashboard-books";
 import { ReadingCarousel } from "./reading-carousel";
 import { ReadingCalendar } from "./reading-calendar";
@@ -98,7 +99,7 @@ type View =
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
-  { id: "shelves", label: "서재별 보기", icon: LibraryBig },
+  { id: "shelves", label: "나의 책장", icon: LibraryBig },
   { id: "search", label: "통합 검색", icon: Search },
   { id: "knowledge", label: "사유의 지도", icon: Feather },
   { id: "calendar", label: "독서 달력", icon: CalendarDays },
@@ -206,18 +207,14 @@ export function LibraryApp({
     complete?: boolean;
   } | null>(null);
   const remote = !!data.catalog;
-  const needle =
-    view === "books" || view === "shelves"
-      ? query.trim().toLocaleLowerCase()
-      : "";
+  const needle = view === "books" ? query.trim().toLocaleLowerCase() : "";
   const bookPaging = useListPagination(
     "books",
     JSON.stringify([view, needle, sort, category, shelfFilter, filter]),
   );
 
   const catalog = useBookCatalog({
-    enabled:
-      remote && (view === "books" || view === "shelves") && bookPaging.ready,
+    enabled: remote && view === "books" && bookPaging.ready,
     query: {
       q: needle,
       sort,
@@ -813,7 +810,7 @@ export function LibraryApp({
               </button>
             </div>
           )}
-          {(view === "books" || view === "shelves") && (
+          {view === "books" && (
             <div className="catalog-controls">
               <label>
                 분야
@@ -1035,7 +1032,7 @@ export function LibraryApp({
                   />
                 </>
               )}
-              {(view === "books" || view === "shelves") && (
+              {view === "books" && (
                 <>
                   <div className="book-toolbar">
                     <div className="book-view-actions">
@@ -1169,6 +1166,10 @@ export function LibraryApp({
                     </div>
                   )}
                 </>
+              )}
+
+              {view === "shelves" && (
+                <MyBookshelves library={data} renderBook={bookCard} />
               )}
 
               {view === "calendar" && (
@@ -1329,15 +1330,13 @@ export function LibraryApp({
                 ))}
             </>
           )}
-          {remote &&
-            (view === "books" || view === "shelves") &&
-            catalog.error && (
-              <p role="alert" className="error">
-                {catalog.error}{" "}
-                <button onClick={catalog.reload}>다시 조회</button>
-              </p>
-            )}
-          {(view === "books" || view === "shelves") && (
+          {remote && view === "books" && catalog.error && (
+            <p role="alert" className="error">
+              {catalog.error}{" "}
+              <button onClick={catalog.reload}>다시 조회</button>
+            </p>
+          )}
+          {view === "books" && (
             <PageNavigation
               label="소장 도서"
               paging={bookPaging}

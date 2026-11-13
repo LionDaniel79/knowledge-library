@@ -65,18 +65,31 @@ for (const width of [390, 1280]) {
       .last()
       .click();
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+    await page.getByRole("button", { name: "나의 책장", exact: true }).click();
+    await expect(page.locator(".my-shelf-preview")).toHaveCount(4);
+    await expect(page.locator(".shelf-card")).toHaveCount(0);
     await page
-      .getByRole("button", { name: "서재별 보기", exact: true })
+      .getByRole("button", { name: "연구 서재 책장 열기", exact: true })
       .click();
-    await page
-      .getByRole("combobox", { name: "책장별 소장 도서" })
-      .selectOption("연구 서재");
     await expect(page.locator(".shelf-card")).toHaveCount(2);
+    await page.locator(".my-shelf-books .shelf-card").first().click();
+    await expect(page.getByRole("dialog")).toContainText("대기 도서 32");
     await page
-      .getByRole("combobox", { name: "책장별 소장 도서" })
-      .selectOption("빈 서재");
+      .getByRole("button", { name: "닫기", exact: true })
+      .last()
+      .click();
+    await expect(page.locator(".my-shelf-books")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
+    await page.getByRole("button", { name: "책장 목록", exact: true }).click();
+    await page
+      .getByRole("button", { name: "빈 서재 책장 열기", exact: true })
+      .click();
     await expect(
-      page.getByRole("heading", { name: "이 서재에 담긴 책이 없습니다" }),
+      page.getByRole("heading", { name: "이 책장에 담긴 책이 없습니다" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await page.getByRole("button", { name: "나의 서재", exact: true }).click();
@@ -96,6 +109,63 @@ for (const width of [390, 1280]) {
     ).toBe(true);
   });
 }
+
+test("my shelves never requests unfiltered books and excludes unassigned books", async ({
+  page,
+}) => {
+  const requested: URL[] = [];
+  await page.route("https://library.test/api/books?*", (route) => {
+    const url = new URL(route.request().url());
+    requested.push(url);
+    const members = books.filter((book) =>
+      book.bookshelves.includes(url.searchParams.get("shelf") ?? ""),
+    );
+    return route.fulfill({
+      json: {
+        items: members.slice(0, Number(url.searchParams.get("limit"))),
+        total: members.length,
+        nextCursor: null,
+      },
+    });
+  });
+  await page.route("https://library.test/api/reading?*", (r) =>
+    r.fulfill({ json: { items: [], books: [], total: 0 } }),
+  );
+  await mount(page, {
+    books: [],
+    cycles: [],
+    notes: [],
+    shelves: ["연구 서재"],
+    catalog: {
+      total: 10000,
+      formatCounts: {},
+      categoryCounts: {},
+      firstPage: { items: [], total: 10000, nextCursor: null },
+    },
+  });
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await page.getByRole("button", { name: "나의 책장", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "연구 서재 책장 열기" }),
+  ).toContainText("2권");
+  await page.getByRole("button", { name: "연구 서재 책장 열기" }).click();
+  await expect(page.locator(".my-shelf-books .shelf-card")).toHaveCount(2);
+  expect(
+    requested.every(
+      (url) =>
+        url.searchParams.get("shelf") &&
+        url.searchParams.get("shelf") !== "all",
+    ),
+  ).toBe(true);
+  expect(
+    requested.some(
+      (url) =>
+        url.searchParams.get("shelf") === "연구 서재" &&
+        url.searchParams.get("limit") === "5",
+    ),
+  ).toBe(true);
+  await expect(page.locator(".catalog-controls")).toHaveCount(0);
+});
 test("recent completed home books include today and day30, deduplicate rereads, order latest first", async ({
   page,
 }) => {
