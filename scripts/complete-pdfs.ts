@@ -1,3 +1,5 @@
+import { collectionFailure } from "../src/local/curation/collection-failure";
+import { retryCatalogRead } from "../src/local/curation/catalog-read-retry";
 /** Explicit bounded PDF enrichment; never starts a scheduler or writes the OCR index. */
 import { Pool } from "pg";
 import { DatabaseSync } from "node:sqlite";
@@ -119,14 +121,19 @@ const lookup = logosLookup({
   fetcher,
 });
 let supplements = 0;
+let phase = "initial-select";
 try {
   const rows = (
-    await p.query(
-      `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND 'pdf'=ANY(formats) AND source_data->>'app'='Local PDF' AND enrichment->'autoBibliography' IS NULL ORDER BY (trim(isbn)<>'') DESC,id`,
-      [owner],
+    await retryCatalogRead(() =>
+      p.query(
+        `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND 'pdf'=ANY(formats) AND source_data->>'app'='Local PDF' AND enrichment->'autoBibliography' IS NULL ORDER BY (trim(isbn)<>'') DESC,id`,
+        [owner],
+      ),
     )
   ).rows;
-  await attachCatalogCovers(db, owner, rows);
+  phase = "cover-sources";
+  await retryCatalogRead(() => attachCatalogCovers(db, owner, rows));
+  phase = "document";
   for (const b of rows) {
     try {
       if (excluded.has(b.id)) continue;
@@ -489,7 +496,7 @@ try {
   }
 } catch (e: any) {
   stats.stopped = e.code === "PDF_API_BUDGET" ? "budget" : "error";
-  stats.error = { name: e.name, code: e.code, status: e.status };
+  stats.error = collectionFailure(e, phase);
   process.exitCode = stats.stopped === "budget" ? 0 : 1;
 } finally {
   local.close();
@@ -500,6 +507,7 @@ try {
     JSON.stringify(stats, null, 2),
   );
   await atomicWriteJson(join(out, "investigated.json"), {
+    failure: stats.error,
     at: new Date().toISOString(),
     ids: [...investigated],
   });

@@ -15,6 +15,7 @@ it("records a network cause and code location without leaking URL, key, private 
     phase: "lookup",
     code: "ECONNRESET",
     kind: "network",
+    retryable: true,
     frames: ["logos-providers.ts:99:17"],
   });
 });

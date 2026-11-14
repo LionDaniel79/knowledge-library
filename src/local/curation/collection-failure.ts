@@ -17,9 +17,23 @@ export function collectionFailure(error: unknown, phase: string) {
       ? String(code)
       : undefined,
     kind:
-      e?.message === "fetch failed" || e?.name === "TimeoutError"
-        ? "network"
-        : "unexpected",
+      e?.message === "Query read timeout" || code === "57014"
+        ? "database-timeout"
+        : e?.message === "fetch failed" || e?.name === "TimeoutError"
+          ? "network"
+          : "unexpected",
+    retryable:
+      e?.message === "Query read timeout" ||
+      [
+        "57014",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "ECONNREFUSED",
+        "EAI_AGAIN",
+        "08006",
+        "08001",
+        "57P01",
+      ].includes(String(code ?? "")),
     frames: [
       ...String(e?.stack ?? "").matchAll(
         /[/\\]([a-z0-9._-]+\.(?:ts|mjs|js)):(\d+):(\d+)/gi,

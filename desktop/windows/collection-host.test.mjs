@@ -4,6 +4,50 @@ import fs from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { collectionSnapshot, writeState, host } from "./collection-host.mjs";
+test("explicit retry is bound to the exact transient halt and does not unlock an unknown error", async () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), "kl-retry-"));
+  try {
+    writeState(dir, "halted.json", {
+      kind: "pdf",
+      at: "one",
+      failure: { retryable: false },
+    });
+    writeState(dir, "desktop-request.json", {
+      kind: "pdf",
+      requestId: "retry",
+      retryHaltAt: "one",
+    });
+    let calls = 0;
+    const run = async () => {
+      calls++;
+      return 0;
+    };
+    const now = () => new Date("2026-11-15T00:00:00Z");
+    await host({ stateDirectory: dir }, { once: true, run, now });
+    expectNoRun();
+    writeState(dir, "halted.json", {
+      kind: "pdf",
+      at: "two",
+      failure: { retryable: true },
+    });
+    await host({ stateDirectory: dir }, { once: true, run, now });
+    expectNoRun();
+    writeState(dir, "desktop-request.json", {
+      kind: "pdf",
+      requestId: "retry",
+      retryHaltAt: "two",
+    });
+    await host({ stateDirectory: dir }, { once: true, run, now });
+    assert.equal(calls, 1);
+    assert.ok(fs.existsSync(join(dir, "halted-retry-retry.json")));
+    function expectNoRun() {
+      assert.equal(calls, 0);
+      assert.ok(fs.existsSync(join(dir, "halted.json")));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
 test("halt is visible, blocks writes and preserves previous settings and ledger", async () => {
   const dir = fs.mkdtempSync(join(os.tmpdir(), "kl-host-"));
   try {

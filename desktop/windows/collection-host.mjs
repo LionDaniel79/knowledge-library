@@ -42,6 +42,9 @@ export function collectionSnapshot(directory, now = new Date()) {
     settings,
     halted: !!halted,
     errorName: halted?.failure?.name ?? halted?.name ?? "",
+    canRetry: halted?.failure?.retryable === true,
+    haltAt: halted?.at,
+    haltKind: halted?.kind,
     collectors: Object.fromEntries(
       ["pdf", "logos"].map((kind) => [
         kind,
@@ -104,6 +107,33 @@ export async function host(
           pid: process.pid,
         });
         const snap = collectionSnapshot(directory, now());
+        const recovery = readState(directory, "desktop-request.json", {});
+        const recovered = readState(
+          directory,
+          "desktop-handled-request.json",
+          {},
+        );
+        if (
+          snap.halted &&
+          snap.canRetry &&
+          ["pdf", "logos"].includes(recovery.kind) &&
+          recovery.retryHaltAt === snap.haltAt &&
+          recovery.kind === snap.haltKind &&
+          recovery.requestId !== recovered.requestId &&
+          /^[a-zA-Z0-9-]{1,80}$/.test(recovery.requestId ?? "") &&
+          collectionAllowance(
+            snap.settings,
+            recovery.kind,
+            snap.collectors[recovery.kind].reserved,
+          ) > 0
+        ) {
+          // Explicit user retry of this exact transient halt; retain its history.
+          fs.renameSync(
+            join(directory, "halted.json"),
+            join(directory, "halted-retry-" + recovery.requestId + ".json"),
+          );
+          snap.halted = false;
+        }
         if (!snap.halted) {
           const ledger = readState(directory, snap.day + ".json", {
             sequences: [],
