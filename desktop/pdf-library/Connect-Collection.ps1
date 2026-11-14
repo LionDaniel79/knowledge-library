@@ -4,8 +4,8 @@ param(
  [Parameter(Mandatory)][string]$StateDirectory,
  [Parameter(Mandatory)][string]$LegacyReportDirectory,
  [Parameter(Mandatory)][string]$FrontierDirectory,
- [ValidateRange(0,600)][int]$LogosDailyLimit=300,
- [ValidateRange(0,500)][int]$PdfDailyLimit=100
+ [ValidateRange(0,10000)][int]$LogosDailyLimit=300,
+ [ValidateRange(0,10000)][int]$PdfDailyLimit=100
 )
 $ErrorActionPreference='Stop'
 # Links an existing private runtime profile. Does not decrypt it, start a worker,

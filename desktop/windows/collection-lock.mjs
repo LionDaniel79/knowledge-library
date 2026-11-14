@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 // Recovery is itself exclusive. A crash during recovery fails closed; it never
 // unlinks another launcher's newly acquired lock.
 export function acquireCollectionLock(file, details = {}) {
+  if (file instanceof URL) file = fileURLToPath(file);
   const guard = file + ".recovery";
   let descriptor;
   try {

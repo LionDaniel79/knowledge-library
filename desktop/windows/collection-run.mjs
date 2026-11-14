@@ -10,6 +10,8 @@ import {
   collectionSettings,
   collectionAllowance,
   collectionClock,
+  nextCollectionBatch,
+  settleCollectionReservation,
 } from "./collection-settings.mjs";
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 if (!process.argv.includes("--config")) throw Error("Configuration required");
@@ -40,7 +42,9 @@ const kind = arg("--kind"),
   day = collectionClock().day;
 if (
   !["logos", "pdf"].includes(kind) ||
-  !/^(morning|evening|daily|manual-[a-zA-Z0-9-]+)$/.test(slot)
+  !/^(morning|evening|daily|scheduled-\d{4}|continuous-\d+|manual-[a-zA-Z0-9-]+)$/.test(
+    slot,
+  )
 )
   throw Error("Invalid collection invocation");
 if (fs.existsSync(file("halted.json"))) process.exit(1);
@@ -70,7 +74,7 @@ try {
     session = kind + ":" + slot;
   if (ledger.sequences.some((s) => s.session === session)) leave(0);
   const allowance = Math.min(
-    kind === "logos" && !slot.startsWith("manual-") ? 300 : 600,
+    caps[kind].runLimit,
     collectionAllowance(settings, kind, ledger[kind].reserved),
   );
   if (!allowance) leave(0);
@@ -116,19 +120,20 @@ try {
     stage: ledger.stage,
     success: false,
     batches: [],
+    notBefore: new Date(Date.now() + 15 * 60000).toISOString(),
     at: new Date().toISOString(),
   };
   ledger.sequences.push(sequence);
   write(ledgerName, ledger);
   for (let i = 0, remaining = allowance; remaining > 0; i++) {
-    const limit = Math.min(
-      100,
+    const limit = nextCollectionBatch(
+      kind,
+      settings,
+      read("user-settings.json", {}),
+      ledger[kind].reserved,
+      allowance - remaining,
       remaining,
-      collectionAllowance(
-        read("user-settings.json", {}),
-        kind,
-        ledger[kind].reserved,
-      ),
+      slot.startsWith("manual-"),
     );
     if (!limit) break;
     remaining -= limit;
@@ -281,6 +286,11 @@ try {
       audit.ids,
       ledger[kind].ids,
     );
+    ledger[kind].reserved = settleCollectionReservation(
+      ledger[kind].reserved,
+      limit,
+      audit.ids.length,
+    );
     ledger[kind].ids.push(...audit.ids);
     sequence.batches.push(result);
     write(ledgerName, ledger);
@@ -300,11 +310,20 @@ try {
       sequence.reason = "Resource errors; expansion held";
       break;
     }
+    if (audit.ids.length === 0)
+      sequence.notBefore = new Date(Date.now() + 3600000).toISOString();
     if (remaining === 0 || audit.ids.length === 0) {
       sequence.success = true;
       break;
     }
   }
+  if (
+    sequence.success &&
+    !sequence.batches.some(
+      (b) => (kind === "logos" ? b.considered : b.processed) === 0,
+    )
+  )
+    sequence.notBefore = new Date(Date.now() + 60000).toISOString();
   write(ledgerName, ledger);
   write(kind + "-status.json", {
     state: sequence.success ? "complete" : "deferred",

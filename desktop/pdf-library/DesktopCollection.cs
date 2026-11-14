@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,6 +11,11 @@ using System.Windows.Controls;
 partial class PdfDesktop {
     class CollectionView {
         public TextBox Limit=new TextBox{Width=90,Margin=new Thickness(4)};
+        public TextBox RunLimit=new TextBox{Width=90,Margin=new Thickness(4)};
+        public TextBox Times=new TextBox{Width=210,Margin=new Thickness(4),ToolTip="한국시간, 쉼표로 구분. 예: 09:00,21:00"};
+        public ComboBox Mode=new ComboBox{Width=195,Margin=new Thickness(4)};
+        public bool Dirty,Loading;
+        public string LoadedSettings="";
         public TextBlock Summary=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,16,4,12),FontSize=16};
         public TextBlock Detail=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)};
         public Button Pause;
@@ -24,10 +30,17 @@ partial class PdfDesktop {
             var panel=new StackPanel{Margin=new Thickness(20)};
             panel.Children.Add(new TextBlock{Text=(key=="pdf"?"PDF":"로고스")+" 도서정보·표지 수집",FontSize=23,FontWeight=FontWeights.Bold});
             panel.Children.Add(new TextBlock{Text="유력한 서지정보를 웹 서재에 자동 보완합니다. 적용 내역은 웹에서 확인하고 항목별로 되돌릴 수 있습니다.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,12,4,12)});
+            var schedule=new WrapPanel();panel.Children.Add(schedule);
+            schedule.Children.Add(new TextBlock{Text="실행 방식",VerticalAlignment=VerticalAlignment.Center});
+            foreach(var label in new[]{"예약 없이 연속 실행","예약 시각에 실행","수동 실행만"})view.Mode.Items.Add(label);
+            schedule.Children.Add(view.Mode);schedule.Children.Add(new TextBlock{Text="예약 시각",VerticalAlignment=VerticalAlignment.Center});schedule.Children.Add(view.Times);
+            view.Mode.SelectionChanged+=(s,e)=>{view.Times.IsEnabled=view.Mode.SelectedIndex==1;if(!view.Loading)view.Dirty=true;};
+            view.Limit.TextChanged+=(s,e)=>{if(!view.Loading)view.Dirty=true;};view.RunLimit.TextChanged+=(s,e)=>{if(!view.Loading)view.Dirty=true;};view.Times.TextChanged+=(s,e)=>{if(!view.Loading)view.Dirty=true;};
             var row=new WrapPanel();panel.Children.Add(row);
             row.Children.Add(new TextBlock{Text="하루 신규 조사 한도",VerticalAlignment=VerticalAlignment.Center});row.Children.Add(view.Limit);
-            row.Children.Add(Btn("한도 저장",()=>SaveCollectionLimit(key)));
-            panel.Children.Add(new TextBlock{Text="0권은 일시정지 · "+(key=="pdf"?"최대 500권":"최대 600권")+" · 한 배치 최대 100권 · API 호출 한도는 별도로 유지됩니다.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)});
+            row.Children.Add(new TextBlock{Text="한 번 최대",VerticalAlignment=VerticalAlignment.Center});row.Children.Add(view.RunLimit);
+            row.Children.Add(Btn("설정 저장",()=>SaveCollectionLimit(key)));
+            panel.Children.Add(new TextBlock{Text="하루 0~10,000권 · 한 번 1~10,000권 · 내부적으로 100권씩 순차 처리 · API 호출 한도는 별도로 유지됩니다. 하루 0권은 일시정지입니다.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)});
             var actions=new WrapPanel();panel.Children.Add(actions);
             actions.Children.Add(Btn("지금 수집",()=>RequestCollection(key)));
             view.Pause=Btn("일시정지 / 계속",()=>ToggleCollection(key));actions.Children.Add(view.Pause);
@@ -68,7 +81,10 @@ partial class PdfDesktop {
                 var settings=CollectionRead("user-settings.json");object o;
                 var cfg=settings.TryGetValue(kind,out o)?(Dictionary<string,object>)o:new Dictionary<string,object>();
                 var limit=cfg.ContainsKey("dailyLimit")?Convert.ToInt32(cfg["dailyLimit"]):kind=="pdf"?100:300;
-                if(!v.Limit.IsKeyboardFocusWithin)v.Limit.Text=limit.ToString();
+                var mode=cfg.ContainsKey("mode")?Val(cfg,"mode"):"scheduled";
+                var times=new List<string>();if(cfg.ContainsKey("times"))foreach(var t in (IEnumerable)cfg["times"])times.Add(Convert.ToString(t));else times.AddRange(kind=="pdf"?new[]{"15:00"}:new[]{"09:00","21:00"});
+                var signature=json.Serialize(cfg);
+                if(!v.Dirty && signature!=v.LoadedSettings){v.Loading=true;try{v.Limit.Text=limit.ToString();v.RunLimit.Text=cfg.ContainsKey("runLimit")?Val(cfg,"runLimit"):"100";v.Mode.SelectedIndex=mode=="continuous"?0:mode=="manual"?2:1;v.Times.Text=String.Join(",",times);v.LoadedSettings=signature;}finally{v.Loading=false;}}
                 var paused=Val(cfg,"paused")=="True";v.Pause.Content=paused?"수집 계속":"수집 일시정지";
                 var day=DateTime.UtcNow.AddHours(9).ToString("yyyy-MM-dd");var ledger=CollectionRead(day+".json");
                 var entry=ledger.TryGetValue(kind,out o)?(Dictionary<string,object>)o:new Dictionary<string,object>();
@@ -77,7 +93,7 @@ partial class PdfDesktop {
                 var state=Val(status,"state");var running=state=="running"&&File.Exists(Path.Combine(collectionDirectory,"running.lock"));
                 var host=CollectionRead("desktop-host.json");
                 var hostAlive=collectionProcess!=null&&!collectionProcess.HasExited;
-                v.Summary.Text=halted.Count>0?"오류로 수집 중단 · 기존 진행 기록은 보존되어 있습니다.":!hostAlive?"백그라운드 수집기가 실행되지 않았습니다. 앱을 다시 열어 주세요.":running?"도서정보 수집 중":paused||limit==0?"일시정지":"예약 대기";
+                v.Summary.Text=halted.Count>0?"오류로 수집 중단 · 기존 진행 기록은 보존되어 있습니다.":!hostAlive?"백그라운드 수집기가 실행되지 않았습니다. 앱을 다시 열어 주세요.":running?"도서정보 수집 중":paused||limit==0?"일시정지":mode=="continuous"?"연속 실행 대기":mode=="manual"?"수동 실행 대기":"예약 대기";
                 string text="오늘 조사 완료 "+(ids==null?0:ids.Count)+"권 / 일일 한도 "+limit+"권\n안전 예약 용량 "+(entry.ContainsKey("reserved")?Val(entry,"reserved"):"0")+"권 (중단된 배치 포함)";
                 var result=status.ContainsKey("result")?status["result"] as Dictionary<string,object>:null;
                 if(running){var live=CollectionRead("live-"+kind+".json");DateTime liveAt,startAt;if(DateTime.TryParse(Val(live,"at"),out liveAt)&&DateTime.TryParse(Val(status,"at"),out startAt)&&liveAt>=startAt)result=live;}
@@ -90,7 +106,8 @@ partial class PdfDesktop {
                     if(result.ContainsKey("pending"))text+="\n마지막 확인 시 남은 대상 "+Val(result,"pending");
                 }
                 DateTime updated;var timestamp=DateTime.TryParse(Val(status,"at"),out updated)?updated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"):"아직 없음";
-                text+="\n마지막 상태 갱신 "+timestamp+"\n예약: "+(kind=="pdf"?"매일 15:00":"매일 09:00 / 21:00")+" (한국시간, 실행 중일 때)";
+                text+="\n마지막 상태 갱신 "+timestamp+"\n실행 방식: "+(mode=="continuous"?"예약 없이 연속 실행":mode=="manual"?"수동 실행만":"예약 "+String.Join(" / ",times)+" (한국시간)")+" · 한 번 최대 "+(cfg.ContainsKey("runLimit")?Val(cfg,"runLimit"):"100")+"권";
+                text+="\n조사 대상이 없으면 1시간 대기합니다. PDF와 로고스는 동시에 실행되지 않습니다.";
                 if(halted.Count>0){var failure=halted.ContainsKey("failure")?halted["failure"] as Dictionary<string,object>:null;text+="\n중단 오류: "+(failure==null?Val(halted,"name"):Val(failure,"name"))+" · 오류 원인 확인 전에는 자동 재시작하지 않습니다.";}
                 if(Val(host,"state")=="error")text+="\n수집 설정 또는 상태 파일을 확인하세요.";
                 v.Detail.Text=text;
@@ -98,9 +115,12 @@ partial class PdfDesktop {
         }
     }
     void SaveCollectionLimit(string kind){
-        int value;var view=collectionViews[kind];
-        if(!Int32.TryParse(view.Limit.Text,out value)||value<0||value>(kind=="pdf"?500:600)){MessageBox.Show("0~"+(kind=="pdf"?500:600)+"권을 입력하세요.");return;}
-        ChangeCollectionSetting(kind,"dailyLimit",value);
+        int daily,perRun;var view=collectionViews[kind];
+        if(!Int32.TryParse(view.Limit.Text,out daily)||daily<0||daily>10000||!Int32.TryParse(view.RunLimit.Text,out perRun)||perRun<1||perRun>10000){MessageBox.Show("하루는 0~10,000권, 한 번은 1~10,000권을 입력하세요.");return;}
+        var times=view.Times.Text.Split(',').Select(t=>t.Trim()).ToArray();
+        if(times.Length<1||times.Length>8||times.Distinct().Count()!=times.Length||times.Any(t=>!System.Text.RegularExpressions.Regex.IsMatch(t,@"^([01]\d|2[0-3]):[0-5]\d$"))){MessageBox.Show("예약 시각을 00:00~23:59 형식으로 입력하세요. 여러 시각은 쉼표로 구분합니다(최대 8개).");return;}
+        if(collectionDirectory.Length==0)return;
+        try{var settings=CollectionRead("user-settings.json");object old;var cfg=settings.TryGetValue(kind,out old)?(Dictionary<string,object>)old:new Dictionary<string,object>();cfg["dailyLimit"]=daily;cfg["runLimit"]=perRun;cfg["mode"]=view.Mode.SelectedIndex==0?"continuous":view.Mode.SelectedIndex==2?"manual":"scheduled";cfg["times"]=times;settings[kind]=cfg;CollectionWrite("user-settings.json",settings);view.Dirty=false;view.LoadedSettings="";RefreshCollectionViews();}catch{MessageBox.Show("설정을 저장하지 못했습니다. 입력 내용은 유지됩니다.");}
     }
     void ChangeCollectionSetting(string kind,string field,object value){
         if(collectionDirectory.Length==0)return;
@@ -121,6 +141,13 @@ partial class PdfDesktop {
         CollectionWrite("user-settings.json",new Dictionary<string,object>{{"pdf",new Dictionary<string,object>{{"dailyLimit",100}}},{"logos",new Dictionary<string,object>{{"dailyLimit",300}}}});
         RefreshCollectionViews();collectionViews["pdf"].Limit.Text="37";SaveCollectionLimit("pdf");
         if(Val((Dictionary<string,object>)CollectionRead("user-settings.json")["pdf"],"dailyLimit")!="37")throw new Exception("Daily limit did not persist");
+        collectionViews["pdf"].RunLimit.Text="250";collectionViews["pdf"].Mode.SelectedIndex=0;SaveCollectionLimit("pdf");
+        if(Val((Dictionary<string,object>)CollectionRead("user-settings.json")["pdf"],"mode")!="continuous")throw new Exception("Continuous mode did not persist");
+        collectionViews["pdf"].Mode.SelectedIndex=1;collectionViews["pdf"].Times.Text="08:15,20:40";SaveCollectionLimit("pdf");
+        var saved=(Dictionary<string,object>)CollectionRead("user-settings.json")["pdf"];
+        if(Val(saved,"runLimit")!="250"||((ICollection)saved["times"]).Count!=2)throw new Exception("Custom schedule or per-run limit missing");
+        collectionViews["pdf"].Limit.Text="1000";RefreshCollectionViews();if(collectionViews["pdf"].Limit.Text!="1000")throw new Exception("Refresh overwrote an unsaved setting");
+        collectionViews["pdf"].Mode.SelectedIndex=0;SaveCollectionLimit("pdf");
         ToggleCollection("pdf");if(Val((Dictionary<string,object>)CollectionRead("user-settings.json")["pdf"],"paused")!="True")throw new Exception("Pause did not persist");
         ToggleCollection("pdf");
         CollectionWrite("halted.json",new Dictionary<string,object>{{"name","TypeError"}});RefreshCollectionViews();

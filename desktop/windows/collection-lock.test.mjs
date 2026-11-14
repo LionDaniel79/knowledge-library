@@ -44,3 +44,17 @@ test("two processes reclaiming a stale lock have one owner", async () => {
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+test("accepts file URLs used by the bounded runner", () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), "kl-lock-url-")),
+    file = join(dir, "running.lock");
+  try {
+    const release = acquireCollectionLock(
+      new URL("file:///" + file.replace(/\\/g, "/")),
+    );
+    assert.ok(release);
+    release();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
