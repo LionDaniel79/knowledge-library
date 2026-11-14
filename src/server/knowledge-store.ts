@@ -1,3 +1,4 @@
+import { editMemoGroup } from "./memo-groups";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { proposeConnections, type KnowledgeNode } from "../lib/knowledge";
@@ -34,6 +35,7 @@ const command = z.object({
     "suggest",
     "connect",
     "editConnection",
+    "editMemoGroup",
     "createResearch",
     "updateResearch",
     "deleteResearch",
@@ -326,6 +328,8 @@ export function createKnowledgeStore(db: Database) {
             "이미 연결 후보나 기록이 있습니다. 기존 연결에서 수정해 주세요.",
           );
         result = { id: row.id, version: row.version };
+      } else if (c.type === "editMemoGroup") {
+        result = await editMemoGroup(tx, owner, c.payload);
       } else if (c.type === "editConnection") {
         const p = z
           .object({

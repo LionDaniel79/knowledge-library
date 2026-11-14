@@ -10,8 +10,9 @@ import {
   synthesisBundleSchema,
   synthesisResultSchema,
   writingContextSchema,
+  editorContextSchema,
 } from "./assist-synthesis";
-export const ASSIST_PROMPT_VERSION = "human-assist-v2";
+export const ASSIST_PROMPT_VERSION = "human-assist-editor-v3";
 export const ASSIST_SCHEMA_VERSION = "assist-v2";
 export const ASSIST_COMPARISON_ENABLED = true;
 export const assistPurposeSchema = z.enum([
@@ -62,7 +63,7 @@ export const assistInputSchema = z.discriminatedUnion("purpose", [
     .object({
       purpose: z.literal("synthesis"),
       focus: synthesisFocusSchema,
-      sources: z.array(assistSourceSchema).min(2).max(MAX_ANALYSIS_NOTES),
+      sources: z.array(assistSourceSchema).min(1).max(MAX_ANALYSIS_NOTES),
       topics: z.array(synthesisTopicSchema).max(30),
       existingConnections: z
         .array(synthesisConnectionSchema)
@@ -70,6 +71,8 @@ export const assistInputSchema = z.discriminatedUnion("purpose", [
         .optional(),
       existingBundles: z.array(synthesisBundleSchema).max(40).optional(),
       writingContext: writingContextSchema.optional(),
+      editorContext: editorContextSchema.optional(),
+      recordsOnly: z.boolean().optional(),
     })
     .strict(),
   z

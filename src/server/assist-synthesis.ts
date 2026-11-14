@@ -12,6 +12,11 @@ export async function adoptSynthesis(
   const s = synthesisResultSchema.parse(request.result.output).suggestions[
     index
   ];
+  if (s?.kind === "editor_title")
+    throw new LibraryError(
+      400,
+      "제목 제안은 해당 편집 화면의 입력칸에 적용한 뒤 저장해 주세요.",
+    );
   if (!s) throw new LibraryError(400, "제안을 선택해 주세요.");
   const sources = s.sourceIndices.map((i) => request.task.payload.sources[i]);
   const ids = sources.map((v: any) => v.source.id);

@@ -36,9 +36,11 @@ export function whiteboardSaveData(
   input: Board,
   previous: Board | undefined,
   includeVisibility = false,
+  includeMemoGroups = false,
 ): Board {
   return {
     ...input,
+    memoGroups: includeMemoGroups ? input.memoGroups : previous?.memoGroups,
     hiddenNoteIds: includeVisibility
       ? (input.hiddenNoteIds ?? previous?.hiddenNoteIds ?? [])
       : (previous?.hiddenNoteIds ?? []),

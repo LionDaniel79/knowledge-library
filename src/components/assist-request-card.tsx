@@ -23,6 +23,7 @@ const kindNames = {
   topic_connection: "이전 형식 제안",
   new_topic: "이전 형식 제안",
   writing_idea: "글감 방향",
+  editor_title: "제목과 설명 추천",
   connection_title: "연결메모 제목 제안",
   thought_bundle: "생각묶음 제안",
   thought_bundle_title: "생각묶음 제목 제안",
@@ -49,12 +50,19 @@ export function AssistRequestCard({
   library,
   onOpen,
   onWritingSuggestion,
+  onEditorSuggestion,
+  allowedKinds,
 }: {
   request: any;
+  allowedKinds?: string[];
   busy: boolean;
   act: (action: string, payload: any) => Promise<any>;
   library: Library;
   onOpen?: (kind: string, id: string) => void;
+  onEditorSuggestion?: (
+    suggestion: SynthesisResult["suggestions"][number],
+    scope: any,
+  ) => void | Promise<void>;
   onWritingSuggestion?: (
     suggestion: SynthesisResult["suggestions"][number],
     scope: any,
@@ -184,79 +192,127 @@ export function AssistRequestCard({
           )}
           {r.status === "completed" && value.result?.valid && (
             <>
-              {suggestions.map((s, index) => (
-                <section className="assist-suggestion" key={index}>
-                  <small>{kindNames[s.kind]}</small>
-                  <h4>{s.title}</h4>
-                  <p>{s.reason}</p>
-                  {!!s.outline.length && (
-                    <ol>
-                      {s.outline.map((v, i) => (
-                        <li key={i}>{v}</li>
-                      ))}
-                    </ol>
-                  )}
-                  {!value.scope?.writingContext &&
-                  ["topic_connection", "new_topic", "writing_idea"].includes(
-                    s.kind,
-                  ) ? (
+              {suggestions.map((s, index) =>
+                allowedKinds && !allowedKinds.includes(s.kind) ? null : (
+                  <section className="assist-suggestion" key={index}>
                     <small>
-                      이전 분석에서 생성한 제안입니다. 현재 도움 방향으로 다시
-                      분석해 주세요.
+                      {s.kind === "editor_title"
+                        ? value.scope?.editorContext?.kind === "note"
+                          ? "메모 제목 추천"
+                          : value.scope?.editorContext?.kind === "connection"
+                            ? "연결 메모 제목 추천"
+                            : "생각 묶음 제목 추천"
+                        : kindNames[s.kind]}
                     </small>
-                  ) : onWritingSuggestion && value.scope?.writingContext ? (
-                    <button
-                      type="button"
-                      disabled={
-                        busy ||
-                        pending !== null ||
-                        appliedWriting.includes(index)
-                      }
-                      onClick={() => void applyWriting(index, s)}
-                    >
-                      {pending === index
-                        ? "적용 중…"
-                        : appliedWriting.includes(index)
-                          ? "적용함"
-                          : value.scope.writingContext.request === "materials"
-                            ? "추천 메모를 목차에 넣기"
-                            : value.scope.writingContext.request === "titles"
-                              ? "목차 제목으로 사용"
-                              : "목차로 추가"}
-                    </button>
-                  ) : value.scope?.writingContext ? (
-                    <small>해당 글감에서 제안을 적용할 수 있습니다.</small>
-                  ) : (
-                    <button
-                      disabled={busy || pending !== null || adopted(index)}
-                      onClick={() => void adopt(index)}
-                    >
-                      {pending === index
-                        ? "저장 중…"
-                        : adopted(index)
-                          ? "저장함"
-                          : adoptNames[s.kind]}
-                    </button>
-                  )}
-                  <details>
-                    <summary>근거 기록</summary>
-                    {s.evidence.map((e, i) => {
-                      const source = value.scope?.sources?.[e.sourceIndex];
-                      return (
-                        <div key={i}>
-                          <blockquote>{e.quote}</blockquote>
-                          {source && onOpen && (
-                            <button onClick={() => onOpen("note", source.id)}>
-                              {library.notes.find((n) => n.id === source.id)
-                                ?.title || `원문 기록 ${e.sourceIndex + 1}`}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </details>
-                </section>
-              ))}
+                    <h4>{s.title}</h4>
+                    <p>{s.reason}</p>
+                    {!!s.outline.length && (
+                      <ol>
+                        {s.outline.map((v, i) => (
+                          <li key={i}>{v}</li>
+                        ))}
+                      </ol>
+                    )}
+                    {s.kind === "editor_title" ? (
+                      <button
+                        type="button"
+                        disabled={
+                          busy ||
+                          pending !== null ||
+                          appliedWriting.includes(index) ||
+                          !onEditorSuggestion
+                        }
+                        onClick={async () => {
+                          if (applying.current || !onEditorSuggestion) return;
+                          applying.current = true;
+                          setPending(index);
+                          setError("");
+                          try {
+                            await onEditorSuggestion(s, value.scope);
+                            setAppliedWriting((old) => [...old, index]);
+                          } catch (e) {
+                            setError((e as Error).message);
+                          } finally {
+                            applying.current = false;
+                            setPending(null);
+                          }
+                        }}
+                      >
+                        {pending === index
+                          ? "적용 중…"
+                          : appliedWriting.includes(index)
+                            ? "입력칸에 반영함"
+                            : value.scope?.editorContext?.kind === "note"
+                              ? "메모 제목으로 사용"
+                              : value.scope?.editorContext?.kind ===
+                                  "connection"
+                                ? "제목과 연결 이유 채우기"
+                                : "제목과 내용 채우기"}
+                      </button>
+                    ) : !value.scope?.writingContext &&
+                      [
+                        "topic_connection",
+                        "new_topic",
+                        "writing_idea",
+                      ].includes(s.kind) ? (
+                      <small>
+                        이전 분석에서 생성한 제안입니다. 현재 도움 방향으로 다시
+                        분석해 주세요.
+                      </small>
+                    ) : onWritingSuggestion && value.scope?.writingContext ? (
+                      <button
+                        type="button"
+                        disabled={
+                          busy ||
+                          pending !== null ||
+                          appliedWriting.includes(index)
+                        }
+                        onClick={() => void applyWriting(index, s)}
+                      >
+                        {pending === index
+                          ? "적용 중…"
+                          : appliedWriting.includes(index)
+                            ? "적용함"
+                            : value.scope.writingContext.request === "materials"
+                              ? "추천 메모를 목차에 넣기"
+                              : value.scope.writingContext.request === "titles"
+                                ? "목차 제목으로 사용"
+                                : "목차로 추가"}
+                      </button>
+                    ) : value.scope?.writingContext ? (
+                      <small>해당 글감에서 제안을 적용할 수 있습니다.</small>
+                    ) : (
+                      <button
+                        disabled={busy || pending !== null || adopted(index)}
+                        onClick={() => void adopt(index)}
+                      >
+                        {pending === index
+                          ? "저장 중…"
+                          : adopted(index)
+                            ? "저장함"
+                            : adoptNames[s.kind]}
+                      </button>
+                    )}
+                    <details>
+                      <summary>근거 기록</summary>
+                      {s.evidence.map((e, i) => {
+                        const source = value.scope?.sources?.[e.sourceIndex];
+                        return (
+                          <div key={i}>
+                            <blockquote>{e.quote}</blockquote>
+                            {source && onOpen && (
+                              <button onClick={() => onOpen("note", source.id)}>
+                                {library.notes.find((n) => n.id === source.id)
+                                  ?.title || `원문 기록 ${e.sourceIndex + 1}`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </details>
+                  </section>
+                ),
+              )}
               {r.purpose === "synthesis" && !suggestions.length && detail && (
                 <p>확인할 만한 연결이나 새 글감을 찾지 못했습니다.</p>
               )}

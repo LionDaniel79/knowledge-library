@@ -78,6 +78,7 @@ const operations: Record<string, string> = {
   decideTopicLink: "주제 연결 검토",
   connect: "메모 연결",
   editConnection: "메모 연결 수정",
+  editMemoGroup: "연결된 메모 제목·이유 수정",
   connectWhiteboardNotes: "메모 연결",
   createResearch: "글감 묶음 만들기",
   updateResearch: "글감 묶음 수정",

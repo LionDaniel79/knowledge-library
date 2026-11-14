@@ -814,7 +814,28 @@ export function LibraryForm({
             kind="note"
             id={editor.note.id}
           />
-          <AssistLauncher library={library} noteId={editor.note.id} />
+          <AssistLauncher
+            key={editor.note.id}
+            library={library}
+            noteId={editor.note.id}
+            editorAnalysis={{
+              context: {
+                kind: "note",
+                id: editor.note.id,
+                noteIds: [editor.note.id],
+              },
+              notes: [editor.note],
+              onApply: (s) => {
+                const field = formRef.current?.elements.namedItem(
+                  "title",
+                ) as HTMLInputElement | null;
+                if (field) {
+                  field.value = s.title;
+                  field.focus();
+                }
+              },
+            }}
+          />
         </>
       )}
     </Modal>

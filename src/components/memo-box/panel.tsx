@@ -13,7 +13,7 @@ import {
   PageSizeSelect,
 } from "../list-pagination";
 import { ThoughtBoxes } from "./thought-boxes";
-import { MemoGroupDetail } from "./group-detail";
+import { MemoGroupEditor } from "./group-editor";
 import { ThoughtMapPanel } from "../thought-map/panel";
 export function MemoBox({
   library,
@@ -176,22 +176,23 @@ export function MemoBox({
             </div>
             <div className="panel memo-box-detail">
               {active ? (
-                <MemoGroupDetail
+                <MemoGroupEditor
+                  key={active.id}
                   group={active}
-                  onOpen={onOpen}
-                  onNewNote={onNewNote}
-                  topicIdsForNote={(id) => model.noteTopics.get(id)}
+                  library={library}
+                  boardVersion={resource.data?.board?.version ?? 0}
                   busy={command.busy}
-                  onSave={(p) => command.send("editConnection", p)}
-                  onRemove={(c) =>
-                    void command.send("editConnection", {
-                      id: c.id,
-                      expectedVersion: c.version,
-                      relation: c.relation,
-                      reason: c.reason,
-                      status: "rejected",
-                    })
-                  }
+                  onUpdated={resource.reload}
+                  onCommit={async (payload) => {
+                    const result = await command.send("editMemoGroup", payload);
+                    if (result)
+                      setSelected(
+                        (payload as { split: boolean }).split
+                          ? ""
+                          : active.connections.map((c) => c.id).sort()[0],
+                      );
+                    return result;
+                  }}
                 />
               ) : (
                 <p>메모를 선택하면 연결과 내용을 볼 수 있습니다.</p>
@@ -201,6 +202,7 @@ export function MemoBox({
         </>
       ) : null}
       <ThoughtBoxes
+        library={library}
         enabled={tab === "bundles"}
         revision={refresh}
         onOpen={onOpen}

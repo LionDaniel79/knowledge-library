@@ -42,12 +42,21 @@ export const writingContextSchema = z
   })
   .strict();
 export type WritingContext = z.infer<typeof writingContextSchema>;
+export const editorContextSchema = z
+  .object({
+    kind: z.enum(["note", "connection", "bundle"]),
+    id: z.string().min(1).max(20000),
+    noteIds: z.array(z.string().uuid()).min(1).max(MAX_ANALYSIS_NOTES),
+  })
+  .strict();
+export type EditorContext = z.infer<typeof editorContextSchema>;
 export const synthesisFocusSchema = z.enum([
   "all",
   "note_connection",
   "topic_connection",
   "new_topic",
   "writing_idea",
+  "editor_title",
   "connection_title",
   "thought_bundle",
   "thought_bundle_title",
@@ -112,6 +121,7 @@ export const synthesisResultSchema = z
         z
           .object({
             kind: z.enum([
+              "editor_title",
               "note_connection",
               "topic_connection",
               "new_topic",
@@ -149,6 +159,8 @@ export function validSynthesis(
     sources: { source: { kind: string; id: string }; text: string }[];
     topics: SynthesisTopic[];
     focus: string;
+    editorContext?: EditorContext;
+    recordsOnly?: boolean;
     existingConnections?: z.infer<typeof synthesisConnectionSchema>[];
     existingBundles?: z.infer<typeof synthesisBundleSchema>[];
   },
@@ -167,6 +179,7 @@ export function validSynthesis(
       payload.existingConnections &&
       ![
         "note_connection",
+        "editor_title",
         "connection_title",
         "thought_bundle",
         "thought_bundle_title",
@@ -189,6 +202,29 @@ export function validSynthesis(
       evidenceSources.add(e.sourceIndex);
     }
     if (s.sourceIndices.some((i) => !evidenceSources.has(i))) return false;
+    if (s.kind === "editor_title")
+      return (
+        !!payload.editorContext &&
+        !s.topicIds.length &&
+        !s.bundleId &&
+        !s.outline.length &&
+        s.sourceIndices.length === payload.editorContext.noteIds.length &&
+        s.sourceIndices.every((i) =>
+          payload.editorContext!.noteIds.includes(payload.sources[i].source.id),
+        )
+      );
+    if (payload.editorContext && s.kind === "note_connection") {
+      const members = s.sourceIndices.filter((i) =>
+        payload.editorContext!.noteIds.includes(payload.sources[i].source.id),
+      );
+      if (members.length !== 1) return false;
+    }
+    if (
+      payload.recordsOnly &&
+      payload.focus === "all" &&
+      s.kind !== "note_connection"
+    )
+      return false;
     if (s.kind === "note_connection")
       return (
         s.sourceIndices.length === 2 &&

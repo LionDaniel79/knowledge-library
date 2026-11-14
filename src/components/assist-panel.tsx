@@ -8,6 +8,7 @@ import {
 } from "react";
 import { libraryRequest } from "@/client/replica/request";
 import { rememberConfirmedRelationship } from "@/lib/assist-adoption-overlay";
+import type { TopicMaterial } from "@/lib/topic-materials";
 import type { Library, Note } from "@/lib/domain";
 import {
   assistModels,
@@ -15,6 +16,7 @@ import {
   type AssistModel,
   type WritingContext,
   type SynthesisResult,
+  type EditorContext,
 } from "@/lib/assist-synthesis";
 import {
   analysisExcerpt,
@@ -27,6 +29,11 @@ import { AssistRequestCard } from "./assist-request-card";
 export type AssistProps = {
   library: Library;
   noteId?: string;
+  editorAnalysis?: {
+    context: EditorContext;
+    notes: Note[];
+    onApply: (suggestion: SynthesisResult["suggestions"][number]) => void;
+  };
   onAdopt?: (result: any) => void;
   onOpen?: (kind: string, id: string) => void;
   scope?: Record<string, string | number>;
@@ -41,6 +48,7 @@ export type AssistProps = {
 export const focusNames = {
   all: "종합검토",
   note_connection: "메모 연결 제안",
+  editor_title: "제목 추천",
   connection_title: "연결메모 제목 제안",
   thought_bundle: "생각묶음 제안",
   thought_bundle_title: "생각묶음 제목 제안",
@@ -86,6 +94,7 @@ export function AssistPanel({
   analysis,
   onWritingSuggestion,
   analysisControls,
+  editorAnalysis,
 }: AssistProps) {
   const replica = useReplicaOptional(),
     key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
@@ -94,7 +103,9 @@ export function AssistPanel({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [model, setModel] = useState<AssistModel>("gpt-6-luna"),
-    [focus, setFocus] = useState<keyof typeof focusNames>("all"),
+    [focus, setFocus] = useState<keyof typeof focusNames>(
+      editorAnalysis ? "editor_title" : "all",
+    ),
     [maximum, setMaximum] = useState(24),
     [preview, setPreview] = useState<any>(null),
     [requestsOpen, setRequestsOpen] = useState(false);
@@ -133,6 +144,7 @@ export function AssistPanel({
       maximum,
       noteId,
       analysis?.context,
+      editorAnalysis?.context,
       analysis?.notes.map((n) => [n.id, n.version]),
     ]),
     contextRef = useRef(context);
@@ -269,10 +281,12 @@ export function AssistPanel({
     try {
       if (typeof navigator !== "undefined" && !navigator.onLine)
         throw Error("AI 분석에는 인터넷 연결이 필요합니다.");
-      const { candidates, total } = analysis
+      const fixed = editorAnalysis && focus === "editor_title";
+      const selectedNotes = fixed ? editorAnalysis.notes : analysis?.notes;
+      const { candidates, total } = selectedNotes
         ? {
-            total: analysis.notes.length,
-            candidates: analysis.notes.map((n) => ({
+            total: selectedNotes.length,
+            candidates: selectedNotes.map((n) => ({
               id: n.id,
               kind: "note" as const,
               title: n.title,
@@ -321,11 +335,35 @@ export function AssistPanel({
           updatedAt: n.updatedAt,
         });
       }
-      const chosen =
-        maximum === 0
+      if (editorAnalysis && !fixed)
+        for (const n of editorAnalysis.notes) {
+          if (!candidates.some((c) => c.id === n.id))
+            candidates.unshift({
+              id: n.id,
+              kind: "note",
+              title: n.title,
+              text: n.content,
+              category: "",
+              version: n.version,
+              bookId: n.bookId,
+              bookTitle: "",
+              topicIds: [],
+              topicNames: [],
+              createdAt: n.createdAt,
+              updatedAt: n.updatedAt,
+            });
+        }
+      const chosen: TopicMaterial[] = fixed
+        ? candidates
+        : maximum === 0
           ? candidates
           : representativeNotes(candidates, maximum, noteId);
-      if (chosen.length < 2)
+      if (editorAnalysis && !fixed)
+        for (const id of editorAnalysis.context.noteIds) {
+          const member = candidates.find((c) => c.id === id);
+          if (member && !chosen.some((c) => c.id === id)) chosen.push(member);
+        }
+      if (chosen.length < (fixed ? 1 : 2))
         throw Error(
           "함께 검토할 기록이 두 개 이상 필요합니다. 필터를 넓혀 주세요.",
         );
@@ -334,7 +372,11 @@ export function AssistPanel({
         full.push(
           ...(await Promise.all(
             chosen.slice(i, i + 4).map(async (c) => {
-              const local = [...(analysis?.notes ?? []), ...library.notes].find(
+              const local = [
+                ...(editorAnalysis?.notes ?? []),
+                ...(analysis?.notes ?? []),
+                ...library.notes,
+              ].find(
                 (n) => n.id === c.id && !n.summary && n.version === c.version,
               );
               if (local) return local;
@@ -362,9 +404,14 @@ export function AssistPanel({
         });
       const selection = {
           purpose: "synthesis",
+          ...(!analysis &&
+          (!editorAnalysis || editorAnalysis.context.kind === "note")
+            ? { recordsOnly: true }
+            : {}),
           model,
           focus: analysis ? "writing_idea" : focus,
           sources,
+          ...(editorAnalysis ? { editorContext: editorAnalysis.context } : {}),
           ...(!analysis ? { useCurrentRelations: true } : {}),
           ...(analysis ? { writingContext: analysis.context } : {}),
         },
@@ -441,11 +488,29 @@ export function AssistPanel({
                   setFocus(e.target.value as keyof typeof focusNames)
                 }
               >
-                {Object.entries(focusNames).map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
+                {Object.entries(focusNames)
+                  .filter(([id]) =>
+                    editorAnalysis
+                      ? (id === "all" &&
+                          editorAnalysis.context.kind === "note") ||
+                        id === "editor_title" ||
+                        (id === "note_connection" &&
+                          editorAnalysis.context.kind !== "bundle")
+                      : ["all", "note_connection"].includes(id),
+                  )
+                  .map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {id === "editor_title"
+                        ? editorAnalysis?.context.kind === "note"
+                          ? "메모 제목 추천"
+                          : editorAnalysis?.context.kind === "bundle"
+                            ? "생각 묶음 제목 추천"
+                            : "연결 메모 제목 추천"
+                        : editorAnalysis && id === "note_connection"
+                          ? "연결 메모 추천"
+                          : name}
+                    </option>
+                  ))}
               </select>
             </label>
             <button
@@ -625,7 +690,12 @@ export function AssistPanel({
                 analysis
                   ? r.scope?.writingContext?.boardId ===
                     analysis.context.boardId
-                  : !r.scope?.writingContext,
+                  : editorAnalysis
+                    ? r.scope?.editorContext?.id ===
+                        editorAnalysis.context.id &&
+                      r.scope?.editorContext?.kind ===
+                        editorAnalysis.context.kind
+                    : !r.scope?.writingContext && !r.scope?.editorContext,
               )
               .map((r: any) => (
                 <AssistRequestCard
@@ -635,6 +705,39 @@ export function AssistPanel({
                   act={act}
                   library={library}
                   onOpen={onOpen}
+                  allowedKinds={
+                    !analysis
+                      ? editorAnalysis?.context.kind === "bundle"
+                        ? ["editor_title"]
+                        : editorAnalysis
+                          ? ["editor_title", "note_connection"]
+                          : ["note_connection"]
+                      : undefined
+                  }
+                  onEditorSuggestion={
+                    editorAnalysis
+                      ? (suggestion, savedScope) => {
+                          if (
+                            savedScope.editorContext?.id !==
+                              editorAnalysis.context.id ||
+                            savedScope.editorContext?.kind !==
+                              editorAnalysis.context.kind ||
+                            editorAnalysis.notes.some(
+                              (n) =>
+                                !savedScope.sources?.some(
+                                  (v: any) =>
+                                    v.id === n.id &&
+                                    String(v.version) === String(n.version),
+                                ),
+                            )
+                          )
+                            throw Error(
+                              "대상 메모가 변경되었습니다. 다시 분석해 주세요.",
+                            );
+                          editorAnalysis.onApply(suggestion);
+                        }
+                      : undefined
+                  }
                   onWritingSuggestion={
                     analysis ? onWritingSuggestion : undefined
                   }

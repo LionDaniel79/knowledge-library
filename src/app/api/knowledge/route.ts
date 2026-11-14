@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     }
     if (
       (value as { type?: string })?.type !== "saveWhiteboard" &&
+      (value as { type?: string })?.type !== "editMemoGroup" &&
       body.length > 20000
     )
       throw new LibraryError(413, "요청이 너무 큽니다.");

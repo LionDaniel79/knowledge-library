@@ -66,6 +66,22 @@ export const writingChapterSchema = z
 export const boardSchema = z
   .object({
     schema: z.literal(1),
+    memoGroups: z
+      .array(
+        z
+          .object({
+            connectionIds: z.array(z.string().uuid()).min(1).max(500),
+            children: z
+              .array(z.array(z.string().uuid()).min(1).max(500))
+              .max(500)
+              .optional(),
+            title: z.string().max(300),
+            reason: z.string().max(2000),
+          })
+          .strict(),
+      )
+      .max(1000)
+      .optional(),
     filter: boardFilterSchema,
     // Explicit search results accumulate until the user clears the board.
     // undefined retains legacy filter-based rendering for saved boards.
@@ -652,6 +668,7 @@ export const boardSaveSchema = z
     expectedVersion: z.number().int().nonnegative(),
     data: boardSchema,
     includeVisibility: z.boolean().optional(),
+    includeMemoGroups: z.boolean().optional(),
   })
   .strict();
 export const boardNoteLinkSchema = z

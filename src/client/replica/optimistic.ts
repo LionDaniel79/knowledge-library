@@ -1,3 +1,7 @@
+import {
+  memoGroupEditSchema,
+  planMemoGroupEdit,
+} from "../../lib/memo-group-edit";
 import { z } from "zod";
 import { defaultShelves } from "../../lib/catalog";
 import { noteContextId } from "../../lib/note-context";
@@ -730,6 +734,38 @@ export async function prepareOptimistic(
       };
       put("library_bundle_links", after);
       result = { id: entityId, version: after.version };
+    } else if (body.type === "editMemoGroup") {
+      const v = memoGroupEditSchema.parse(p),
+        old = await repository.raw("library_whiteboards", WHITEBOARD_ID);
+      check(old, v.expectedBoardVersion);
+      const rows = await Promise.all(
+        v.connections.map((c) => own("library_connections", c.id)),
+      );
+      for (const row of rows) {
+        await note(row.source_id);
+        await note(row.target_id);
+      }
+      let plan;
+      try {
+        plan = planMemoGroupEdit(old?.data ?? emptyBoard(), rows as any, v);
+      } catch (e) {
+        throw new ReplicaQueryError(409, (e as Error).message);
+      }
+      for (const c of plan.changes) put("library_connections", c.after);
+      base = old;
+      entityId = WHITEBOARD_ID;
+      body.entityId = WHITEBOARD_ID;
+      put("library_whiteboards", {
+        id: WHITEBOARD_ID,
+        data: plan.data,
+        version: (old?.version ?? 0) + 1,
+        updated_at: at,
+      });
+      result = {
+        id: WHITEBOARD_ID,
+        version: (old?.version ?? 0) + 1,
+        split: v.split,
+      };
     } else if (body.type === "saveWhiteboard") {
       const v = boardSaveSchema.parse(p),
         boardId = v.boardId ?? WHITEBOARD_ID;
@@ -741,7 +777,12 @@ export async function prepareOptimistic(
       body.entityId = boardId;
       put("library_whiteboards", {
         id: boardId,
-        data: whiteboardSaveData(v.data, old?.data, v.includeVisibility),
+        data: whiteboardSaveData(
+          v.data,
+          old?.data,
+          v.includeVisibility,
+          v.includeMemoGroups,
+        ),
         version: (old?.version ?? 0) + 1,
         updated_at: at,
       });

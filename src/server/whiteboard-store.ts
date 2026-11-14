@@ -66,7 +66,12 @@ export async function saveWhiteboard(
     );
   // Ordinary layout saves and undo cannot change note visibility. Only its
   // dedicated command or a reviewed conflict replacement includes that setting.
-  const data = whiteboardSaveData(p.data, before?.data, p.includeVisibility);
+  const data = whiteboardSaveData(
+    p.data,
+    before?.data,
+    p.includeVisibility,
+    p.includeMemoGroups,
+  );
   const after = before
     ? (
         await tx.query(

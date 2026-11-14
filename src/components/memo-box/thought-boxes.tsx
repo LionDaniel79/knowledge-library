@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AssistLauncher } from "../assist-panel";
+import type { Library, Note } from "@/lib/domain";
 import type { WhiteboardSnapshot } from "@/lib/whiteboard";
 import { usePagedResource } from "../use-paged-resource";
 import { useLibraryCommand } from "../use-library-command";
@@ -9,10 +11,12 @@ import {
 } from "../whiteboard/legacy-thought-review";
 export function ThoughtBoxes({
   revision,
+  library,
   onOpen,
   enabled = true,
 }: {
   revision?: unknown;
+  library: Library;
   onOpen: (kind: string, id: string) => void;
   enabled?: boolean;
 }) {
@@ -142,150 +146,174 @@ export function ThoughtBoxes({
           {!selected ? (
             <p>생각묶음을 선택하면 원문과 정리를 볼 수 있습니다.</p>
           ) : draft && bundle ? (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const result = await command.send("saveMemoBundle", {
-                  id: bundle.id,
-                  expectedVersion: draft.version,
-                  title: draft.title,
-                  description: draft.description,
-                  noteIds: bundle.note_ids,
-                });
-                if (result) {
-                  setDrafts((old) => ({
-                    ...old,
-                    [bundle.id]: {
-                      ...draft,
-                      version: result.version,
-                      dirty: false,
-                    },
-                  }));
-                  setMessage("원본을 저장했습니다.");
-                }
-              }}
-            >
-              <fieldset
-                disabled={command.busy || inventory.data?.pendingLegacy}
+            <>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const result = await command.send("saveMemoBundle", {
+                    id: bundle.id,
+                    expectedVersion: draft.version,
+                    title: draft.title,
+                    description: draft.description,
+                    noteIds: bundle.note_ids,
+                  });
+                  if (result) {
+                    setDrafts((old) => ({
+                      ...old,
+                      [bundle.id]: {
+                        ...draft,
+                        version: result.version,
+                        dirty: false,
+                      },
+                    }));
+                    setMessage("원본을 저장했습니다.");
+                  }
+                }}
               >
-                <label>
-                  제목
-                  <input
-                    aria-label="생각묶음 제목"
-                    maxLength={300}
-                    value={draft.title}
-                    onChange={(e) =>
-                      setDrafts((old) => ({
-                        ...old,
-                        [selected]: {
-                          ...draft,
-                          title: e.target.value,
-                          dirty: true,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  내용
-                  <textarea
-                    rows={5}
-                    maxLength={20000}
-                    value={draft.description}
-                    onChange={(e) =>
-                      setDrafts((old) => ({
-                        ...old,
-                        [selected]: {
-                          ...draft,
-                          description: e.target.value,
-                          dirty: true,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-                {draft.dirty && draft.version !== bundle.version && (
-                  <div className="notice">
-                    <p>
-                      다른 곳에서 원본이 변경되었습니다. 입력한 내용은
-                      유지됩니다.
-                    </p>
-                    <details>
-                      <summary>최신 원본 확인</summary>
-                      <p>{bundle.title}</p>
-                      <p className="preserve-text">{bundle.description}</p>
-                    </details>
-                    <button
-                      type="button"
-                      onClick={() =>
+                <fieldset
+                  disabled={command.busy || inventory.data?.pendingLegacy}
+                >
+                  <label>
+                    제목
+                    <input
+                      aria-label="생각묶음 제목"
+                      maxLength={300}
+                      value={draft.title}
+                      onChange={(e) =>
                         setDrafts((old) => ({
                           ...old,
-                          [selected]: { ...draft, version: bundle.version },
+                          [selected]: {
+                            ...draft,
+                            title: e.target.value,
+                            dirty: true,
+                          },
                         }))
                       }
+                    />
+                  </label>
+                  <label>
+                    내용
+                    <textarea
+                      rows={5}
+                      maxLength={20000}
+                      value={draft.description}
+                      onChange={(e) =>
+                        setDrafts((old) => ({
+                          ...old,
+                          [selected]: {
+                            ...draft,
+                            description: e.target.value,
+                            dirty: true,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  {draft.dirty && draft.version !== bundle.version && (
+                    <div className="notice">
+                      <p>
+                        다른 곳에서 원본이 변경되었습니다. 입력한 내용은
+                        유지됩니다.
+                      </p>
+                      <details>
+                        <summary>최신 원본 확인</summary>
+                        <p>{bundle.title}</p>
+                        <p className="preserve-text">{bundle.description}</p>
+                      </details>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDrafts((old) => ({
+                            ...old,
+                            [selected]: { ...draft, version: bundle.version },
+                          }))
+                        }
+                      >
+                        최신 원본을 확인하고 내 입력 유지
+                      </button>
+                    </div>
+                  )}
+                  {(notes ?? []).map((note, index) => (
+                    <article
+                      className="thought-box-note"
+                      key={bundle.note_ids[index]}
                     >
-                      최신 원본을 확인하고 내 입력 유지
-                    </button>
-                  </div>
-                )}
-                {(notes ?? []).map((note, index) => (
-                  <article
-                    className="thought-box-note"
-                    key={bundle.note_ids[index]}
-                  >
+                      <button
+                        type="button"
+                        disabled={!note}
+                        onClick={() => onOpen("note", bundle.note_ids[index])}
+                      >
+                        {note?.title || "메모"}
+                      </button>
+                      <p className="preserve-text">
+                        {note?.content || "원본 메모를 확인할 수 없습니다."}
+                      </p>
+                    </article>
+                  ))}
+                  <div className="form-footer">
                     <button
                       type="button"
-                      disabled={!note}
-                      onClick={() => onOpen("note", bundle.note_ids[index])}
-                    >
-                      {note?.title || "메모"}
-                    </button>
-                    <p className="preserve-text">
-                      {note?.content || "원본 메모를 확인할 수 없습니다."}
-                    </p>
-                  </article>
-                ))}
-                <div className="form-footer">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (
-                        !window.confirm(
-                          `‘${bundle.title}’ 생각묶음을 삭제할까요? 메모 원문은 유지됩니다.`,
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            `‘${bundle.title}’ 생각묶음을 삭제할까요? 메모 원문은 유지됩니다.`,
+                          )
                         )
-                      )
-                        return;
-                      const result = await command.send("archiveMemoBundle", {
-                        id: bundle.id,
-                        expectedVersion: bundle.version,
-                      });
-                      if (!result) return;
-                      setSelected("");
-                      setDrafts((old) => {
-                        const next = { ...old };
-                        delete next[bundle.id];
-                        return next;
-                      });
-                      setMessage(
-                        "생각묶음을 삭제했습니다. 원문 메모는 유지됩니다.",
-                      );
-                    }}
-                  >
-                    삭제
-                  </button>
-                  <button
-                    className="primary"
-                    disabled={
-                      !draft.dirty ||
-                      !draft.title.trim() ||
-                      draft.version !== bundle.version
-                    }
-                  >
-                    원본 저장
-                  </button>
-                </div>
-              </fieldset>
-            </form>
+                          return;
+                        const result = await command.send("archiveMemoBundle", {
+                          id: bundle.id,
+                          expectedVersion: bundle.version,
+                        });
+                        if (!result) return;
+                        setSelected("");
+                        setDrafts((old) => {
+                          const next = { ...old };
+                          delete next[bundle.id];
+                          return next;
+                        });
+                        setMessage(
+                          "생각묶음을 삭제했습니다. 원문 메모는 유지됩니다.",
+                        );
+                      }}
+                    >
+                      삭제
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={
+                        !draft.dirty ||
+                        !draft.title.trim() ||
+                        draft.version !== bundle.version
+                      }
+                    >
+                      원본 저장
+                    </button>
+                  </div>
+                </fieldset>
+              </form>
+              <AssistLauncher
+                key={bundle.id}
+                library={library}
+                editorAnalysis={{
+                  context: {
+                    kind: "bundle",
+                    id: bundle.id,
+                    noteIds: bundle.note_ids,
+                  },
+                  notes: (notes ?? []).filter((n): n is Note => !!n),
+                  onApply: (s) =>
+                    setDrafts((old) => ({
+                      ...old,
+                      [selected]: {
+                        ...draft,
+                        title: s.title,
+                        description: s.reason,
+                        dirty: true,
+                      },
+                    })),
+                }}
+              />
+            </>
           ) : (
             <p role="status">원본을 여는 중…</p>
           )}

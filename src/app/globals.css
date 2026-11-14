@@ -881,6 +881,44 @@ progress::-moz-progress-bar {
   grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
   gap: 24px;
 }
+.memo-group-editor {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.memo-group-editor fieldset {
+  min-width: 0;
+}
+.memo-group-editor label {
+  display: grid;
+  gap: 7px;
+}
+.memo-group-editor input,
+.memo-group-editor textarea {
+  width: 100%;
+  min-width: 0;
+}
+.memo-aggregate-fields {
+  border: 2px solid #82957b;
+  border-radius: 10px;
+  background: #eef3eb;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.memo-connection-fields {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.memo-connection-members {
+  display: block;
+  overflow-wrap: anywhere;
+}
 .my-bookshelves {
   display: grid;
   gap: 26px;
