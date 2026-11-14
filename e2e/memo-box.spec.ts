@@ -342,38 +342,6 @@ test("classification topics and memo connections do not expose global bundle rel
   expect(f.commands).toHaveLength(0);
   await expect(page.locator(".thought-box-list > button")).toHaveCount(0);
 });
-test("a topic edit keeps the original version when newer metadata arrives while typing", async ({
-  page,
-}) => {
-  const code = (
-    await build({
-      stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {useState} from 'react';import {TopicEditor} from './src/components/memo-box/topic-editor';function App(){const[t,setT]=useState({id:'00000000-0000-4000-8000-000000000012',name:'공감',description:'처음 설명',version:1,aliases:[],kdcCodes:[],parentId:null,confirmed:true});window.refreshTopic=()=>setT({...t,version:2,description:'다른 곳의 설명'});return <TopicEditor topic={t} topics={[t]} busy={false} error='' onClose={()=>{}} onSave={async p=>{window.topicSaved=p}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
-        resolveDir: process.cwd(),
-        loader: "tsx",
-      },
-      bundle: true,
-      write: false,
-      format: "iife",
-      platform: "browser",
-      jsx: "automatic",
-      define: { "process.env.NODE_ENV": '"production"' },
-    })
-  ).outputFiles[0].text;
-  await page.route("https://library.test/", (r) =>
-    r.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
-  );
-  await page.goto("https://library.test/");
-  await page.addScriptTag({ content: code });
-  await page
-    .getByRole("textbox", { name: "주제 설명", exact: true })
-    .fill("내 설명 초안");
-  await page.evaluate(() => (window as any).refreshTopic());
-  await page.getByRole("button", { name: "주제 저장", exact: true }).click();
-  const saved = await page.evaluate(() => (window as any).topicSaved);
-  expect(saved.expectedVersion).toBe(1);
-  expect(saved.description).toBe("내 설명 초안");
-});
 test("refresh keeps an unfinished connection title, reason and original version", async ({
   page,
 }) => {

@@ -2478,11 +2478,6 @@ textarea {
   margin: 15px 0;
   min-width: 0;
 }
-.shelf-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 20px;
-}
 .shelf-picker .check-label {
   display: flex;
   align-items: center;
@@ -2491,22 +2486,6 @@ textarea {
 .shelf-picker input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  flex-shrink: 0;
-}
-.new-shelf {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
-.new-shelf input {
-  min-width: 0;
-  flex: 1;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  font: inherit;
-}
-.new-shelf button {
   flex-shrink: 0;
 }
 .detail-shelves {
@@ -2595,9 +2574,6 @@ textarea {
   }
   .search-field {
     min-width: 0;
-  }
-  .new-shelf {
-    flex-wrap: wrap;
   }
   .detail-actions {
     flex-wrap: wrap;

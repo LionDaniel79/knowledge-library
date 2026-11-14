@@ -4,6 +4,20 @@ export function connectedMemoGroups(
     Partial<Pick<WhiteboardSnapshot, "board">>,
 ) {
   const notes = new Map(source.notes.map((n) => [n.id, n]));
+  const noteRows = new Map<
+    string,
+    { note: WhiteboardSnapshot["notes"][number]; index: number }[]
+  >();
+  source.notes.forEach((note, index) => {
+    const rows = noteRows.get(note.id);
+    if (rows) rows.push({ note, index });
+    else noteRows.set(note.id, [{ note, index }]);
+  });
+  const orderedNotes = (ids: Set<string>) =>
+    [...ids]
+      .flatMap((id) => noteRows.get(id) ?? [])
+      .sort((a, b) => a.index - b.index)
+      .map((row) => row.note);
   const edges = source.connections.filter(
     (c) =>
       c.status === "accepted" &&
@@ -13,6 +27,12 @@ export function connectedMemoGroups(
       notes.has(c.source_id) &&
       notes.has(c.target_id),
   );
+  const edgeIndexesById = new Map<string, number[]>();
+  edges.forEach((edge, index) => {
+    const indexes = edgeIndexesById.get(edge.id);
+    if (indexes) indexes.push(index);
+    else edgeIndexesById.set(edge.id, [index]);
+  });
   const adjacent = new Map<string, Set<string>>();
   const visited = new Set<string>(),
     groups: {
@@ -29,7 +49,10 @@ export function connectedMemoGroups(
     (a, b) => b.connectionIds.length - a.connectionIds.length,
   )) {
     if (saved.connectionIds.some((id) => reserved.has(id))) continue;
-    const connections = edges.filter((e) => saved.connectionIds.includes(e.id));
+    const connections = [...new Set(saved.connectionIds)]
+      .flatMap((id) => edgeIndexesById.get(id) ?? [])
+      .sort((a, b) => a - b)
+      .map((index) => edges[index]);
     if (connections.length !== saved.connectionIds.length) continue;
     const ids = new Set(connections.flatMap((e) => [e.source_id, e.target_id]));
     connections.forEach((e) => reserved.add(e.id));
@@ -44,11 +67,10 @@ export function connectedMemoGroups(
           .join(" · "),
       reason: connections.length === 1 ? connections[0].reason : saved.reason,
       children: saved.children ?? connections.map((c) => [c.id]),
-      notes: source.notes.filter((n) => ids.has(n.id)),
+      notes: orderedNotes(ids),
       connections,
     });
   }
-  adjacent.clear();
   for (const e of edges.filter((e) => !reserved.has(e.id)))
     for (const [a, b] of [
       [e.source_id, e.target_id],
@@ -57,6 +79,8 @@ export function connectedMemoGroups(
       if (!adjacent.has(a)) adjacent.set(a, new Set());
       adjacent.get(a)!.add(b);
     }
+  const components: Set<string>[] = [];
+  const componentByNote = new Map<string, Set<string>>();
   for (const n of source.notes) {
     if (visited.has(n.id) || !adjacent.has(n.id)) continue;
     const ids = new Set([n.id]),
@@ -69,17 +93,26 @@ export function connectedMemoGroups(
           ids.add(next);
           queue.push(next);
         }
-    const connections = edges.filter(
-        (e) =>
-          !reserved.has(e.id) && ids.has(e.source_id) && ids.has(e.target_id),
-      ),
+    components.push(ids);
+    for (const id of ids) componentByNote.set(id, ids);
+  }
+  const componentEdges = new Map<Set<string>, typeof edges>();
+  for (const edge of edges) {
+    if (reserved.has(edge.id)) continue;
+    const component = componentByNote.get(edge.source_id)!;
+    const list = componentEdges.get(component);
+    if (list) list.push(edge);
+    else componentEdges.set(component, [edge]);
+  }
+  for (const ids of components) {
+    const connections = componentEdges.get(ids)!,
       titles = [
         ...new Set(connections.map((c) => c.title?.trim()).filter(Boolean)),
       ];
     const children = connections.map((c) => [c.id]);
-    const attached = groups.filter((g) =>
-      g.notes.some((note) => ids.has(note.id)),
-    );
+    const attached = reserved.size
+      ? groups.filter((g) => g.notes.some((note) => ids.has(note.id)))
+      : [];
     for (const old of attached) {
       children.push(old.connections.map((c) => c.id));
       old.notes.forEach((note) => ids.add(note.id));
@@ -88,13 +121,11 @@ export function connectedMemoGroups(
     }
     groups.push({
       children,
-      id: attached.length
-        ? connections.map((c) => c.id).sort()[0]
-        : connections.map((c) => c.id).sort()[0],
+      id: connections.map((c) => c.id).sort()[0],
       title:
         titles.slice(0, 2).join(" · ") +
         (titles.length > 2 ? ` 외 ${titles.length - 2}개` : ""),
-      notes: source.notes.filter((note) => ids.has(note.id)),
+      notes: orderedNotes(ids),
       connections,
     });
   }
@@ -106,7 +137,9 @@ export function buildMemoBox(source: WhiteboardSnapshot) {
   const memberships = new Map<string, typeof source.memberships>();
   for (const m of source.memberships) {
     const key = m.sourceKind + ":" + m.sourceId;
-    memberships.set(key, [...(memberships.get(key) ?? []), m]);
+    const list = memberships.get(key);
+    if (list) list.push(m);
+    else memberships.set(key, [m]);
   }
   const noteTopics = new Map<string, string[]>();
   for (const n of source.notes) {
@@ -136,8 +169,11 @@ export function buildMemoBox(source: WhiteboardSnapshot) {
   );
   const connections = new Map<string, typeof edges>();
   for (const c of edges)
-    for (const id of [c.source_id, c.target_id])
-      connections.set(id, [...(connections.get(id) ?? []), c]);
+    for (const id of [c.source_id, c.target_id]) {
+      const list = connections.get(id);
+      if (list) list.push(c);
+      else connections.set(id, [c]);
+    }
   return {
     notes,
     topics,

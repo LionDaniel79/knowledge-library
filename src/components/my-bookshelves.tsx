@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import type { Book, Library } from "@/lib/domain";
 import { defaultShelves } from "@/lib/catalog";
@@ -19,11 +19,21 @@ export function MyBookshelves({
   renderBook: (book: Book) => ReactNode;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const booksByShelf = useMemo(() => {
+    const index = new Map<string, Book[]>();
+    for (const book of library.books)
+      for (const name of new Set(book.bookshelves ?? [])) {
+        const books = index.get(name);
+        if (books) books.push(book);
+        else index.set(name, [book]);
+      }
+    return index;
+  }, [library.books]);
   const shelves = [
     ...new Set([
       ...defaultShelves,
       ...(library.shelves ?? []),
-      ...library.books.flatMap((book) => book.bookshelves ?? []),
+      ...booksByShelf.keys(),
     ]),
   ];
   return selected ? (
@@ -38,6 +48,7 @@ export function MyBookshelves({
       <ShelfBooks
         key={selected}
         name={selected}
+        localBooks={booksByShelf.get(selected) ?? []}
         library={library}
         renderBook={renderBook}
       />
@@ -48,6 +59,7 @@ export function MyBookshelves({
         <ShelfPreview
           key={name}
           name={name}
+          localBooks={booksByShelf.get(name) ?? []}
           library={library}
           onSelect={() => setSelected(name)}
         />
@@ -60,10 +72,12 @@ function ShelfPreview({
   name,
   library,
   onSelect,
+  localBooks,
 }: {
   name: string;
   library: Library;
   onSelect: () => void;
+  localBooks: Book[];
 }) {
   const remote = !!library.catalog;
   const catalog = useBookCatalog({
@@ -71,9 +85,7 @@ function ShelfPreview({
     query: { shelf: name, sort: "newest", limit: 5, offset: 0 },
     revision: library,
   });
-  const local = library.books.filter((book) =>
-    book.bookshelves?.includes(name),
-  );
+  const local = localBooks;
   const items = remote ? catalog.items : local.slice(0, 5);
   const total = remote ? catalog.total : local.length;
   return (
@@ -118,9 +130,11 @@ function ShelfBooks({
   name,
   library,
   renderBook,
+  localBooks,
 }: {
   name: string;
   library: Library;
+  localBooks: Book[];
   renderBook: (book: Book) => ReactNode;
 }) {
   const paging = useListPagination("my-bookshelves", name);
@@ -135,12 +149,16 @@ function ShelfBooks({
     },
     revision: library,
   });
-  const local = library.books
-    .filter((book) => book.bookshelves?.includes(name))
-    .sort(
-      (a, b) =>
-        b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
-    );
+  const local = useMemo(
+    () =>
+      localBooks
+        .slice()
+        .sort(
+          (a, b) =>
+            b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
+        ),
+    [localBooks],
+  );
   const items = remote
     ? catalog.items
     : local.slice(paging.offset, paging.offset + paging.size);
