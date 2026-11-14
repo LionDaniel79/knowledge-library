@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Output,[switch]$Smoke)
+param([Parameter(Mandatory)][string]$Output,[switch]$Smoke,[switch]$CollectionSmoke)
 $ErrorActionPreference='Stop'
 $framework=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $refs=@('System.dll','System.Core.dll','System.Security.dll','System.Xml.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Web.Extensions.dll','WindowsBase.dll','PresentationCore.dll','PresentationFramework.dll','System.Xaml.dll') | ForEach-Object {
@@ -6,8 +6,9 @@ $refs=@('System.dll','System.Core.dll','System.Security.dll','System.Xml.dll','S
  if(!(Test-Path -LiteralPath $path)){ $path=Join-Path "$framework\WPF" $_ }
  "/reference:$path"
 }
-$sources=@("$PSScriptRoot\Desktop.cs","$PSScriptRoot\WorkerJob.cs","$PSScriptRoot\DesktopManagement.cs")
+$sources=@("$PSScriptRoot\Desktop.cs","$PSScriptRoot\WorkerJob.cs","$PSScriptRoot\DesktopManagement.cs","$PSScriptRoot\DesktopCollection.cs")
 $target='/target:winexe'
 if($Smoke){$target='/target:exe';$sources+=@('/main:DesktopSmoke',"$PSScriptRoot\DesktopSmoke.cs")}
+if($CollectionSmoke){$target='/target:exe';$sources+=@('/main:DesktopCollectionSmoke',"$PSScriptRoot\DesktopCollectionSmoke.cs")}
 & "$framework\csc.exe" /nologo $target /platform:x64 /codepage:65001 "/out:$Output" $refs $sources
 if($LASTEXITCODE){throw 'WPF 빌드 실패'}

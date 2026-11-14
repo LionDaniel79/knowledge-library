@@ -139,6 +139,14 @@ if (args.includes("--help")) {
               : undefined,
           };
         },
+        onProgress: process.env.COLLECTION_PROGRESS_FILE
+          ? async (stats) => {
+              await atomicWriteJson(process.env.COLLECTION_PROGRESS_FILE!, {
+                ...stats,
+                at: new Date().toISOString(),
+              });
+            }
+          : undefined,
         onInvestigated: (book) => {
           investigated.add(book.id);
         },

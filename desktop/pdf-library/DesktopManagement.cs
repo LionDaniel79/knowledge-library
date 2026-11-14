@@ -37,10 +37,12 @@ partial class PdfDesktop {
     Dictionary<string,object> latestLibrary;
     static string configFile="";
     static Dictionary<string,object> launchConfiguration;
+    static bool startHidden;
     string webOrigin="",credentialFile="";
     Dictionary<string,object> PrepareRequest(){var req=Request("prepare-web");req["summary"]=true;return req;}
 
     static string[] LoadArguments(string[] args){
+        if(args.Length==3 && args[0]=="--config" && args[2]=="--tray"){startHidden=true;args=args.Take(2).ToArray();}
         if(args.Length==5)return args;
         if(args.Length==2 && args[0]=="--config"){
             configFile=Path.GetFullPath(args[1]);
@@ -75,7 +77,7 @@ partial class PdfDesktop {
         if(File.Exists(connection))try{var saved=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(connection,Encoding.UTF8));webOrigin=Val(saved,"webOrigin");credentialFile=Val(saved,"credentialFile");autoWeb.IsChecked=Val(saved,"autoSync")=="True";}catch{connectionStatus.Text="웹 연결 설정을 다시 확인하세요.";}
         if(credentialFile.Length==0)credentialFile=Path.Combine(data,"web-device.dpapi");
         RefreshConnection();
-        StartCatalogSidecar();
+        if(!StartCollectionHost())StartCatalogSidecar();
         tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="전자도서관 PDF 서재",Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("PDF 서재 열기",null,(s,e)=>Dispatcher.BeginInvoke(new Action(ShowFromTray)));
@@ -87,10 +89,12 @@ partial class PdfDesktop {
         TryWatch();
         backgroundTimer.Tick+=async(s,e)=>{
             if(exiting)return;
+            RefreshCollectionViews();
             if(backgroundBusy){await RefreshLibrary();return;}
             await BackgroundCycle();
         };
         Loaded+=async(s,e)=>{await RefreshLibrary();backgroundTimer.Start();};
+        if(startHidden)Loaded+=(s,e)=>Hide();
     }
     void ShowFromTray(){Show();WindowState=WindowState.Normal;Activate();}
     void QueueScan(){scanQueued=true;scanAfter=DateTime.UtcNow;backgroundStatus.Text="전체 PDF 확인 대기 중…";}
@@ -232,6 +236,7 @@ partial class PdfDesktop {
         if(catalogProcess!=null){catalogProcess.Dispose();catalogProcess=null;}
     }
     void StopManagement(){
+        StopCollectionHost();
         StopCatalogSidecar();
         backgroundTimer.Stop();if(watcher!=null){watcher.Dispose();watcher=null;}if(backgroundJob!=null){backgroundJob.Dispose();backgroundJob=null;}if(monitorJob!=null){monitorJob.Dispose();monitorJob=null;}if(tray!=null){tray.Visible=false;tray.Dispose();tray=null;}
     }

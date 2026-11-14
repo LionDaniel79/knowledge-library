@@ -32,7 +32,10 @@ partial class PdfDesktop : Window {
     public PdfDesktop(string[] args){
         python=args[0];worker=args[1];index=args[2]=="-"?"":args[2];root=args[3];data=args[4];
         Title="전자도서관 · PDF 서재"; Width=1120;Height=820;MinWidth=850;MinHeight=600;
-        var main=new DockPanel {Margin=new Thickness(16)};Content=main;
+        var tabs=new TabControl {Margin=new Thickness(12)};Content=tabs;
+        var main=new DockPanel {Margin=new Thickness(4)};
+        tabs.Items.Add(new TabItem{Header="PDF 검색·OCR",Content=main});
+        BuildCollectionTabs(tabs);
         var bar=new StackPanel();DockPanel.SetDock(bar,Dock.Top);main.Children.Add(bar);
         bar.Children.Add(new TextBlock { Text="전자도서관 PDF 서재",FontSize=23,FontWeight=FontWeights.Bold });
         BuildManagement(bar);
