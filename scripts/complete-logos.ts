@@ -1,3 +1,4 @@
+import { collectionFailure } from "../src/local/curation/collection-failure";
 /** Finite operator run. No startup hook, watcher, or background polling. */
 import { Pool } from "pg";
 import { join, resolve } from "node:path";
@@ -123,21 +124,8 @@ if (args.includes("--help")) {
       const investigated = new Set<string>();
       let failure: unknown;
       const stats = await runLogosCompletion({
-        onFailure: (error) => {
-          const e = error as {
-            name?: unknown;
-            status?: unknown;
-            code?: unknown;
-          } | null;
-          failure = {
-            name: /^[A-Za-z]{1,50}$/.test(String(e?.name ?? ""))
-              ? e?.name
-              : "Error",
-            status: Number.isInteger(e?.status) ? e?.status : undefined,
-            code: /^[A-Z0-9_]{1,50}$/.test(String(e?.code ?? ""))
-              ? e?.code
-              : undefined,
-          };
+        onFailure: (error, phase) => {
+          failure = collectionFailure(error, phase);
         },
         onProgress: process.env.COLLECTION_PROGRESS_FILE
           ? async (stats) => {

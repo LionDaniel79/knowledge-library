@@ -28,7 +28,7 @@ export async function runLogosCompletion(options: {
   decide?: typeof decideLogosCandidate;
   onInvestigated?: (book: LogosCompletionBook) => void;
   shouldStop?: () => boolean;
-  onFailure?: (error: unknown) => void;
+  onFailure?: (error: unknown, phase: string) => void;
   onProgress?: (stats: {
     considered: number;
     applied: number;
@@ -70,9 +70,11 @@ export async function runLogosCompletion(options: {
     if (!stats.retryAt || iso < stats.retryAt) stats.retryAt = iso;
   }
   let activeIndex = 0;
+  let phase = "checkpoint";
   try {
     for (const [index, book] of options.books.entries()) {
       activeIndex = index;
+      phase = "checkpoint";
       try {
         if (options.signal?.aborted || options.shouldStop?.()) {
           stats.stopped = "paused";
@@ -117,6 +119,7 @@ export async function runLogosCompletion(options: {
           !checkpoint.lookupRetry &&
           (!options.apply || checkpoint.applied)
         ) {
+          phase = "cached-decision";
           stats.cached++;
           stats[decideLogosCandidate(book, checkpoint.records).state]++;
           continue;
@@ -161,6 +164,7 @@ export async function runLogosCompletion(options: {
             continue;
           }
           stats.requests++;
+          phase = "lookup";
           try {
             checkpoint = { fingerprint, records: await options.lookup(book) };
           } catch (error) {
@@ -195,12 +199,14 @@ export async function runLogosCompletion(options: {
         }
         stats.considered++;
         options.onInvestigated?.(book);
+        phase = "decision";
         const decision = (options.decide ?? decideLogosCandidate)(
           book,
           checkpoint.records,
         );
         stats[decision.state]++;
         if (options.apply && !checkpoint.applied) {
+          phase = "apply";
           const state = await options.applyDecision(book, decision);
           if (state === "complete") {
             checkpoint.applied = true;
@@ -224,7 +230,7 @@ export async function runLogosCompletion(options: {
       }
     }
   } catch (error) {
-    options.onFailure?.(error);
+    options.onFailure?.(error, phase);
     stats.stopped = error instanceof CatalogQuotaError ? "quota" : "error";
     if (error instanceof CatalogQuotaError) stats.retryAt = error.retryAt;
     // Neither provider exceptions nor credentials are serialized to disk/logs.
