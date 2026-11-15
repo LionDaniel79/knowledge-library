@@ -35,14 +35,16 @@ export function PageSizeSelect({
   label,
   paging,
   disabled = false,
+  compact = false,
 }: {
   label: string;
   paging: ListPaging;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <label className="page-size-select">
-      <span>표시 개수</span>
+      {!compact && <span>표시 개수</span>}
       <select
         aria-label={`${label} 표시 개수`}
         value={paging.size}

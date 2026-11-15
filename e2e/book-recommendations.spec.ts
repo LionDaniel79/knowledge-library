@@ -69,7 +69,7 @@ test("saved recommendations use tabs, arrows, keyboard and swipe without request
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await mount(page);
-  const region = page.getByRole("region", { name: "AI가 추천하는 나의 책" });
+  const region = page.getByRole("region", { name: "AI 추천" });
   await expect(
     region.getByRole("button", { name: "종이 첫 책 상세 보기" }),
   ).toBeVisible();

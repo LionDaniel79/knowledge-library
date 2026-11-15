@@ -7,7 +7,14 @@ import { defaultShelves } from "../../lib/catalog";
 import { noteContextId } from "../../lib/note-context";
 import { bookDeletionInput } from "../../lib/book-deletion";
 import { introductionSchema } from "../../lib/book-introduction";
-import { reviewDecisionSchema } from "../../lib/catalog-review";
+import {
+  reviewDecisionSchema,
+  storedLogosReviewCandidates,
+  reviewCandidateFingerprint,
+  reviewValue,
+  type ReviewField,
+} from "../../lib/catalog-review";
+import { projectBook } from "../../lib/replica/projections";
 import {
   bookInput,
   noteInput,
@@ -1330,27 +1337,235 @@ export async function prepareOptimistic(
         });
     result = { removed: effects.length };
   } else if (path === "/api/catalog-review") {
-    reviewDecisionSchema.parse(body);
-    const old = await own("library_catalog_reviews", body.id);
-    check(old, body.expectedVersion);
-    edit("library_catalog_reviews", old, {
-      status:
-        body.action === "apply"
-          ? "applied"
-          : body.action === "reject"
-            ? "rejected"
-            : "deferred",
-    });
-    if (body.action === "apply") {
-      if (!body.sameEdition || !body.fields.length)
-        throw new ReplicaQueryError(400, "판본과 반영할 항목을 확인해 주세요.");
-      const book = await own("library_books", old.book_id);
-      check(book, old.source_version);
-      const selected: any = {};
-      for (const field of body.fields)
-        selected[field === "coverUrl" ? "cover_url" : field] =
-          old.record.facts[field];
-      put("library_books", { ...book, ...selected, version: book.version + 1 });
+    const input = reviewDecisionSchema.parse(body);
+    if (input.candidateKey) {
+      const book = await own("library_books", input.id);
+      const projected = projectBook(book);
+      const prior =
+        book.enrichment?.catalogReviewDecisions?.[input.candidateKey];
+      if (prior?.requestId === input.requestId) result = prior;
+      else {
+        check(book, input.expectedVersion);
+        if (
+          projected.sourceData?.app !== "Logos" ||
+          !projected.formats.includes("logos")
+        )
+          throw new ReplicaQueryError(404, "로고스 도서를 찾을 수 없습니다.");
+        const candidates = [
+          ...storedLogosReviewCandidates(projected, "pending"),
+          ...storedLogosReviewCandidates(projected, "deferred"),
+        ];
+        const candidate = candidates.find(
+          (c: any) => c.candidateKey === input.candidateKey,
+        );
+        if (!candidate)
+          throw new ReplicaQueryError(409, "후보 상태가 바뀌었습니다.");
+        const enrichment = structuredClone(book.enrichment ?? {});
+        const next: Record<string, any> = {
+          ...book,
+          enrichment,
+          version: book.version + 1,
+        };
+        if (input.action === "apply") {
+          if (!input.sameEdition || !input.fields.length)
+            throw new ReplicaQueryError(
+              400,
+              "판본과 반영할 항목을 확인해 주세요.",
+            );
+          for (const field of input.fields) {
+            const value = reviewValue(candidate.record, field);
+            if (!value?.length)
+              throw new ReplicaQueryError(400, "후보에 없는 항목입니다.");
+            if (enrichment.autoBibliographyLocks?.includes(field))
+              throw new ReplicaQueryError(
+                409,
+                "직접 확인한 항목은 보호됩니다.",
+              );
+            if (
+              field === "coverUrl" &&
+              (book.cover_url ||
+                projected.sourceData?.cover ||
+                enrichment.coverRemoved)
+            )
+              throw new ReplicaQueryError(409, "기존 표지는 보호됩니다.");
+            if (field === "description" || field === "toc")
+              enrichment["auto_" + field] = value;
+            else next[field === "coverUrl" ? "cover_url" : field] = value;
+          }
+          enrichment.autoBibliographyLocks = [
+            ...new Set([
+              ...(enrichment.autoBibliographyLocks ?? []),
+              ...input.fields,
+            ]),
+          ];
+          enrichment.catalogReviewSelection = {
+            provider: candidate.record.provider,
+            url: candidate.record.url,
+            fields: input.fields,
+            reviewedBy: "human",
+          };
+          if (input.fields.includes("description"))
+            enrichment.catalogSelection = {
+              provider:
+                candidate.record.provider === "예스24" ? "yes24" : "library",
+              sourceUrl: candidate.record.url,
+              description: String(enrichment.auto_description ?? "").slice(
+                0,
+                3000,
+              ),
+            };
+        }
+        const decision = {
+          status:
+            input.action === "apply"
+              ? "applied"
+              : input.action === "reject"
+                ? "rejected"
+                : "deferred",
+          action: input.action,
+          fields: input.fields,
+          requestId: input.requestId,
+          reviewedBy: "human",
+          bookId: book.id,
+        };
+        enrichment.catalogReviewDecisions = {
+          ...enrichment.catalogReviewDecisions,
+          [input.candidateKey]: decision,
+        };
+        if (input.action === "reject") {
+          const rejected = input.rejectAll ? candidates : [candidate];
+          enrichment.rejectedBibliography = [
+            ...new Set([
+              ...(enrichment.rejectedBibliography ?? []),
+              ...rejected.map((c: any) => reviewCandidateFingerprint(c.record)),
+            ]),
+          ];
+          for (const c of rejected)
+            enrichment.catalogReviewDecisions[c.candidateKey] = decision;
+        }
+        if (input.action === "apply")
+          for (const c of candidates)
+            if (c.candidateKey !== input.candidateKey)
+              enrichment.catalogReviewDecisions[c.candidateKey] = {
+                ...decision,
+                status: "superseded",
+              };
+        if (
+          input.action === "apply" ||
+          (input.action === "reject" && input.rejectAll)
+        ) {
+          for (const other of await repository.all("library_catalog_reviews"))
+            if (
+              other.book_id === book.id &&
+              ["pending", "deferred"].includes(other.status)
+            )
+              edit("library_catalog_reviews", other, {
+                status: input.action === "apply" ? "superseded" : "rejected",
+                decision_request_id: input.requestId,
+              });
+        }
+        put("library_books", next);
+        result = decision;
+      }
+    } else {
+      const old = await own("library_catalog_reviews", input.id);
+      if (old.decision_request_id !== input.requestId) {
+        check(old, input.expectedVersion);
+        if (!["pending", "deferred"].includes(old.status))
+          throw new ReplicaQueryError(409, "후보 상태가 바뀌었습니다.");
+        const status =
+          input.action === "apply"
+            ? "applied"
+            : input.action === "reject"
+              ? "rejected"
+              : "deferred";
+        edit("library_catalog_reviews", old, {
+          status,
+          decision_request_id: input.requestId,
+          decision: { action: input.action, fields: input.fields },
+        });
+        if (input.action === "apply") {
+          if (!input.sameEdition || !input.fields.length)
+            throw new ReplicaQueryError(
+              400,
+              "판본과 반영할 항목을 확인해 주세요.",
+            );
+          const book = await own("library_books", old.book_id);
+          check(book, old.source_version);
+          const selected: Record<string, any> = {};
+          const enrichment = structuredClone(book.enrichment ?? {});
+          for (const field of input.fields as ReviewField[]) {
+            const value = reviewValue(old.record, field);
+            if (field === "description" || field === "toc")
+              enrichment["auto_" + field] = value;
+            else selected[field === "coverUrl" ? "cover_url" : field] = value;
+          }
+          put("library_books", {
+            ...book,
+            ...selected,
+            enrichment,
+            version: book.version + 1,
+          });
+        }
+        if (
+          input.action === "apply" ||
+          (input.action === "reject" && input.rejectAll)
+        )
+          for (const other of await repository.all("library_catalog_reviews"))
+            if (
+              other.book_id === old.book_id &&
+              other.id !== old.id &&
+              ["pending", "deferred"].includes(other.status)
+            )
+              edit("library_catalog_reviews", other, {
+                status: input.action === "apply" ? "superseded" : "rejected",
+                decision_request_id: input.requestId,
+              });
+        if (
+          input.action === "apply" ||
+          (input.action === "reject" && input.rejectAll)
+        ) {
+          const book =
+            [...effects]
+              .reverse()
+              .find(
+                (e) =>
+                  e.entity === "library_books" && e.after?.id === old.book_id,
+              )?.after ?? (await own("library_books", old.book_id));
+          const projected = projectBook(book);
+          const candidates = [
+            ...storedLogosReviewCandidates(projected, "pending"),
+            ...storedLogosReviewCandidates(projected, "deferred"),
+          ];
+          if (candidates.length) {
+            const enrichment = structuredClone(book.enrichment ?? {});
+            enrichment.catalogReviewDecisions = {
+              ...enrichment.catalogReviewDecisions,
+            };
+            for (const c of candidates)
+              enrichment.catalogReviewDecisions[c.candidateKey] = {
+                status: input.action === "apply" ? "superseded" : "rejected",
+                requestId: input.requestId,
+                reviewedBy: "human",
+              };
+            if (input.action === "reject")
+              enrichment.rejectedBibliography = [
+                ...new Set([
+                  ...(enrichment.rejectedBibliography ?? []),
+                  ...candidates.map((c) =>
+                    reviewCandidateFingerprint(c.record),
+                  ),
+                ]),
+              ];
+            put("library_books", {
+              ...book,
+              enrichment,
+              version:
+                input.action === "reject" ? book.version + 1 : book.version,
+            });
+          }
+        }
+      }
     }
   } else if (path === "/api/book-relations") {
     if (body.relation === "same_file" && body.state === "accepted")

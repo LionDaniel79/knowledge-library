@@ -228,10 +228,10 @@ for (const remote of [true, false])
     }
     await page.locator(".integrated-search .shelf-card").click();
     await expect(
-      page.getByRole("dialog", { name: "책을 펼쳐 보기", exact: true }),
+      page.getByRole("dialog", { name: "상세 정보", exact: true }),
     ).toContainText(f.book.title);
     await page
-      .getByRole("dialog", { name: "책을 펼쳐 보기", exact: true })
+      .getByRole("dialog", { name: "상세 정보", exact: true })
       .getByRole("button", { name: "닫기", exact: true })
       .click();
     await page

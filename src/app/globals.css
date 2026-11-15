@@ -6539,3 +6539,174 @@ textarea {
   margin-top: 8px;
   padding-top: 8px;
 }
+
+/* Compact book detail records keep paging controls beside their section heading. */
+.book-records-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.book-records-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.book-records-header .page-size-select {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.book-records-header select {
+  min-height: 34px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.book-record-details {
+  border-top: 1px solid var(--line);
+  padding: 0;
+}
+.book-record-details > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.book-record-details > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.book-record-details > button {
+  margin-bottom: 8px;
+}
+.book-detail-modal .completed-row {
+  padding: 7px 0;
+  font-size: 13px;
+}
+.book-detail-modal .completed-row button {
+  padding: 4px 9px;
+  min-height: 32px;
+}
+
+/* A single compact information area retains provenance without repeating values. */
+.unified-book-information .curation-item,
+.unified-book-information .information-source {
+  padding: 9px 0;
+}
+.unified-book-information h4 {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+.unified-book-information p {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.unified-book-information .curation-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.unified-book-information .automatic-comparison {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px 12px;
+}
+.unified-book-information .automatic-comparison > label {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.unified-book-information .automatic-comparison dl {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.unified-book-information .automatic-comparison dt {
+  color: var(--muted);
+}
+.unified-book-information .automatic-comparison dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.unified-book-information .information-alternatives {
+  margin-top: 6px;
+}
+.unified-book-information .information-alternatives > summary,
+.unified-book-information .information-sources > summary {
+  padding: 7px 0;
+  font-size: 12px;
+}
+.unified-book-information .information-alternative {
+  border-left: 2px solid var(--line);
+  padding: 5px 10px;
+  margin: 5px 0;
+}
+.unified-book-information .information-source blockquote {
+  margin: 5px 0;
+  max-height: 130px;
+  overflow-y: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.unified-book-information .form-actions,
+.unified-book-information .detail-actions {
+  gap: 6px;
+  margin-top: 8px;
+}
+.unified-book-information button {
+  min-height: 32px;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+@media (max-width: 480px) {
+  .unified-book-information .automatic-comparison {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .unified-book-information .automatic-comparison dl {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+}
+.inline-review-fields {
+  display: block;
+}
+.inline-review-fields .inline-review-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  border-top: 1px solid var(--line);
+  padding: 6px 0;
+  margin: 0;
+  line-height: 1.5;
+}
+.inline-review-field-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.inline-review-fields .inline-review-field > span:not(:first-child) {
+  min-width: 0;
+  max-height: 84px !important;
+}
+.inline-review-fields > label:not(.inline-review-field) {
+  margin: 7px 0 3px;
+}
+.inline-catalog-reviews .logos-cover-bulk > span {
+  flex-basis: 100%;
+}
+@media (max-width: 480px) {
+  .inline-review-fields .inline-review-field {
+    grid-template-columns: 68px minmax(0, 1fr) minmax(0, 1fr);
+    font-size: 11px;
+    gap: 5px;
+  }
+}

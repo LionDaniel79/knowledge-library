@@ -325,7 +325,7 @@ for (const width of [390, 1280])
         .getByRole("checkbox", { name: `PDF 책 ${i} 판본 확인`, exact: true })
         .check();
     await page
-      .getByRole("button", { name: "선택 정보 일괄 적용 (2권)", exact: true })
+      .getByRole("button", { name: "일괄 적용 (2권)", exact: true })
       .click();
     await expect(page.getByText("후보 충돌", { exact: true })).toBeVisible();
     await expect(
@@ -335,13 +335,13 @@ for (const width of [390, 1280])
       page.getByRole("checkbox", { name: "PDF 책 2 ISBN 반영", exact: true }),
     ).toBeChecked();
     await page
-      .getByRole("button", { name: "선택 정보 일괄 적용 (1권)", exact: true })
+      .getByRole("button", { name: "일괄 적용 (1권)", exact: true })
       .click();
     await expect(page.locator(".inline-review-card")).toHaveCount(0);
     expect(sent[1].requestId).toBe(sent[2].requestId);
     await page.getByRole("tab", { name: "로고스", exact: true }).click();
     await expect(
-      page.getByText("등록 가능한 표지 대기 도서가 없습니다.", {
+      page.getByText("이 상태의 후보가 없습니다.", {
         exact: false,
       }),
     ).toBeVisible();
@@ -350,6 +350,127 @@ for (const width of [390, 1280])
       page.getByText("이 상태의 후보가 없습니다.", { exact: true }),
     ).toBeVisible();
   });
+
+test("format tabs share field comparisons, selected supplements and whole-row rejection", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 950 });
+  const sent: any[] = [];
+  const formats: string[] = [];
+  let removed = false;
+  const candidate = {
+    id: "00000000-0000-4000-a000-000000000001",
+    candidateKey: "stored-candidate",
+    version: 1,
+    status: "pending",
+    current: {
+      title: "로고스 검토 도서",
+      author: "기존 저자",
+      publisher: "",
+      isbn: "",
+      coverUrl: "",
+      description: "",
+      toc: [],
+    },
+    record: {
+      provider: "예스24",
+      title: "로고스 검토 도서",
+      isbn: "9780306406157",
+      url: "https://www.yes24.com/product/goods/1",
+      description: "후보 소개",
+      toc: ["서론", "본론"],
+      facts: {
+        title: "로고스 검토 도서",
+        author: "후보 저자",
+        publisher: "후보 출판사",
+        isbn: "9780306406157",
+        coverUrl: "",
+      },
+    },
+  };
+  await page.route("https://library.test/api/catalog-review**", (r) => {
+    const u = new URL(r.request().url());
+    if (r.request().method() === "POST") {
+      const v = r.request().postDataJSON();
+      sent.push(v);
+      removed = true;
+      return r.fulfill({ json: {} });
+    }
+    if (u.searchParams.has("summary"))
+      return r.fulfill({ json: { formats: [], residualReviewBooks: 1 } });
+    const format = u.searchParams.get("format") ?? "";
+    formats.push(format);
+    const rows =
+      format === "logos" && !removed
+        ? [
+            {
+              id: candidate.id,
+              book_id: candidate.id,
+              title: candidate.current.title,
+              alternatives: [
+                candidate,
+                { ...candidate, candidateKey: "second-candidate" },
+              ],
+            },
+          ]
+        : [];
+    return r.fulfill({
+      json: { items: rows, total: rows.length, nextOffset: null },
+    });
+  });
+  await mount(
+    page,
+    `import {createRoot} from 'react-dom/client';import {CatalogReviewPanel} from './src/components/catalog-review-panel';createRoot(document.getElementById('root')).render(<CatalogReviewPanel onChanged={async()=>{}}/>);`,
+  );
+  await expect(page.getByRole("tab")).toHaveText([
+    "PDF",
+    "로고스",
+    "전자책",
+    "종이책",
+    "기타도서",
+  ]);
+  await page.getByRole("tab", { name: "로고스", exact: true }).click();
+  await expect(
+    page
+      .locator(".inline-review-field")
+      .getByText("현재: 기존 저자", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: "검토 목록 전체 선택", exact: true })
+    .check();
+  for (const label of ["출판사", "ISBN", "목차"])
+    await page
+      .getByRole("checkbox", {
+        name: `로고스 검토 도서 ${label} 반영`,
+        exact: true,
+      })
+      .uncheck();
+  await page
+    .getByRole("checkbox", { name: "로고스 검토 도서 판본 확인", exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "일괄 적용 (1권)", exact: true })
+    .click();
+  await expect(page.locator(".inline-review-card")).toHaveCount(0);
+  expect(sent[0].fields).toEqual(["description"]);
+  expect(sent[0].candidateKey).toBe("stored-candidate");
+  removed = false;
+  await page.getByRole("tab", { name: "전자책", exact: true }).click();
+  await page.getByRole("tab", { name: "로고스", exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "검토 목록 전체 선택", exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "일괄 거절 (1권)", exact: true })
+    .click();
+  expect(sent.at(-1)).toMatchObject({ action: "reject", rejectAll: true });
+  await expect(page.locator(".inline-review-card")).toHaveCount(0);
+  for (const name of ["종이책", "기타도서"])
+    await page.getByRole("tab", { name, exact: true }).click();
+  expect(formats).toEqual(
+    expect.arrayContaining(["pdf", "logos", "ebook", "paper", "other"]),
+  );
+});
 
 test("individual cover save blocks bulk actions and paging until it finishes", async ({
   page,

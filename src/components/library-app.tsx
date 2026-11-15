@@ -3,7 +3,7 @@ import { libraryRequest } from "@/client/replica/request";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
-import { AutoBibliographyPanel } from "./auto-bibliography-panel";
+import { UnifiedBookInformation } from "./unified-book-information";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { useReplicaDataOptional } from "./replica/provider";
 import { writeStartup } from "@/client/replica/startup-cache";
@@ -61,11 +61,9 @@ import {
   PageNavigation,
 } from "./list-pagination";
 
-import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
 import { BookDelete } from "./book-delete";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
-import { PdfStorageLocations } from "./pdf-storage-locations";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
 import { containsSearchField } from "@/lib/search-fields";
@@ -240,6 +238,14 @@ export function LibraryApp({
       ? detailState.book
       : undefined
     : data.books.find((b) => b.id === detail);
+  const detailCyclePaging = useListPagination("book-reading", detail ?? "");
+  const detailNotePaging = useListPagination("book-notes", detail ?? "");
+  const detailCycles = data.cycles.filter(
+    (cycle) => cycle.bookId === detailBook?.id,
+  );
+  const detailNotes = data.notes.filter(
+    (note) => note.bookId === detailBook?.id,
+  );
   const booksById = useMemo(
     () =>
       new Map(
@@ -1489,7 +1495,7 @@ export function LibraryApp({
       {detail && remote && !detailBook && !editor && (
         <Modal
           className="book-detail-modal"
-          title="책을 펼쳐 보기"
+          title="상세 정보"
           onClose={() => setDetail(null)}
         >
           <p
@@ -1503,7 +1509,7 @@ export function LibraryApp({
       {detailBook && !editor && (
         <Modal
           className="book-detail-modal"
-          title="책을 펼쳐 보기"
+          title="상세 정보"
           onClose={() => setDetail(null)}
         >
           {detailState?.error && (
@@ -1562,29 +1568,6 @@ export function LibraryApp({
               </dl>
             </div>
           </div>
-          <CatalogAttribution
-            value={detailBook.enrichment?.catalogSelection}
-            automatic={detailBook.enrichment}
-          />
-          {!preview && (
-            <AutoBibliographyPanel
-              key={detailBook.id + ":auto-bibliography"}
-              bookId={detailBook.id}
-              onChanged={refresh}
-            />
-          )}
-          <details className="book-evidence">
-            <summary>근거 보기</summary>
-            <dl>
-              <dt>분류 출처</dt>
-              <dd>
-                {detailBook.classification?.source ?? "미입력"}
-                {detailBook.classification?.verified
-                  ? " · 서지 확인됨"
-                  : " · 검토 필요"}
-              </dd>
-            </dl>
-          </details>
           <div className="detail-actions">
             {!readingIds.has(detailBook.id) && (
               <button
@@ -1651,16 +1634,36 @@ export function LibraryApp({
             onSave={save}
             preview={preview}
           />
+          <CatalogAttribution
+            value={detailBook.enrichment?.catalogSelection}
+            automatic={detailBook.enrichment}
+            section="introduction"
+          />
           {!preview && (
-            <CurationDetails
-              key={detailBook.id + ":curation"}
-              kind="book"
-              id={detailBook.id}
+            <UnifiedBookInformation
+              key={detailBook.id + ":information"}
+              bookId={detailBook.id}
               onChanged={refresh}
             />
           )}
-          <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
-          <PdfStorageLocations book={detailBook} />
+          <details className="book-evidence">
+            <summary>출처</summary>
+            <CatalogAttribution
+              value={detailBook.enrichment?.catalogSelection}
+              automatic={detailBook.enrichment}
+              section="sources"
+            />
+            <dl>
+              <dt>분류 출처</dt>
+              <dd>
+                {detailBook.classification?.source ?? "미입력"}
+                {detailBook.classification?.verified
+                  ? " · 서지 확인됨"
+                  : " · 검토 필요"}
+              </dd>
+            </dl>
+            <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
+          </details>
           {!preview && (
             <BookRelations
               key={detailBook.id + ":relations"}
@@ -1682,16 +1685,26 @@ export function LibraryApp({
             />
           ) : (
             <>
-              <h3>독서 이력</h3>
+              <div className="book-records-header">
+                <h3>독서이력 {detailCycles.length}개</h3>
+                <PageSizeSelect
+                  label="책별 독서 이력"
+                  paging={detailCyclePaging}
+                  compact
+                />
+              </div>
               <div className="cycle-list">
-                {data.cycles
-                  .filter((c) => c.bookId === detailBook.id)
+                {detailCycles
+                  .slice(
+                    detailCyclePaging.offset,
+                    detailCyclePaging.offset + detailCyclePaging.size,
+                  )
                   .map((c) => (
                     <div key={c.id}>
                       <span>
                         {c.status === "reading"
                           ? "읽는 중"
-                          : c.completedOn + " 완독"}{" "}
+                          : (c.completedOn ?? "날짜 미입력") + " 완독"}{" "}
                         · {c.currentPage}쪽
                       </span>
                       <button
@@ -1711,10 +1724,35 @@ export function LibraryApp({
                   <p className="muted">아직 독서 기록이 없습니다.</p>
                 )}
               </div>
-              <h3>이 책에 남긴 기록</h3>
-              {data.notes
-                .filter((n) => n.bookId === detailBook.id)
-                .map(noteCard)}
+              <PageNavigation
+                label="책별 독서 이력"
+                paging={detailCyclePaging}
+                total={detailCycles.length}
+              />
+              <div className="book-records-header">
+                <h3>기록 {detailNotes.length}개</h3>
+                <PageSizeSelect
+                  label="책별 기록"
+                  paging={detailNotePaging}
+                  compact
+                />
+              </div>
+              {detailNotes
+                .slice(
+                  detailNotePaging.offset,
+                  detailNotePaging.offset + detailNotePaging.size,
+                )
+                .map((note) => (
+                  <details key={note.id} className="book-record-details">
+                    <summary>{note.title}</summary>
+                    {noteCard(note)}
+                  </details>
+                ))}
+              <PageNavigation
+                label="책별 기록"
+                paging={detailNotePaging}
+                total={detailNotes.length}
+              />
             </>
           )}
         </Modal>

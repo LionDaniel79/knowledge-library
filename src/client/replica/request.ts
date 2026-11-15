@@ -55,9 +55,12 @@ export async function libraryRequest(
       if (!body) throw Error("저장할 내용을 확인해 주세요.");
       // Same-file verification needs the external PC's original files.
       if (!(
-        url.pathname === "/api/book-relations" &&
-        body.relation === "same_file" &&
-        body.state === "accepted"
+        (options.preferServer &&
+          url.pathname === "/api/curation" &&
+          body.action === "selectBookField") ||
+        (url.pathname === "/api/book-relations" &&
+          body.relation === "same_file" &&
+          body.state === "accepted")
       ))
         return Response.json(await runtime.queue(url.pathname, body), {
           headers: {

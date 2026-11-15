@@ -1,3 +1,7 @@
+import {
+  residualReviewFormat,
+  storedLogosReviewCandidates,
+} from "../lib/catalog-review";
 import type { Executor } from "./library-store";
 import { attachCatalogCovers } from "./book-records";
 export async function catalogReviewSummary(db: Executor, owner: string) {
@@ -14,6 +18,12 @@ export async function catalogReviewSummary(db: Executor, owner: string) {
     )
   ).rows;
   const counts = new Map(reviews.map((r) => [r.book_id, r.n]));
+  for (const b of books) {
+    const stored =
+      storedLogosReviewCandidates(b).length +
+      storedLogosReviewCandidates(b, "deferred").length;
+    if (stored) counts.set(b.id, (counts.get(b.id) ?? 0) + stored);
+  }
   for (let i = 0; i < books.length; i += 200)
     await attachCatalogCovers(db, owner, books.slice(i, i + 200));
   const formats = ["paper", "logos", "ebook", "pdf"].map((format) => {
@@ -40,6 +50,10 @@ export async function catalogReviewSummary(db: Executor, owner: string) {
       ).length,
     };
   });
-  return { formats };
+  return {
+    formats,
+    residualReviewBooks: books.filter(
+      (b) => residualReviewFormat(b.formats) && counts.has(b.id),
+    ).length,
+  };
 }
-

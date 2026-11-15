@@ -1,3 +1,9 @@
+import { currentBookInformation } from "../../lib/unified-book-information";
+import {
+  currentReviewSnapshot,
+  residualReviewFormat,
+  storedLogosReviewCandidates,
+} from "../../lib/catalog-review";
 import { z } from "zod";
 import { containsSearchField } from "../../lib/search-fields";
 import type { ReplicaStorage } from "./storage";
@@ -46,6 +52,8 @@ const camel = (row: RawRecord) =>
       v,
     ]),
   );
+const resourceIndexKey = (e: SyncEntity) =>
+  (e === "library_books" ? "resource-index-v2:" : "resource-index-v1:") + e;
 const fields = (row: RawRecord, keys: string[]) =>
   Object.fromEntries(keys.map((k) => [k, row[k] ?? null]));
 export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
@@ -61,7 +69,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
     const cp = await storage.checkpoint();
     if (!cp?.complete)
       throw new ReplicaQueryError(503, "기기 자료를 준비하고 있습니다.");
-    const key = "resource-index-v1:" + e,
+    const key = resourceIndexKey(e),
       stamp =
         (cp.entityRevisions?.[e] ?? "0") +
         ":" +
@@ -86,6 +94,24 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
           ]),
           id: String(r.id ?? r.request_id ?? r.year ?? ""),
         };
+        if (e === "library_books")
+          Object.assign(value, {
+            logosReviews: [
+              "pending",
+              "deferred",
+              "rejected",
+              "applied",
+              "superseded",
+            ].flatMap((status) =>
+              storedLogosReviewCandidates(projectBook(r), status).map(
+                (c: any) => ({
+                  candidateKey: c.candidateKey,
+                  title: c.record.title,
+                  status: c.status,
+                }),
+              ),
+            ),
+          });
         if (e === "library_catalog_reviews")
           Object.assign(value, {
             title: r.book_snapshot?.title ?? null,
@@ -175,7 +201,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
   async function compact(e: SyncEntity) {
     await selected(e, () => false);
     const cp = (await storage.checkpoint())!;
-    return (await storage.readIndex("resource-index-v1:" + e, cp.generation))
+    return (await storage.readIndex(resourceIndexKey(e), cp.generation))
       .rows as RawRecord[];
   }
   async function curation(kind: string, id: string) {
@@ -261,7 +287,17 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
           "created_at",
         ]),
       );
-    return { items, references, history, version: String(source.version) };
+    return {
+      items,
+      references,
+      history,
+      version: String(source.version),
+      currentInformation: currentBookInformation(
+        kind === "book" ? source.enrichment : null,
+      ),
+      informationSelections:
+        kind === "book" ? (source.enrichment?.informationSelections ?? {}) : {},
+    };
   }
   async function buildThoughtMap() {
     const trash = new Set(
@@ -755,7 +791,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
           id = p.get("id"),
           group = p.get("groupBy") ?? "candidate",
           format = z
-            .enum(["all", "pdf", "logos", "other"])
+            .enum(["all", "pdf", "logos", "ebook", "paper", "other"])
             .parse(p.get("format") ?? "all");
         if (id) {
           z.string().uuid().parse(id);
@@ -823,9 +859,80 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
               const b = books.get(r.book_id);
               if (!b) return false;
               return format === "other"
-                ? !b.formats.includes("pdf") && !b.formats.includes("logos")
+                ? residualReviewFormat(b.formats)
                 : b.formats.includes(format);
             });
+
+          if (format === "logos") {
+            const metadata = new Map(
+              (await compact("library_books")).map((r) => [r.id, r]),
+            );
+            const candidates = [...books.values()]
+              .filter((b) => b.formats.includes("logos"))
+              .flatMap((b) => {
+                const table = rows.filter((r) => r.book_id === b.id);
+                const stored = (metadata.get(b.id)?.logosReviews ?? []).filter(
+                  (r: any) =>
+                    r.status === status &&
+                    (containsSearchField(b.title, q) ||
+                      containsSearchField(r.title, q)),
+                );
+                return table.length || stored.length
+                  ? [{ book: b, table, stored }]
+                  : [];
+              })
+              .sort(
+                (a, b) =>
+                  binaryCompare(a.book.title, b.book.title) ||
+                  binaryCompare(a.book.id, b.book.id),
+              );
+            const items = [];
+            for (const { book, table, stored } of candidates.slice(
+              offset,
+              offset + limit,
+            )) {
+              const raw = await reader.raw("library_books", book.id);
+              if (!raw) continue;
+              const projected = projectBook(raw);
+              const curations = await selected(
+                "library_curation_items",
+                (c) => c.source_id === book.id,
+              );
+              const current = currentReviewSnapshot(projected, curations);
+              const alternatives: any[] = [];
+              for (const r of table) {
+                const review = await reader.raw(
+                  "library_catalog_reviews",
+                  r.id,
+                );
+                if (review) alternatives.push({ ...review, current });
+              }
+              alternatives.push(
+                ...storedLogosReviewCandidates(projected, status)
+                  .filter((r: any) =>
+                    stored.some((c: any) => c.candidateKey === r.candidateKey),
+                  )
+                  .map((r: any) => ({ ...r, current })),
+              );
+              if (alternatives.length)
+                items.push({
+                  id: alternatives[0].id,
+                  book_id: book.id,
+                  title: book.title,
+                  status,
+                  version: alternatives[0].version,
+                  candidateCount: alternatives.length,
+                  alternatives,
+                });
+            }
+            value = {
+              items,
+              total: candidates.length,
+              nextOffset:
+                offset + limit < candidates.length ? offset + limit : null,
+            };
+            return { handled: true, value };
+          }
           const candidateRows = rows;
           if (group === "book") {
             const groups = new Map<string, RawRecord[]>();
@@ -844,19 +951,21 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             }
             rows.sort(order);
           }
-          const items: RawRecord[] = rows.slice(offset, offset + limit).map((r) => ({
-            ...fields(r, [
-              "id",
-              "book_id",
-              "title",
-              "candidate_title",
-              "isbn",
-              "status",
-              "version",
-              "precheck",
-            ]),
-            ...(group === "book" ? { candidateCount: r.candidateCount } : {}),
-          }));
+          const items: RawRecord[] = rows
+            .slice(offset, offset + limit)
+            .map((r) => ({
+              ...fields(r, [
+                "id",
+                "book_id",
+                "title",
+                "candidate_title",
+                "isbn",
+                "status",
+                "version",
+                "precheck",
+              ]),
+              ...(group === "book" ? { candidateCount: r.candidateCount } : {}),
+            }));
           if (p.get("inline") === "1") {
             for (const item of items) {
               const b = books.get(item.book_id);
@@ -869,11 +978,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
                   candidate.id,
                 );
                 if (!raw || !b) continue;
-                const {
-                  description: _description,
-                  toc: _toc,
-                  ...record
-                } = raw.record ?? {};
+                const record = raw.record ?? {};
                 alternatives.push({
                   ...fields(raw, [
                     "id",
@@ -883,15 +988,13 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
                     "decision",
                   ]),
                   record,
-                  current: fields(b, [
-                    "id",
-                    "title",
-                    "author",
-                    "publisher",
-                    "isbn",
-                    "coverUrl",
-                    "version",
-                  ]),
+                  current: currentReviewSnapshot(
+                    b,
+                    await selected(
+                      "library_curation_items",
+                      (c) => c.source_id === b.id,
+                    ),
+                  ),
                 });
               }
               Object.assign(item, { alternatives });

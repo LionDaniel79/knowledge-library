@@ -1,13 +1,15 @@
 "use client";
 import { useState, useRef } from "react";
 import { libraryRequest } from "@/client/replica/request";
-import { reviewFields } from "@/lib/catalog-review";
+import { reviewFields, reviewValue } from "@/lib/catalog-review";
 const labels = {
   title: "제목",
   author: "저자",
   publisher: "출판사",
   isbn: "ISBN",
   coverUrl: "표지",
+  description: "소개",
+  toc: "목차",
 };
 type Choice = {
   candidateId: string;
@@ -37,7 +39,7 @@ export function InlineCatalogReviewList({
     const options = item.alternatives ?? [];
     const old = choices[item.book_id];
     const candidate =
-      options.find((a: any) => a.id === old?.candidateId) ??
+      options.find((a: any) => (a.candidateKey ?? a.id) === old?.candidateId) ??
       options.find((a: any) => a.id === item.id) ??
       options[0];
     if (!candidate) return null;
@@ -45,14 +47,17 @@ export function InlineCatalogReviewList({
       candidate,
       choice:
         old &&
-        old.candidateId === candidate.id &&
+        old.candidateId === (candidate.candidateKey ?? candidate.id) &&
         old.reviewVersion === candidate.version
           ? old
           : {
-              candidateId: candidate.id,
+              candidateId: candidate.candidateKey ?? candidate.id,
               reviewVersion: candidate.version,
               fields: reviewFields.filter(
-                (k) => !candidate.current[k] && candidate.record.facts[k],
+                (k) =>
+                  !candidate.current.protectedFields?.includes(k) &&
+                  !candidate.current[k]?.length &&
+                  reviewValue(candidate.record, k)?.length,
               ),
               confirmed: false,
             },
@@ -90,7 +95,7 @@ export function InlineCatalogReviewList({
         setErrors((old) => ({ ...old, [item.book_id]: "" }));
         try {
           const key = JSON.stringify([
-            m.candidate.id,
+            m.candidate.candidateKey ?? m.candidate.id,
             m.candidate.version,
             action,
             m.choice.fields,
@@ -103,9 +108,11 @@ export function InlineCatalogReviewList({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               id: m.candidate.id,
+              candidateKey: m.candidate.candidateKey,
               expectedVersion: m.candidate.version,
               requestId,
               action,
+              rejectAll: action === "reject",
               fields: m.choice.fields,
               sameEdition: m.choice.confirmed,
             }),
@@ -162,7 +169,14 @@ export function InlineCatalogReviewList({
           disabled={busy || !chosen.length || !editable}
           onClick={() => void decide("apply", chosen)}
         >
-          {working ? "처리 중…" : `선택 정보 일괄 적용 (${chosen.length}권)`}
+          {working ? "처리 중…" : `일괄 적용 (${chosen.length}권)`}
+        </button>
+        <button
+          className="secondary compact-link"
+          disabled={busy || !chosen.length || !editable}
+          onClick={() => void decide("reject", chosen)}
+        >
+          일괄 거절 ({chosen.length}권)
         </button>
         <span>도서별 반영 항목과 판본을 확인한 뒤 적용하세요.</span>
       </div>
@@ -219,18 +233,22 @@ export function InlineCatalogReviewList({
                     <select
                       aria-label={c.current.title + " 비교할 후보"}
                       disabled={busy}
-                      value={c.id}
+                      value={c.candidateKey ?? c.id}
                       onChange={(e) => {
                         const next = item.alternatives.find(
-                          (a: any) => a.id === e.target.value,
+                          (a: any) =>
+                            (a.candidateKey ?? a.id) === e.target.value,
                         );
                         setChoices((old) => ({
                           ...old,
                           [item.book_id]: {
-                            candidateId: next.id,
+                            candidateId: next.candidateKey ?? next.id,
                             reviewVersion: next.version,
                             fields: reviewFields.filter(
-                              (k) => !next.current[k] && next.record.facts[k],
+                              (k) =>
+                                !next.current.protectedFields?.includes(k) &&
+                                !next.current[k]?.length &&
+                                reviewValue(next.record, k)?.length,
                             ),
                             confirmed: false,
                           },
@@ -238,7 +256,10 @@ export function InlineCatalogReviewList({
                       }}
                     >
                       {item.alternatives.map((a: any) => (
-                        <option key={a.id} value={a.id}>
+                        <option
+                          key={a.candidateKey ?? a.id}
+                          value={a.candidateKey ?? a.id}
+                        >
                           {a.record.title} · {a.record.facts.author} ·{" "}
                           {a.record.isbn}
                         </option>
@@ -255,25 +276,67 @@ export function InlineCatalogReviewList({
                 </p>
                 <div className="inline-review-fields">
                   {reviewFields.map((k) => (
-                    <label key={k}>
-                      <input
-                        type="checkbox"
-                        aria-label={c.current.title + " " + labels[k] + " 반영"}
-                        disabled={
-                          busy ||
-                          !facts[k] ||
-                          !["pending", "deferred"].includes(c.status)
-                        }
-                        checked={choice.fields.includes(k)}
-                        onChange={(e) =>
-                          update(item, {
-                            fields: e.target.checked
-                              ? [...choice.fields, k]
-                              : choice.fields.filter((x) => x !== k),
-                          })
-                        }
-                      />
-                      {labels[k]}
+                    <label key={k} className="inline-review-field">
+                      <span className="inline-review-field-name">
+                        <input
+                          type="checkbox"
+                          aria-label={
+                            c.current.title + " " + labels[k] + " 반영"
+                          }
+                          disabled={
+                            busy ||
+                            !reviewValue(c.record, k)?.length ||
+                            c.current.protectedFields?.includes(k) ||
+                            !["pending", "deferred"].includes(c.status)
+                          }
+                          checked={choice.fields.includes(k)}
+                          onChange={(e) =>
+                            update(item, {
+                              fields: e.target.checked
+                                ? [...choice.fields, k]
+                                : choice.fields.filter((x) => x !== k),
+                            })
+                          }
+                        />
+                        {labels[k]}
+                      </span>
+                      <span
+                        className="muted"
+                        style={{
+                          display: "block",
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere",
+                          maxHeight: 120,
+                          overflow: "auto",
+                        }}
+                      >
+                        현재:{" "}
+                        {k === "coverUrl"
+                          ? c.current[k]
+                            ? "등록됨"
+                            : "없음"
+                          : Array.isArray(c.current[k])
+                            ? c.current[k].join("\n")
+                            : c.current[k] || "없음"}
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere",
+                          maxHeight: 120,
+                          overflow: "auto",
+                        }}
+                      >
+                        후보:{" "}
+                        {k === "coverUrl"
+                          ? reviewValue(c.record, k)
+                            ? "표지 후보"
+                            : "없음"
+                          : Array.isArray(reviewValue(c.record, k))
+                            ? reviewValue(c.record, k).join("\n")
+                            : reviewValue(c.record, k) || "없음"}
+                      </span>
                     </label>
                   ))}
                   <label>
@@ -315,7 +378,7 @@ export function InlineCatalogReviewList({
                         disabled={busy}
                         onClick={() => void decide("reject", [item])}
                       >
-                        후보 거절
+                        거절
                       </button>
                     </>
                   )}

@@ -103,7 +103,7 @@ test("confirms an owned-book deletion, retains a failed confirmation for retry a
     .first()
     .click();
   const detail = page.getByRole("dialog", {
-    name: "책을 펼쳐 보기",
+    name: "상세 정보",
     exact: true,
   });
   await expect(

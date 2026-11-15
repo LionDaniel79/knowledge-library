@@ -139,7 +139,6 @@ export function ReadingCarousel({
             </div>
           </div>
           <div className="carousel-footer">
-            <span>좌우로 밀어 다음 책을 만나세요</span>
             <span data-testid="carousel-position" aria-live="polite">
               {current + 1} / {reading.length}
             </span>

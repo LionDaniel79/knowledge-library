@@ -1,4 +1,11 @@
 "use client";
+import {
+  mergeBookInformation,
+  informationValueKey,
+  pendingAutomaticFields,
+  informationFieldNames,
+  type AutomaticInformation,
+} from "../lib/unified-book-information";
 import { libraryRequest } from "@/client/replica/request";
 import { useEffect, useRef, useState } from "react";
 import { useReplicaOptional } from "./replica/provider";
@@ -32,10 +39,16 @@ export function CurationDetails({
   kind,
   id,
   onChanged,
+  embedded = false,
+  automatic,
+  automaticSource,
 }: {
   kind: "book" | "note";
   id: string;
   onChanged?: () => Promise<void>;
+  embedded?: boolean;
+  automatic?: AutomaticInformation | null;
+  automaticSource?: React.ReactNode;
 }) {
   const [state, setState] = useState<any>(null),
     [error, setError] = useState(""),
@@ -44,10 +57,16 @@ export function CurationDetails({
     [busy, setBusy] = useState(false);
   const replica = useReplicaOptional(),
     loadTicket = useRef(0),
-    opened = useRef(false);
+    opened = useRef(embedded);
+  const [choices, setChoices] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setState(null);
+    setChoices({});
+    setEditing(null);
+  }, [kind, id]);
   useEffect(() => {
     if (opened.current) void load().catch((e) => setError(e.message));
-  }, [replica?.revision]);
+  }, [replica?.revision, kind, id]);
   async function load() {
     const ticket = ++loadTicket.current;
     setError("");
@@ -108,7 +127,54 @@ export function CurationDetails({
       setBusy(false);
     }
   }
-  return (
+  async function selectDisplay(
+    field: string,
+    variant: {
+      value: unknown;
+      itemIds: string[];
+      automatic: boolean;
+      current?: boolean;
+    },
+  ) {
+    if (!state || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await libraryRequest(
+        "/api/curation",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "selectBookField",
+            bookId: id,
+            expectedVersion: Number(state.version),
+            field,
+            itemId:
+              variant.itemIds[0] ??
+              (variant.current && !variant.automatic ? "current" : "automatic"),
+            valueKey: informationValueKey(field, variant.value),
+          }),
+        },
+        { preferServer: true, awaitDeviceSync: true },
+      );
+      const result = await response.json();
+      if (!response.ok)
+        throw Error(result.error ?? "표시할 정보를 저장하지 못했습니다.");
+      await load();
+      setChoices({});
+      await onChanged?.();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "표시할 정보를 저장하지 못했습니다.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const legacy = (
     <details
       className="curation-details"
       onToggle={(e) => {
@@ -119,7 +185,11 @@ export function CurationDetails({
       }}
     >
       <summary>
-        {kind === "book" ? "추가 도서 정보" : "검색을 위한 정리 정보"}
+        {embedded
+          ? "추가 정보 수정·숨기기"
+          : kind === "book"
+            ? "추가 도서 정보"
+            : "검색을 위한 정리 정보"}
       </summary>
       {error && (
         <p role="alert" className="error">
@@ -217,47 +287,49 @@ export function CurationDetails({
                 숨기기
               </button>
             </div>
-            <details>
-              <summary>근거 보기</summary>
-              <p>
-                {originNames[item.origin] ?? item.origin} ·{" "}
-                {item.reviewed_by === "catalog_precheck"
-                  ? "서지 일치 확인"
-                  : item.reviewed_by
-                    ? "사용자 확인·수정"
-                    : "검토 전"}{" "}
-                ·{" "}
-                {item.coverage === "metadata"
-                  ? "서지 정보 범위"
-                  : item.coverage === "toc"
-                    ? "목차 범위"
-                    : item.coverage === "partial"
-                      ? "일부 내용 범위"
-                      : "기록 전체 범위"}
-              </p>
-              <blockquote>{item.evidence.quote}</blockquote>
-              {state.references
-                .filter((r: any) => r.id === item.evidence.referenceId)
-                .map((r: any) => (
-                  <p key={r.id}>
-                    {r.provider} · {String(r.retrieved_at).slice(0, 10)}{" "}
-                    {/^https:\/\//.test(r.url) && (
-                      <a href={r.url} target="_blank" rel="noreferrer">
-                        출처 열기
-                      </a>
-                    )}
-                  </p>
-                ))}
-              {state.history
-                .filter((h: any) => h.entity_id === item.id)
-                .map((h: any, n: number) => (
-                  <small key={n}>
-                    {String(h.created_at).slice(0, 10)} ·{" "}
-                    {h.reviewer ? "사용자 수정" : "처음 정리"}
-                    <br />
-                  </small>
-                ))}
-            </details>
+            {!embedded && (
+              <details>
+                <summary>출처</summary>
+                <p>
+                  {originNames[item.origin] ?? item.origin} ·{" "}
+                  {item.reviewed_by === "catalog_precheck"
+                    ? "서지 일치 확인"
+                    : item.reviewed_by
+                      ? "사용자 확인·수정"
+                      : "검토 전"}{" "}
+                  ·{" "}
+                  {item.coverage === "metadata"
+                    ? "서지 정보 범위"
+                    : item.coverage === "toc"
+                      ? "목차 범위"
+                      : item.coverage === "partial"
+                        ? "일부 내용 범위"
+                        : "기록 전체 범위"}
+                </p>
+                <blockquote>{item.evidence.quote}</blockquote>
+                {state.references
+                  .filter((r: any) => r.id === item.evidence.referenceId)
+                  .map((r: any) => (
+                    <p key={r.id}>
+                      {r.provider} · {String(r.retrieved_at).slice(0, 10)}{" "}
+                      {/^https:\/\//.test(r.url) && (
+                        <a href={r.url} target="_blank" rel="noreferrer">
+                          출처 열기
+                        </a>
+                      )}
+                    </p>
+                  ))}
+                {state.history
+                  .filter((h: any) => h.entity_id === item.id)
+                  .map((h: any, n: number) => (
+                    <small key={n}>
+                      {String(h.created_at).slice(0, 10)} ·{" "}
+                      {h.reviewer ? "사용자 수정" : "처음 정리"}
+                      <br />
+                    </small>
+                  ))}
+              </details>
+            )}
           </article>
         ))}
       {!!state?.items.some((i: any) => i.state === "hidden") && (
@@ -276,5 +348,206 @@ export function CurationDetails({
         </details>
       )}
     </details>
+  );
+  if (!embedded) return legacy;
+  const fields = mergeBookInformation(
+    state?.items ?? [],
+    automatic,
+    state?.informationSelections,
+    state?.currentInformation,
+  );
+  function renderValue(value: unknown, field?: string) {
+    if (
+      field === "classification" &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      const info = value as Record<string, unknown>;
+      return (
+        <p className="curation-value">
+          {[info.label, info.code, info.source, info.method]
+            .filter(Boolean)
+            .join(" · ") || "분류 자료 있음"}
+        </p>
+      );
+    }
+    if (printedTocSchema.safeParse(value).success)
+      return <PrintedTocView value={value} />;
+    if (pdfOutlineSchema.safeParse(value).success)
+      return <PdfOutlineView value={value} />;
+    return (
+      <p className="curation-value">
+        {typeof value === "string"
+          ? value
+          : Array.isArray(value)
+            ? value.join("\n")
+            : JSON.stringify(value, null, 2)}
+      </p>
+    );
+  }
+  function sources(value: {
+    itemIds: string[];
+    automatic: boolean;
+    manual: boolean;
+    current?: boolean;
+    value?: unknown;
+  }) {
+    const names = value.itemIds.map((id) => {
+      const item = state?.items.find((i: any) => i.id === id);
+      const ref = state?.references.find(
+        (r: any) => r.id === item?.evidence?.referenceId,
+      );
+      return ref?.provider ?? originNames[item?.origin] ?? "저장 자료";
+    });
+    if (value.automatic) names.push(automatic?.provider ?? "자동 보완");
+    if (value.current) {
+      for (const [field, saved] of Object.entries(
+        state?.currentInformation?.fields ?? {},
+      ))
+        if (
+          informationValueKey(field, saved) ===
+          informationValueKey(field, value.value)
+        ) {
+          const source = state?.currentInformation?.sources?.[field];
+          if (source?.provider) names.push(source.provider);
+        }
+    }
+    if (value.manual) names.push("사용자 수정");
+    return [...new Set(names)].join(" · ");
+  }
+  return (
+    <div className="unified-information-values">
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      {fields
+        .filter(
+          (field) =>
+            !(
+              field.values.length === 1 &&
+              field.values[0].automatic &&
+              pendingAutomaticFields(automatic).includes(field.field)
+            ),
+        )
+        .map((field) => {
+          const chosen = Math.min(
+            choices[field.field] ?? 0,
+            field.values.length - 1,
+          );
+          const value = field.values[chosen];
+          return (
+            <article
+              className="curation-item unified-information-field"
+              key={field.field}
+            >
+              <h4>{informationFieldNames[field.field] ?? field.field}</h4>
+              {!(
+                value.automatic &&
+                pendingAutomaticFields(automatic).includes(field.field)
+              ) && renderValue(value.value, field.field)}
+              <small className="muted">{sources(value)}</small>
+              {value.itemIds.some((id) =>
+                state?.items.some(
+                  (i: any) =>
+                    i.id === id &&
+                    (i.source_stale || i.source_version !== state.version),
+                ),
+              ) && (
+                <p className="notice">
+                  원자료가 변경되어 다시 확인해야 합니다.
+                </p>
+              )}
+              {field.values.length > 1 && (
+                <details className="information-alternatives">
+                  <summary>다른 값 비교 ({field.values.length - 1})</summary>
+                  <p className="form-hint">
+                    비교할 값을 고른 뒤 표시할 정보로 저장할 수 있습니다.
+                    원자료와 다른 값은 보존됩니다.
+                  </p>
+                  {field.values.map((variant, index) => (
+                    <div key={index} className="information-alternative">
+                      <label className="checkbox-label">
+                        <input
+                          type="radio"
+                          name={`information-${id}-${field.field}`}
+                          checked={chosen === index}
+                          onChange={() =>
+                            setChoices((old) => ({
+                              ...old,
+                              [field.field]: index,
+                            }))
+                          }
+                        />
+                        {informationFieldNames[field.field] ?? field.field} 표시{" "}
+                        {index + 1}
+                      </label>
+                      {index !== chosen &&
+                        renderValue(variant.value, field.field)}
+                      <small className="muted">{sources(variant)}</small>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void selectDisplay(field.field, value)}
+                  >
+                    표시할 정보 저장
+                  </button>
+                </details>
+              )}
+            </article>
+          );
+        })}
+      {state && !fields.length && (
+        <p className="muted">확인된 추가 정보가 아직 없습니다.</p>
+      )}
+      {legacy}
+      <details className="information-sources">
+        <summary>수집 출처</summary>
+        {automaticSource}
+        {state?.items.map((item: any) => (
+          <article key={item.id} className="information-source">
+            <h4>
+              {kindNames[item.kind] ?? item.kind}
+              {item.state === "hidden" ? " · 숨김" : ""}
+            </h4>
+            <p>
+              {originNames[item.origin] ?? item.origin} ·{" "}
+              {item.reviewed_by && item.reviewed_by !== "catalog_precheck"
+                ? "사용자 확인·수정"
+                : item.reviewed_by
+                  ? "서지 일치 확인"
+                  : "검토 전"}
+            </p>
+            <blockquote>{item.evidence?.quote}</blockquote>
+            {state.references
+              .filter((r: any) => r.id === item.evidence?.referenceId)
+              .map((r: any) => (
+                <p key={r.id}>
+                  {r.provider} · {String(r.retrieved_at).slice(0, 10)}{" "}
+                  {/^https:\/\//.test(r.url) && (
+                    <a href={r.url} target="_blank" rel="noreferrer">
+                      출처 열기
+                    </a>
+                  )}
+                </p>
+              ))}
+            {state.history
+              .filter((h: any) => h.entity_id === item.id)
+              .map((h: any, index: number) => (
+                <p key={index}>
+                  <small>
+                    {String(h.created_at).slice(0, 10)} ·{" "}
+                    {h.reviewer ? "사용자 수정" : "처음 정리"}
+                  </small>
+                </p>
+              ))}
+          </article>
+        ))}
+      </details>
+    </div>
   );
 }

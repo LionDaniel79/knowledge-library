@@ -222,7 +222,7 @@ it("requires edition confirmation, applies only selected fields, preserves notes
         [x.owner],
       )
     ).rows,
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   expect(
     (
       await f.db.query("select * from library_revisions where owner_id=$1", [
@@ -294,7 +294,9 @@ it("filters by current format and returns inline comparison data only for the re
     current: { title: "현재 책" },
     record: { facts: { title: record.facts.title } },
   });
-  expect(page.items![0].alternatives[0].record.description).toBeUndefined();
+  expect(page.items![0].alternatives[0].record.description).toBe(
+    record.description,
+  );
   expect(
     (
       await readCatalogReviews(f.db, x.owner, {

@@ -7,7 +7,7 @@ import {
   PageNavigation,
 } from "./list-pagination";
 import { InlineCatalogReviewList } from "./inline-catalog-review-list";
-import { LogosCoverReview } from "./logos-cover-review";
+
 export function CatalogReviewPanel({
   onChanged,
 }: {
@@ -40,7 +40,7 @@ export function CatalogReviewPanel({
     return () => c.abort();
   }, [revision]);
   useEffect(() => {
-    if (!paging.ready || format === "logos") return;
+    if (!paging.ready) return;
     const c = new AbortController();
     setLoading(true);
     setError("");
@@ -167,7 +167,9 @@ export function CatalogReviewPanel({
         {[
           ["pdf", "PDF"],
           ["logos", "로고스"],
-          ["other", "기타 도서"],
+          ["ebook", "전자책"],
+          ["paper", "종이책"],
+          ...(summary?.residualReviewBooks > 0 ? [["other", "기타도서"]] : []),
         ].map(([value, label]) => (
           <button
             key={value}
@@ -185,13 +187,7 @@ export function CatalogReviewPanel({
           </button>
         ))}
       </div>
-      {format === "logos" ? (
-        <LogosCoverReview
-          embedded
-          onBusy={setOperationBusy}
-          onChanged={changed}
-        />
-      ) : (
+      {
         <>
           <div className="catalog-controls">
             <label>
@@ -265,7 +261,7 @@ export function CatalogReviewPanel({
             <p role="status">불러오는 중…</p>
           )}
         </>
-      )}
+      }
     </section>
   );
 }

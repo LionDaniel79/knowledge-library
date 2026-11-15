@@ -1,3 +1,4 @@
+import { selectBookInformation } from "@/server/book-information-selection";
 import { z } from "zod";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
@@ -30,6 +31,12 @@ export async function POST(request: Request) {
       body = await request.text();
     if (body.length > 100000)
       throw new LibraryError(413, "요청이 너무 큽니다.");
+    const parsed = JSON.parse(body);
+    if (parsed.action === "selectBookField")
+      return Response.json(
+        await selectBookInformation(database, owner, parsed),
+        { headers },
+      );
     const p = z
       .object({
         id: z.string().uuid(),
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
         state: z.enum(["active", "hidden"]),
       })
       .strict()
-      .parse(JSON.parse(body));
+      .parse(parsed);
     return Response.json(
       await createCurationStore(database).edit(owner, p.id, p.version, {
         value: p.value,

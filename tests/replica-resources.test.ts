@@ -149,7 +149,7 @@ it("filters device catalog tabs and hydrates only the visible review candidates"
         .total,
     ).toBe(0);
     const page = await read(
-      "/api/catalog-review?groupBy=book&format=other&inline=1",
+      "/api/catalog-review?groupBy=book&format=paper&inline=1",
     );
     expect(page.total).toBe(1);
     expect(page.items[0].alternatives[0]).toMatchObject({
@@ -158,7 +158,8 @@ it("filters device catalog tabs and hydrates only the visible review candidates"
       current: { id: f.book, title: "넥서스", version: 1 },
       record: { title: "넥서스", facts: { author: "하라리" } },
     });
-    expect(page.items[0].alternatives[0].record).not.toHaveProperty("toc");
+    expect(page.items[0].alternatives[0].record.toc).toEqual(["정보"]);
+    expect((await read("/api/catalog-review?format=other")).total).toBe(0);
   } finally {
     f.repo.close();
   }
