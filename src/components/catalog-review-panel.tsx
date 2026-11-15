@@ -43,10 +43,14 @@ export function CatalogReviewPanel({
   const [summary, setSummary] = useState<any>(null);
   useEffect(() => {
     const c = new AbortController();
-    libraryRequest("/api/catalog-review?summary=1", {
-      signal: c.signal,
-      cache: "no-store",
-    }, {preferServer:true})
+    libraryRequest(
+      "/api/catalog-review?summary=1",
+      {
+        signal: c.signal,
+        cache: "no-store",
+      },
+      { preferServer: true },
+    )
       .then(async (r) => {
         if (r.ok) setSummary(await r.json());
       })
@@ -126,62 +130,71 @@ export function CatalogReviewPanel({
         다릅니다.
       </p>
       {summary && (
-        <div style={{ overflowX: "auto" }}>
-          <table>
-            <caption>
-              형식별 도서정보 현황 · 여러 형식의 책은 각 형식에 포함
-            </caption>
-            <thead>
-              <tr>
-                {[
-                  "형식",
-                  "전체",
-                  "표시 가능한 표지",
-                  "분류 지정",
-                  "공식 검증 분류",
-                  "확인 대기 도서",
-                  "검토 후보",
-                  "보완 완료 표시 없음",
-                ].map((t) => (
-                  <th key={t}>{t}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {summary.formats.map((s: any) => (
-                <tr key={s.format}>
-                  <th>
-                    {
-                      (
-                        {
-                          paper: "종이책",
-                          logos: "로고스",
-                          ebook: "전자책",
-                          pdf: "PDF",
-                        } as any
-                      )[s.format]
-                    }
-                  </th>
+        <div className="catalog-summary">
+          <div
+            className="catalog-summary-scroll"
+            role="region"
+            aria-label="형식별 도서정보 현황"
+            tabIndex={0}
+          >
+            <table className="catalog-summary-table">
+              <caption>형식별 도서정보 현황</caption>
+              <thead>
+                <tr>
                   {[
-                    "total",
-                    "covers",
-                    "classified",
-                    "verified",
-                    "reviewBooks",
-                    "candidates",
-                    "incomplete",
-                  ].map((k) => (
-                    <td key={k}>{s[k]}</td>
+                    "형식",
+                    "전체",
+                    "표지",
+                    "분류",
+                    "공식 분류",
+                    "확인 대기",
+                    "후보",
+                    "보완 미표시",
+                  ].map((t) => (
+                    <th key={t} scope="col">
+                      {t}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {summary.formats.map((s: any) => (
+                  <tr key={s.format}>
+                    <th scope="row">
+                      {
+                        (
+                          {
+                            paper: "종이책",
+                            logos: "로고스",
+                            ebook: "전자책",
+                            pdf: "PDF",
+                          } as any
+                        )[s.format]
+                      }
+                    </th>
+                    {[
+                      "total",
+                      "covers",
+                      "classified",
+                      "verified",
+                      "reviewBooks",
+                      "candidates",
+                      "incomplete",
+                    ].map((k) => (
+                      <td key={k}>{s[k]}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p>
-            분류 지정에는 임시 분류가 포함됩니다. 보완 완료 표시 없음은 오류
-            건수가 아닙니다.
+            여러 형식의 책은 각 형식에 포함됩니다. 분류에는 임시 분류가
+            포함됩니다. 보완 미표시는 오류 건수가 아닙니다.
           </p>
-          <a href="/logos/covers">로고스 표지 후보 확인</a>
+          <a className="secondary compact-link" href="/logos/covers">
+            로고스 표지 후보 확인
+          </a>
         </div>
       )}
       <div className="catalog-controls">

@@ -124,10 +124,14 @@ export default function LogosImportPage() {
         미디어·인터랙티브·데이터셋 설명서 등 비도서 자료는 제외합니다. 이
         화면에서는 먼저 등록 대상을 검토합니다.
       </p>
-      <p>
-        <a href="/">나의 서재로 돌아가기</a> ·{" "}
-        <a href="/logos/covers">로고스 표지 확인 화면</a>
-      </p>
+      <nav className="compact-page-nav" aria-label="로고스 관련 화면">
+        <a className="secondary compact-link" href="/">
+          나의 서재
+        </a>
+        <a className="secondary compact-link" href="/logos/covers">
+          로고스 표지 확인
+        </a>
+      </nav>
       <label>
         로고스 서재 XML{" "}
         <input

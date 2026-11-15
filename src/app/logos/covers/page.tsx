@@ -27,7 +27,6 @@ export default function LogosCoversPage() {
   const [items, setItems] = useState<Book[]>([]);
   const [offset, setOffset] = useState<number | null>(0);
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [approved, setApproved] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,7 +44,6 @@ export default function LogosCoversPage() {
       if (!r.ok) throw Error(data.error ?? "목록을 가져오지 못했습니다.");
       setItems(data.items);
       setOffset(data.nextOffset);
-      setApproved({});
       setUrls({});
     } catch (e) {
       setError(e instanceof Error ? e.message : "조회 실패");
@@ -59,10 +57,14 @@ export default function LogosCoversPage() {
   return (
     <main style={{ maxWidth: 960, margin: "3rem auto", padding: "1.5rem" }}>
       <h1>로고스 도서 표지 확인</h1>
-      <p>
-        <a href="/logos/import">로고스 가져오기 화면</a> ·{" "}
-        <a href="/">나의 서재</a>
-      </p>
+      <nav className="compact-page-nav" aria-label="로고스 관련 화면">
+        <a className="secondary compact-link" href="/logos/import">
+          로고스 가져오기 화면
+        </a>
+        <a className="secondary compact-link" href="/">
+          나의 서재
+        </a>
+      </nav>
       <p>
         로고스 XML에는 표지가 없습니다. 정확한 책·판본인지 직접 확인한 이미지
         주소만 등록하세요. 저장한 이미지는 서재에 보관됩니다. 기존 표지는
@@ -117,7 +119,6 @@ export default function LogosCoversPage() {
                           ...old,
                           [book.id]: candidate.facts.coverUrl,
                         }));
-                        setApproved((old) => ({ ...old, [book.id]: false }));
                         setErrors((old) => ({ ...old, [book.id]: "" }));
                       }}
                     />
@@ -152,25 +153,13 @@ export default function LogosCoversPage() {
               value={urls[book.id] ?? ""}
               onChange={(e) => {
                 setUrls((o) => ({ ...o, [book.id]: e.target.value }));
-                setApproved((o) => ({ ...o, [book.id]: false }));
                 setErrors((o) => ({ ...o, [book.id]: "" }));
               }}
             />
           </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={!!approved[book.id]}
-              onChange={(e) =>
-                setApproved((o) => ({ ...o, [book.id]: e.target.checked }))
-              }
-            />
-            해당 책과 판본이 일치하는 표지임을 확인했습니다.
-          </label>
           <button
-            disabled={
-              busy || saving[book.id] || !approved[book.id] || !urls[book.id]
-            }
+            className="primary compact-link"
+            disabled={busy || saving[book.id] || !urls[book.id]?.trim()}
             onClick={async () => {
               if (saving[book.id]) return;
               setSaving((o) => ({ ...o, [book.id]: true }));
