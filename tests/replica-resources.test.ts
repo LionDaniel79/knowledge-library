@@ -136,3 +136,30 @@ it("never silently falls back to the network for unregistered saved-data routes"
     f.repo.close();
   }
 });
+it("filters device catalog tabs and hydrates only the visible review candidates", async () => {
+  const f = await resourceFixture();
+  try {
+    const read = (path: string) => f.repo.read(path) as Promise<any>;
+    expect(
+      (await read("/api/catalog-review?groupBy=book&format=pdf&inline=1"))
+        .total,
+    ).toBe(0);
+    expect(
+      (await read("/api/catalog-review?groupBy=book&format=logos&inline=1"))
+        .total,
+    ).toBe(0);
+    const page = await read(
+      "/api/catalog-review?groupBy=book&format=other&inline=1",
+    );
+    expect(page.total).toBe(1);
+    expect(page.items[0].alternatives[0]).toMatchObject({
+      id: f.review,
+      version: 1,
+      current: { id: f.book, title: "넥서스", version: 1 },
+      record: { title: "넥서스", facts: { author: "하라리" } },
+    });
+    expect(page.items[0].alternatives[0].record).not.toHaveProperty("toc");
+  } finally {
+    f.repo.close();
+  }
+});

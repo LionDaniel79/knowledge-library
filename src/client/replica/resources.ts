@@ -753,7 +753,10 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             .max(50)
             .parse(p.get("limit") ?? 20),
           id = p.get("id"),
-          group = p.get("groupBy") ?? "candidate";
+          group = p.get("groupBy") ?? "candidate",
+          format = z
+            .enum(["all", "pdf", "logos", "other"])
+            .parse(p.get("format") ?? "all");
         if (id) {
           z.string().uuid().parse(id);
           const r = await reader.raw("library_catalog_reviews", id),
@@ -812,10 +815,19 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
                   containsSearchField(String(r.candidate_title ?? ""), q)),
             )
             .sort(order);
+          const books = new Map(
+            (await reader.index()).books.map((b) => [b.book.id, b.book]),
+          );
+          if (format !== "all")
+            rows = rows.filter((r) => {
+              const b = books.get(r.book_id);
+              if (!b) return false;
+              return format === "other"
+                ? !b.formats.includes("pdf") && !b.formats.includes("logos")
+                : b.formats.includes(format);
+            });
+          const candidateRows = rows;
           if (group === "book") {
-            const books = new Map(
-              (await reader.index()).books.map((b) => [b.book.id, b.book]),
-            );
             const groups = new Map<string, RawRecord[]>();
             for (const r of rows)
               groups.set(r.book_id, [...(groups.get(r.book_id) ?? []), r]);
@@ -832,7 +844,7 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             }
             rows.sort(order);
           }
-          const items = rows.slice(offset, offset + limit).map((r) => ({
+          const items: RawRecord[] = rows.slice(offset, offset + limit).map((r) => ({
             ...fields(r, [
               "id",
               "book_id",
@@ -845,6 +857,46 @@ export function createResourceReader(storage: ReplicaStorage, reader: Reader) {
             ]),
             ...(group === "book" ? { candidateCount: r.candidateCount } : {}),
           }));
+          if (p.get("inline") === "1") {
+            for (const item of items) {
+              const b = books.get(item.book_id);
+              const alternatives = [];
+              for (const candidate of candidateRows.filter(
+                (r) => r.book_id === item.book_id,
+              )) {
+                const raw = await reader.raw(
+                  "library_catalog_reviews",
+                  candidate.id,
+                );
+                if (!raw || !b) continue;
+                const {
+                  description: _description,
+                  toc: _toc,
+                  ...record
+                } = raw.record ?? {};
+                alternatives.push({
+                  ...fields(raw, [
+                    "id",
+                    "book_id",
+                    "version",
+                    "status",
+                    "decision",
+                  ]),
+                  record,
+                  current: fields(b, [
+                    "id",
+                    "title",
+                    "author",
+                    "publisher",
+                    "isbn",
+                    "coverUrl",
+                    "version",
+                  ]),
+                });
+              }
+              Object.assign(item, { alternatives });
+            }
+          }
           value = {
             items,
             total: rows.length,
