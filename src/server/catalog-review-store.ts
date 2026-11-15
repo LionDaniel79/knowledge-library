@@ -141,6 +141,8 @@ export async function readCatalogReviews(
       limit: z.coerce.number().int().min(1).max(50).default(20),
       id: z.string().uuid().optional(),
       groupBy: z.enum(["candidate", "book"]).default("candidate"),
+      format: z.enum(["all", "pdf", "logos", "other"]).default("all"),
+      inline: z.enum(["0", "1"]).default("0"),
     })
     .parse(query);
   if (q.id) {
@@ -166,7 +168,11 @@ export async function readCatalogReviews(
     return { ...row, current: snapshot(b), alternatives };
   }
   const params = [owner, q.status, q.q];
-  const where = `owner_id=$1 AND status=$2 AND (${searchFieldSql("book_snapshot->>'title'", "$3")} OR ${searchFieldSql("record->>'title'", "$3")})`;
+  const formatWhere =
+    q.format === "all"
+      ? ""
+      : ` AND EXISTS(SELECT 1 FROM library_books fb WHERE fb.owner_id=library_catalog_reviews.owner_id AND fb.id=library_catalog_reviews.book_id AND ${q.format === "other" ? "NOT('pdf'=ANY(fb.formats) OR 'logos'=ANY(fb.formats))" : `'${q.format}'=ANY(fb.formats)`})`;
+  const where = `owner_id=$1 AND status=$2 AND (${searchFieldSql("book_snapshot->>'title'", "$3")} OR ${searchFieldSql("record->>'title'", "$3")})${formatWhere}`;
   const count = (
     await db.query(
       `SELECT count(${q.groupBy === "book" ? "DISTINCT book_id" : "*"})::int AS n FROM library_catalog_reviews WHERE ${where}`,
@@ -181,6 +187,22 @@ export async function readCatalogReviews(
       [...params, q.offset, q.limit],
     )
   ).rows;
+  if (q.inline === "1" && items.length) {
+    const rows = (
+      await db.query(
+        `SELECT r.id,r.book_id,r.version,r.status,r.record-'description'-'toc' AS record,r.decision,jsonb_build_object('id',b.id,'title',b.title,'author',b.author,'publisher',b.publisher,'isbn',b.isbn,'coverUrl',b.cover_url,'version',b.version) AS current FROM library_catalog_reviews r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id WHERE r.owner_id=$1 AND r.book_id=ANY($2::uuid[]) AND r.status=$3 ORDER BY r.created_at,r.id`,
+        [owner, items.map((i) => i.book_id), q.status],
+      )
+    ).rows;
+    const groups = new Map<string, any[]>();
+    for (const r of rows) {
+      const group = groups.get(r.book_id) ?? [];
+      group.push(r);
+      groups.set(r.book_id, group);
+    }
+    for (const item of items)
+      item.alternatives = groups.get(item.book_id) ?? [];
+  }
   return {
     items,
     total: count,

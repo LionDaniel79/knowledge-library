@@ -214,44 +214,44 @@ test("compares candidates, requires edition confirmation and preserves unselecte
       decision = r.request().postDataJSON();
       return r.fulfill({ json: { action: decision.action } });
     }
-    const p = new URL(r.request().url()).searchParams;
+    if (new URL(r.request().url()).searchParams.has("summary"))
+      return r.fulfill({ json: { formats: [] } });
     return r.fulfill({
-      json: p.has("id")
-        ? {
-            id: "00000000-0000-4000-a000-000000000002",
-            version: 1,
-            status: "pending",
-            current: { title: "현재 책", author: "내 표기", isbn: "" },
-            record: {
-              facts: {
-                title: "검색 후보",
-                author: "다른 저자",
-                isbn: "9780306406157",
-                publisher: "출판사",
-                coverUrl: "",
-              },
-              toc: ["1장"],
-              description: "제공자 소개",
-              url: "https://www.yes24.com/product/goods/1234",
-            },
-          }
-        : {
-            items: [
+      json: {
+        items: decision
+          ? []
+          : [
               {
                 id: "00000000-0000-4000-a000-000000000002",
+                book_id: "book",
                 title: "현재 책",
-                candidate_title: "검색 후보",
-                isbn: "9780306406157",
+                alternatives: [
+                  {
+                    id: "00000000-0000-4000-a000-000000000002",
+                    version: 1,
+                    status: "pending",
+                    current: { title: "현재 책", author: "내 표기", isbn: "" },
+                    record: {
+                      title: "검색 후보",
+                      isbn: "9780306406157",
+                      facts: {
+                        title: "검색 후보",
+                        author: "다른 저자",
+                        isbn: "9780306406157",
+                        publisher: "출판사",
+                        coverUrl: "",
+                      },
+                      url: "https://www.yes24.com/product/goods/1234",
+                    },
+                  },
+                ],
               },
             ],
-            total: 1,
-            nextOffset: null,
-          },
+        total: decision ? 0 : 1,
+        nextOffset: null,
+      },
     });
   });
-  await page.route("https://library.test/api/book-introduction**", (r) =>
-    r.fulfill({ json: { introduction: null, references: [], bookVersion: 1 } }),
-  );
   await page.route("https://library.test/", (r) =>
     r.fulfill({
       contentType: "text/html",
@@ -261,19 +261,12 @@ test("compares candidates, requires edition confirmation and preserves unselecte
   await page.goto("https://library.test/");
   await page.addStyleTag({ path: "src/app/globals.css" });
   await page.addScriptTag({ content: bundle });
-  await page.getByRole("button", { name: /현재 책/ }).click();
-  await expect(page.getByLabel("제목 반영")).not.toBeChecked();
-  await expect(page.getByLabel("ISBN 반영")).toBeChecked();
+  await expect(page.getByLabel("현재 책 제목 반영")).not.toBeChecked();
+  await expect(page.getByLabel("현재 책 ISBN 반영")).toBeChecked();
   await expect(
-    page.getByRole("button", { name: "선택 정보 반영" }),
+    page.getByRole("button", { name: "적용", exact: true }),
   ).toBeDisabled();
-  await page.getByLabel("소장본과 같은 판본으로 확인했습니다.").check();
-  await page.getByRole("button", { name: "선택 정보 반영" }).click();
-  expect(decision.fields).toEqual(["publisher", "isbn"]);
-  await page.screenshot({
-    path:
-      process.env.LIBRARY_QA_SCREENSHOT ??
-      ".superpowers/sdd/2026-10-16-review-and-maintenance/review-ui.png",
-    fullPage: true,
-  });
+  await page.getByLabel("현재 책 판본 확인").check();
+  await page.getByRole("button", { name: "적용", exact: true }).click();
+  await expect.poll(() => decision?.fields).toEqual(["publisher", "isbn"]);
 });

@@ -30,6 +30,7 @@ partial class PdfDesktop {
     WorkerJob catalogJob;
     Process catalogProcess;
     Forms.NotifyIcon tray;
+    System.Drawing.Icon trayIcon;
     FileSystemWatcher watcher;
     bool exiting,backgroundBusy,monitorBusy,paused,scanQueued=true,watcherFault,webSyncQueued,auditQueued;
     DateTime nextWebAttempt=DateTime.MinValue;
@@ -78,7 +79,9 @@ partial class PdfDesktop {
         if(credentialFile.Length==0)credentialFile=Path.Combine(data,"web-device.dpapi");
         RefreshConnection();
         if(!StartCollectionHost())StartCatalogSidecar();
-        tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="전자도서관 PDF 서재",Visible=true};
+        trayIcon=System.Drawing.Icon.ExtractAssociatedIcon(Forms.Application.ExecutablePath)??(System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone();
+        Icon=System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(trayIcon.Handle,Int32Rect.Empty,System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+        tray=new Forms.NotifyIcon{Icon=trayIcon,Text="전자도서관 PDF 서재",Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("PDF 서재 열기",null,(s,e)=>Dispatcher.BeginInvoke(new Action(ShowFromTray)));
         menu.Items.Add("OCR 일시정지 / 계속",null,(s,e)=>Dispatcher.BeginInvoke(new Action(async()=>await SetPaused(!paused))));
@@ -238,7 +241,7 @@ partial class PdfDesktop {
     void StopManagement(){
         StopCollectionHost();
         StopCatalogSidecar();
-        backgroundTimer.Stop();if(watcher!=null){watcher.Dispose();watcher=null;}if(backgroundJob!=null){backgroundJob.Dispose();backgroundJob=null;}if(monitorJob!=null){monitorJob.Dispose();monitorJob=null;}if(tray!=null){tray.Visible=false;tray.Dispose();tray=null;}
+        backgroundTimer.Stop();if(watcher!=null){watcher.Dispose();watcher=null;}if(backgroundJob!=null){backgroundJob.Dispose();backgroundJob=null;}if(monitorJob!=null){monitorJob.Dispose();monitorJob=null;}if(tray!=null){tray.Visible=false;tray.Dispose();tray=null;}if(trayIcon!=null){trayIcon.Dispose();trayIcon=null;}
     }
     static bool ValidOrigin(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&uri.Scheme=="https"&&uri.AbsolutePath=="/"&&uri.Query.Length==0&&uri.Fragment.Length==0&&uri.UserInfo.Length==0;}
     void RefreshConnection(){connectionStatus.Text=webOrigin.Length==0?"웹 연결 선택 사항 · 로컬 검색은 연결 없이 사용할 수 있습니다.":"웹 서지 연결: "+webOrigin+" · 도서 두 폴더의 서지·상대 위치만 전송";}

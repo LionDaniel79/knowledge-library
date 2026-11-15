@@ -1,15 +1,25 @@
 import { requireOwner } from "@/server/auth";
 import { validateWriteOrigin } from "@/server/access";
 import { database } from "@/server/db";
-import { saveVerifiedLogosCover } from "@/server/logos-cover";
+import {
+  saveVerifiedLogosCover,
+  rejectLogosCoverCandidates,
+  logosCoverReviewPredicate,
+} from "@/server/logos-cover";
 import { failure } from "@/server/http";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     validateWriteOrigin(request, process.env.APP_ORIGIN ?? "");
     const owner = await requireOwner();
+    const body = await request.json();
     return Response.json(
-      await saveVerifiedLogosCover(database, owner, await request.json()),
+      body?.action === "reject"
+        ? await rejectLogosCoverCandidates(database, owner, {
+            bookId: body.bookId,
+            expectedVersion: body.expectedVersion,
+          })
+        : await saveVerifiedLogosCover(database, owner, body),
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e) {
@@ -27,7 +37,7 @@ export async function GET(request: Request) {
       return new Response(null, { status: 400 });
     const items = (
       await database.query(
-        "SELECT b.id,b.title,b.author,b.publisher,b.version,b.source_data->'raw'->>'edition' AS edition,b.source_data->'raw'->>'publicationDate' AS publication_date,coalesce(b.enrichment->'logosCompletion'->'candidates','[]'::jsonb) AS candidates FROM library_active_books b WHERE b.owner_id=$1 AND EXISTS(SELECT 1 FROM library_book_sources s WHERE s.owner_id=b.owner_id AND s.book_id=b.id AND s.source_kind='Logos') AND b.cover_url='' AND coalesce(b.enrichment->>'coverRemoved','false')<>'true' ORDER BY (jsonb_array_length(coalesce(b.enrichment->'logosCompletion'->'candidates','[]'::jsonb))>0) DESC,b.title,b.id LIMIT 51 OFFSET $2",
+        `SELECT b.id,b.title,b.author,b.publisher,b.version,b.source_data->'raw'->>'edition' AS edition,b.source_data->'raw'->>'publicationDate' AS publication_date,coalesce(b.enrichment->'logosCompletion'->'candidates','[]'::jsonb) AS candidates FROM library_active_books b WHERE b.owner_id=$1 AND EXISTS(SELECT 1 FROM library_book_sources s WHERE s.owner_id=b.owner_id AND s.book_id=b.id AND s.source_kind='Logos') AND ${logosCoverReviewPredicate} AND b.cover_url='' AND coalesce(b.enrichment->>'coverRemoved','false')<>'true' ORDER BY (jsonb_array_length(coalesce(b.enrichment->'logosCompletion'->'candidates','[]'::jsonb))>0) DESC,b.title,b.id LIMIT 51 OFFSET $2`,
         [owner, offset],
       )
     ).rows;

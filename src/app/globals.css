@@ -52,6 +52,161 @@
   gap: 8px;
   margin: 8px 0 12px;
 }
+.logos-cover-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+.logos-cover-bulk label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.logos-cover-bulk span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.logos-cover-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logos-cover-heading h3 {
+  margin: 0;
+}
+.catalog-format-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 10px;
+}
+.catalog-review-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.inline-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.inline-review-card {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.inline-review-picture {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.inline-review-picture img {
+  object-fit: contain;
+  max-width: 100%;
+}
+.inline-review-info {
+  min-width: 0;
+}
+.inline-review-info h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.inline-review-info p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.inline-review-info > strong {
+  font-size: 13px;
+}
+.inline-review-candidate {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.inline-review-candidate select {
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.inline-review-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin: 7px 0;
+}
+.inline-review-fields label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.inline-review-card .compact-page-nav {
+  margin: 5px 0 0;
+  gap: 5px;
+}
+.logos-cover-card {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+.logos-cover-card > p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.logos-cover-card fieldset {
+  margin: 7px 0;
+  padding: 5px 8px;
+}
+.logos-cover-card legend {
+  font-size: 12px;
+}
+.logos-cover-candidate {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 5px 0;
+}
+.logos-cover-candidate-info {
+  font-size: 12px;
+  line-height: 1.55;
+  min-width: 0;
+}
+.logos-cover-candidate-info input {
+  margin-right: 6px;
+}
+.logos-cover-card > label {
+  font-size: 12px;
+}
+.logos-cover-card > label input {
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.logos-cover-embedded .logos-cover-heading h3 {
+  font-size: 15px;
+}
+@media (max-width: 480px) {
+  .inline-review-card {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .inline-review-picture img {
+    width: 48px;
+    height: 70px;
+  }
+}
 .compact-link.primary,
 .compact-link.secondary {
   display: inline-flex;

@@ -34,10 +34,11 @@ const set = (b: any, k: string, v: any) => {
   if (extra.includes(k)) b.enrichment["auto_" + k] = v;
   else b[k] = v;
 };
-const fingerprint = (r: LogosCandidate) =>
+export const bibliographyCandidateFingerprint = (r: LogosCandidate) =>
   createHash("sha256")
     .update(JSON.stringify([r.provider, r.url, r.isbn, r.facts]))
     .digest("hex");
+const fingerprint = bibliographyCandidateFingerprint;
 async function book(tx: any, owner: string, id: string) {
   return (
     await tx.query(

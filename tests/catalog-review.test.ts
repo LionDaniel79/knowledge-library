@@ -277,3 +277,40 @@ it("prechecks only pending owned books and preserves review versions on repeated
   expect((await precheckCatalogReviews(f.db, x.owner, true)).books).toBe(0);
   expect((await precheckCatalogReviews(f.db, "other", true)).books).toBe(0);
 });
+it("filters by current format and returns inline comparison data only for the requested page and owner", async () => {
+  const x = await fixture();
+  await f.db.query(
+    "UPDATE library_books SET formats=ARRAY['pdf'] WHERE id=$1",
+    [x.bookId],
+  );
+  await importCatalogReview(f.db, x.owner, x);
+  const page = await readCatalogReviews(f.db, x.owner, {
+    format: "pdf",
+    inline: "1",
+    groupBy: "book",
+  });
+  expect(page.total).toBe(1);
+  expect(page.items![0].alternatives[0]).toMatchObject({
+    current: { title: "현재 책" },
+    record: { facts: { title: record.facts.title } },
+  });
+  expect(page.items![0].alternatives[0].record.description).toBeUndefined();
+  expect(
+    (
+      await readCatalogReviews(f.db, x.owner, {
+        format: "other",
+        inline: "1",
+        groupBy: "book",
+      })
+    ).total,
+  ).toBe(0);
+  expect(
+    (
+      await readCatalogReviews(f.db, "other", {
+        format: "pdf",
+        inline: "1",
+        groupBy: "book",
+      })
+    ).items,
+  ).toHaveLength(0);
+});

@@ -82,3 +82,116 @@ it("reviews three candidates independently, preserving ISBN, manual category and
     await f.pg.close();
   }
 });
+
+it("rejects current cover candidates without changing the book or reading records and hides only that candidate set", async () => {
+  const f = await testDatabase(),
+    old = process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+  process.env.LIBRARY_STAGE5_WRITE_ENABLED = "true";
+  try {
+    await applyLogos(f.db, "owner", {
+      items: [
+        {
+          resourceId: "LLS:REJECT",
+          title: "Review fixture",
+          author: "Author",
+          publisher: "Publisher",
+          resourceType: "단행본",
+          license: "permanent",
+        },
+      ],
+    });
+    const b = (await f.db.query("SELECT id,version FROM library_books"))
+      .rows[0];
+    const candidate = {
+      provider: "예스24",
+      url: "https://www.yes24.com/Product/Goods/1",
+      isbn: "9780306406157",
+      facts: {
+        title: "Review fixture",
+        author: "Author",
+        publisher: "Publisher",
+        coverUrl: "https://image.yes24.com/1.jpg",
+      },
+    };
+    await f.db.query("UPDATE library_books SET enrichment=$2 WHERE id=$1", [
+      b.id,
+      JSON.stringify({
+        retained: "keep",
+        logosCompletion: { candidates: [candidate] },
+      }),
+    ]);
+    await f.db.query(
+      `INSERT INTO library_cycles(id,owner_id,book_id,status,started_on) VALUES($1,'owner',$2,'reading','2026-11-01')`,
+      [randomUUID(), b.id],
+    );
+    const { rejectLogosCoverCandidates, logosCoverReviewPredicate } =
+      await import("../src/server/logos-cover");
+    await expect(
+      rejectLogosCoverCandidates(f.db, "other", {
+        bookId: b.id,
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      rejectLogosCoverCandidates(f.db, "owner", {
+        bookId: b.id,
+        expectedVersion: 99,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      rejectLogosCoverCandidates(f.db, "owner", {
+        bookId: b.id,
+        expectedVersion: 1,
+      }),
+    ).resolves.toMatchObject({ version: 2, dismissed: true });
+    await expect(
+      rejectLogosCoverCandidates(f.db, "owner", {
+        bookId: b.id,
+        expectedVersion: 1,
+      }),
+    ).resolves.toMatchObject({ version: 2 });
+    const after = (
+      await f.db.query(
+        "SELECT title,isbn,cover_url,enrichment FROM library_books WHERE id=$1",
+        [b.id],
+      )
+    ).rows[0];
+    expect(after).toMatchObject({
+      title: "Review fixture",
+      isbn: "",
+      cover_url: "",
+      enrichment: { retained: "keep" },
+    });
+    expect(after.enrichment.rejectedBibliography).toHaveLength(1);
+    expect(
+      (
+        await f.db.query(
+          `SELECT id FROM library_active_books b WHERE ${logosCoverReviewPredicate}`,
+        )
+      ).rows,
+    ).toHaveLength(0);
+    await f.db.query(
+      `UPDATE library_books SET enrichment=jsonb_set(enrichment,'{logosCompletion,candidates}',$2) WHERE id=$1`,
+      [
+        b.id,
+        JSON.stringify([
+          { ...candidate, url: "https://www.yes24.com/Product/Goods/2" },
+        ]),
+      ],
+    );
+    expect(
+      (
+        await f.db.query(
+          `SELECT id FROM library_active_books b WHERE ${logosCoverReviewPredicate}`,
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      (await f.db.query("SELECT status FROM library_cycles")).rows,
+    ).toEqual([{ status: "reading" }]);
+  } finally {
+    if (old === undefined) delete process.env.LIBRARY_STAGE5_WRITE_ENABLED;
+    else process.env.LIBRARY_STAGE5_WRITE_ENABLED = old;
+    await f.pg.close();
+  }
+});
