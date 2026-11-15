@@ -489,6 +489,46 @@ legend {
 .sidebar nav button:hover:not(.active) {
   background: #e7ecdf;
 }
+.sidebar-settings {
+  margin-top: 12px;
+  border-top: 1px solid #dce1d5;
+  padding-top: 10px;
+}
+.sidebar-settings summary {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #6d776b;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+.sidebar-settings summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar-settings summary:hover,
+.sidebar-settings[open] summary {
+  background: #e7ecdf;
+}
+.sidebar-settings-actions {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0 4px 22px;
+}
+.sidebar-settings-actions .text-button {
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.sidebar {
+  overflow-y: auto;
+}
 .sidebar-bottom {
   margin-top: auto;
   padding-top: 48px;
@@ -912,11 +952,27 @@ progress::-moz-progress-bar {
 .calendar-panel {
   padding: 24px 21px 19px;
 }
-.calendar-panel .section-heading {
+.calendar-toolbar {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 16px;
 }
-.calendar-panel .section-heading h2 {
-  font-size: 17px;
+.calendar-content {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(230px, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.calendar-month-view,
+.calendar-side {
+  min-width: 0;
+}
+.calendar-side {
+  display: grid;
+  gap: 12px;
+}
+.calendar-summary {
+  margin: 0;
 }
 .month-selector {
   display: flex;
@@ -998,8 +1054,8 @@ progress::-moz-progress-bar {
 }
 .date-detail {
   border-top: 1px solid var(--line);
-  margin-top: 14px;
-  padding-top: 15px;
+  margin-top: 0;
+  padding: 15px 2px 0;
   min-height: 73px;
 }
 .date-label {
@@ -1094,6 +1150,20 @@ progress::-moz-progress-bar {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
   gap: 24px;
+}
+.dashboard-book-strip {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x proximity;
+  padding: 4px 2px 14px;
+  scrollbar-width: thin;
+}
+.dashboard-book-strip > * {
+  flex: 0 0 min(190px, 72vw);
+  min-width: 0;
+  scroll-snap-align: start;
 }
 .memo-group-editor {
   display: grid;
@@ -1325,12 +1395,7 @@ progress::-moz-progress-bar {
   background: var(--green);
   color: white;
 }
-.calendar-full {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(230px, 1fr);
-  gap: 24px;
-}
-.calendar-full .calendar-day {
+.calendar-panel .calendar-day {
   height: 83px;
 }
 .calendar-summary strong {
@@ -1949,11 +2014,9 @@ dd {
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .calendar-full {
-    grid-template-columns: 1fr;
-  }
-  .calendar-summary {
-    display: none;
+  .calendar-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
   }
   .topbar-add {
     padding: 8px;
@@ -2163,7 +2226,7 @@ dd {
   .calendar-day {
     height: 57px;
   }
-  .calendar-full .calendar-day {
+  .calendar-panel .calendar-day {
     height: 65px;
   }
   .shelf-grid {
@@ -3738,8 +3801,16 @@ textarea {
 .book-toolbar > .filter-tabs {
   flex: 1 1 280px;
 }
-.book-toolbar > span {
+.book-toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-left: auto;
+}
+.book-toolbar-end > span {
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 .book-view-actions {
   display: flex;

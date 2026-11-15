@@ -296,14 +296,10 @@ function OwnerRecommendations({
     >
       <div className="section-heading">
         <div>
-          <span className="eyebrow">FROM YOUR LIBRARY</span>
           <h2 id={`${id}-title`}>AI 추천</h2>
         </div>
         <Sparkles size={20} aria-hidden="true" />
       </div>
-      <p className="recommendation-intro">
-        내가 소장한 책에서 다음에 읽을 책을 골라 보세요.
-      </p>
       <div
         className="recommendation-tabs"
         role="tablist"

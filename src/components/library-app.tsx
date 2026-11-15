@@ -27,6 +27,7 @@ import {
   Feather,
   History,
   RefreshCw,
+  Settings,
 } from "lucide-react";
 import {
   readingStats,
@@ -680,16 +681,72 @@ export function LibraryApp({
               </button>
             ))}
           </nav>
+          {!preview && (
+            <details className="sidebar-settings">
+              <summary>
+                <Settings size={18} />
+                <span>설정</span>
+              </summary>
+              <div className="sidebar-settings-actions">
+                <button
+                  className="text-button"
+                  disabled={refreshing}
+                  onClick={async () => {
+                    setRefreshing(true);
+                    try {
+                      await refresh();
+                      setMessage("최신 기록을 불러왔습니다.");
+                      setFailure("");
+                    } catch (e) {
+                      setFailure(
+                        e instanceof Error ? e.message : "새로고침 실패",
+                      );
+                    } finally {
+                      setRefreshing(false);
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  {refreshing ? "새로고침 중" : "새로고침"}
+                </button>
+                <button
+                  className="text-button"
+                  onClick={() => setImporting(true)}
+                >
+                  기존 자료 가져오기
+                </button>
+                <a className="text-button" href="/api/export">
+                  <Download size={14} />
+                  전체 기록 내려받기
+                </a>
+                <button
+                  className="text-button"
+                  onClick={() => setBackupOpen(true)}
+                >
+                  백업과 복원
+                </button>
+                <button
+                  className="text-button"
+                  onClick={() => setSyncSettingsOpen(true)}
+                >
+                  기기 저장·동기화
+                </button>
+                <a className="text-button" href="/desktop/connect">
+                  Windows PDF 서재 연결
+                </a>
+                <a className="text-button" href="/logos/import">
+                  로고스 도서 가져오기
+                </a>
+                <button
+                  className="text-button"
+                  onClick={() => setExclusionsOpen(true)}
+                >
+                  삭제·제외한 자료
+                </button>
+              </div>
+            </details>
+          )}
           <div className="sidebar-bottom">
-            <div className="sidebar-quote">
-              <Feather size={22} />
-              <p>
-                책을 읽는 시간은
-                <br />
-                나를 넓히는 시간.
-              </p>
-              <span>한 권씩, 오래도록.</span>
-            </div>
             <div className="connection-status">
               <CloudCheck size={17} />
               {preview
@@ -941,7 +998,6 @@ export function LibraryApp({
                       {currentStats.readingCount}
                       <small>권</small>
                     </strong>
-                    <p>저마다의 속도로 읽고 있어요</p>
                     <BookOpen />
                   </div>
                   <div className="stat-card">
@@ -962,7 +1018,6 @@ export function LibraryApp({
                       {data.notes.length}
                       <small>개</small>
                     </strong>
-                    <p>내 안에 남은 독서의 흔적</p>
                     <Feather />
                   </div>
                 </div>
@@ -986,7 +1041,6 @@ export function LibraryApp({
                       <section className="recent-notes">
                         <div className="section-heading">
                           <div>
-                            <span className="eyebrow">WORDS THAT STAY</span>
                             <h2>최근 남긴 생각</h2>
                           </div>
                           <button
@@ -1042,7 +1096,11 @@ export function LibraryApp({
                 <>
                   <div className="book-toolbar">
                     <div className="book-view-actions">
-                      <PageSizeSelect label="소장 도서" paging={bookPaging} />
+                      <PageSizeSelect
+                        label="소장 도서"
+                        paging={bookPaging}
+                        compact
+                      />
                       <div className="book-view-review">
                         <select
                           aria-label="도서 보기 방식"
@@ -1056,20 +1114,7 @@ export function LibraryApp({
                           <option value="list">목록형</option>
                           <option value="covers">표지형</option>
                         </select>
-                        {!preview && (
-                          <button onClick={() => setCatalogReviewOpen(true)}>
-                            도서정보 검토
-                          </button>
-                        )}
                       </div>
-                      {!preview && (
-                        <button
-                          className="secondary"
-                          onClick={() => setExclusionsOpen(true)}
-                        >
-                          삭제·제외한 자료
-                        </button>
-                      )}
                     </div>
                     <div className="filter-tabs">
                       {[
@@ -1094,7 +1139,17 @@ export function LibraryApp({
                         </button>
                       ))}
                     </div>
-                    <span>{matchedCount}권</span>
+                    <div className="book-toolbar-end">
+                      {!preview && (
+                        <button
+                          className="secondary catalog-review-button"
+                          onClick={() => setCatalogReviewOpen(true)}
+                        >
+                          도서정보 검토
+                        </button>
+                      )}
+                      <span>{matchedCount}권</span>
+                    </div>
                   </div>
                   {catalog.loading && !matchedBooks.length ? (
                     <p role="status">도서를 불러오고 있습니다…</p>
@@ -1179,34 +1234,30 @@ export function LibraryApp({
               )}
 
               {view === "calendar" && (
-                <div className="calendar-full">
-                  <ReadingCalendar
-                    library={data}
-                    month={month}
-                    setMonth={setMonth}
-                    selected={selected}
-                    setSelected={setSelected}
-                    onEdit={(cycle) => setEditor({ kind: "date", cycle })}
-                    onOpenBook={setDetail}
-                    today={today}
-                  />
-                  <div className="panel calendar-summary">
-                    <span className="eyebrow">THIS MONTH</span>
-                    <h2>{Number(month.slice(5))}월의 독서</h2>
-                    <strong>
-                      {stats.monthCount}
-                      <small>권 완독</small>
-                    </strong>
-                    <p>
-                      서로 다른 책 {stats.uniqueBooks}권<br />
-                      다시 읽은 책 {stats.rereads}권
-                    </p>
-                    <p className="muted">
-                      책 표지가 있는 날짜를 눌러 완독한 책을 확인하고 날짜를
-                      수정할 수 있습니다.
-                    </p>
-                  </div>
-                </div>
+                <ReadingCalendar
+                  library={data}
+                  month={month}
+                  setMonth={setMonth}
+                  selected={selected}
+                  setSelected={setSelected}
+                  onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                  onOpenBook={setDetail}
+                  today={today}
+                  monthSummary={
+                    <div className="panel calendar-summary">
+                      <span className="eyebrow">THIS MONTH</span>
+                      <h2>{Number(month.slice(5))}월의 독서</h2>
+                      <strong>
+                        {stats.monthCount}
+                        <small>권 완독</small>
+                      </strong>
+                      <p>
+                        서로 다른 책 {stats.uniqueBooks}권<br />
+                        다시 읽은 책 {stats.rereads}권
+                      </p>
+                    </div>
+                  }
+                />
               )}
               {view === "stats" && (
                 <section className="panel">
@@ -1359,65 +1410,6 @@ export function LibraryApp({
             />
           )}
           {!preview && <ConflictReviewPanel />}
-
-          <footer className="workspace-footer">
-            <span>당신의 책, 당신의 생각.</span>
-            <div>
-              {!preview && (
-                <>
-                  <button
-                    className="text-button"
-                    disabled={refreshing}
-                    onClick={async () => {
-                      setRefreshing(true);
-                      try {
-                        await refresh();
-                        setMessage("최신 기록을 불러왔습니다.");
-                        setFailure("");
-                      } catch (e) {
-                        setFailure(
-                          e instanceof Error ? e.message : "새로고침 실패",
-                        );
-                      } finally {
-                        setRefreshing(false);
-                      }
-                    }}
-                  >
-                    <RefreshCw size={14} />
-                    {refreshing ? "불러오는 중" : "새로고침"}
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setImporting(true)}
-                  >
-                    기존 자료 가져오기
-                  </button>
-                  <a className="text-button" href="/api/export">
-                    <Download size={14} />
-                    전체 기록 내려받기
-                  </a>
-                  <button
-                    className="text-button"
-                    onClick={() => setBackupOpen(true)}
-                  >
-                    백업과 복원
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setSyncSettingsOpen(true)}
-                  >
-                    기기 저장·동기화
-                  </button>
-                  <a className="text-button" href="/desktop/connect">
-                    Windows PDF 서재 연결
-                  </a>
-                  <a className="text-button" href="/logos/import">
-                    로고스 도서 가져오기
-                  </a>
-                </>
-              )}
-            </div>
-          </footer>
         </main>
       </div>
       {importing && (

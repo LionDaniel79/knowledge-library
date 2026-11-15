@@ -34,9 +34,11 @@ export function ReadingCarousel({
     <section className="panel reading-panel">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">KEEP READING</span>
           <h2>
-            지금 읽는 책 <span className="count">{reading.length}</span>
+            지금 읽는 책{" "}
+            <span className="count" data-testid="carousel-position">
+              {reading.length ? `${current + 1} / ${reading.length}` : "0 / 0"}
+            </span>
           </h2>
         </div>
         <div className="carousel-controls">
@@ -137,11 +139,6 @@ export function ReadingCarousel({
                 </button>
               </div>
             </div>
-          </div>
-          <div className="carousel-footer">
-            <span data-testid="carousel-position" aria-live="polite">
-              {current + 1} / {reading.length}
-            </span>
           </div>
         </>
       ) : (
