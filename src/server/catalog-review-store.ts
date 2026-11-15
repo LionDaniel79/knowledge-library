@@ -441,7 +441,7 @@ export async function decideCatalogReview(
     if (input.action === "reject" && input.rejectAll) {
       const b = (
         await tx.query(
-          `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND id=$2 FOR UPDATE`,
+          `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=$1 AND e.id=$2 AND e.state='excluded') FOR UPDATE`,
           [owner, row.book_id],
         )
       ).rows[0];

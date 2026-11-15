@@ -155,7 +155,7 @@ export async function decideStoredLogosReview(
   return withSyncWrite(db, owner, async (tx) => {
     const b = (
       await tx.query(
-        `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND id=$2 FOR UPDATE`,
+        `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=$1 AND e.id=$2 AND e.state='excluded') FOR UPDATE`,
         [owner, input.id],
       )
     ).rows[0];
