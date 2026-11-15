@@ -1367,11 +1367,8 @@ export async function prepareOptimistic(
           version: book.version + 1,
         };
         if (input.action === "apply") {
-          if (!input.sameEdition || !input.fields.length)
-            throw new ReplicaQueryError(
-              400,
-              "판본과 반영할 항목을 확인해 주세요.",
-            );
+          if (!input.fields.length)
+            throw new ReplicaQueryError(400, "반영할 항목을 선택해 주세요.");
           for (const field of input.fields) {
             const value = reviewValue(candidate.record, field);
             if (!value?.length)
@@ -1485,11 +1482,8 @@ export async function prepareOptimistic(
           decision: { action: input.action, fields: input.fields },
         });
         if (input.action === "apply") {
-          if (!input.sameEdition || !input.fields.length)
-            throw new ReplicaQueryError(
-              400,
-              "판본과 반영할 항목을 확인해 주세요.",
-            );
+          if (!input.fields.length)
+            throw new ReplicaQueryError(400, "반영할 항목을 선택해 주세요.");
           const book = await own("library_books", old.book_id);
           check(book, old.source_version);
           const selected: Record<string, any> = {};

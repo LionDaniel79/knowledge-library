@@ -179,11 +179,8 @@ export async function decideStoredLogosReview(
     const fingerprint = bibliographyCandidateFingerprint(record);
     if (b.enrichment?.rejectedBibliography?.includes(fingerprint))
       throw new LibraryError(409, "거절한 후보입니다.");
-    if (
-      input.action === "apply" &&
-      (!input.sameEdition || !input.fields.length)
-    )
-      throw new LibraryError(400, "판본과 반영할 항목을 확인해 주세요.");
+    if (input.action === "apply" && !input.fields.length)
+      throw new LibraryError(400, "반영할 항목을 선택해 주세요.");
     const next = structuredClone(b);
     next.enrichment = { ...b.enrichment };
     if (input.action === "apply") {

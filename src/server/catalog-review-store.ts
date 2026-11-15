@@ -255,11 +255,8 @@ export async function decideCatalogReview(
       reviewedBy: reviewer,
     };
     if (input.action === "apply") {
-      if ((!input.sameEdition || !input.fields.length) && !automatic)
-        throw new LibraryError(
-          400,
-          "같은 판본인지 확인하고 반영할 항목을 선택하세요.",
-        );
+      if (!input.fields.length && !automatic)
+        throw new LibraryError(400, "반영할 항목을 선택하세요.");
       const b = (
         await tx.query(
           `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE`,

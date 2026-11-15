@@ -153,9 +153,6 @@ export function CatalogReviewPanel({
             여러 형식의 책은 각 형식에 포함됩니다. 분류에는 임시 분류가
             포함됩니다. 보완 미표시는 오류 건수가 아닙니다.
           </p>
-          <a className="secondary compact-link" href="/logos/covers">
-            로고스 표지 후보 확인
-          </a>
         </div>
       )}
 

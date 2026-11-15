@@ -320,10 +320,9 @@ for (const width of [390, 1280])
     await page
       .getByRole("checkbox", { name: "검토 목록 전체 선택", exact: true })
       .check();
-    for (const i of [1, 2])
-      await page
-        .getByRole("checkbox", { name: `PDF 책 ${i} 판본 확인`, exact: true })
-        .check();
+    await expect(page.getByRole("checkbox", { name: /판본 확인/ })).toHaveCount(
+      0,
+    );
     await page
       .getByRole("button", { name: "일괄 적용 (2권)", exact: true })
       .click();
@@ -445,9 +444,9 @@ test("format tabs share field comparisons, selected supplements and whole-row re
         exact: true,
       })
       .uncheck();
-  await page
-    .getByRole("checkbox", { name: "로고스 검토 도서 판본 확인", exact: true })
-    .check();
+  await expect(page.getByRole("checkbox", { name: /판본 확인/ })).toHaveCount(
+    0,
+  );
   await page
     .getByRole("button", { name: "일괄 적용 (1권)", exact: true })
     .click();

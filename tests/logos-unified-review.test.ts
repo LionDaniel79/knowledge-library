@@ -81,7 +81,6 @@ it("hydrates legacy Logos candidates with canonical keys and applies only select
     requestId: randomUUID(),
     action: "apply",
     fields: ["description"],
-    sameEdition: true,
   };
   await decideCatalogReview(f.db, x.owner, body);
   await decideCatalogReview(f.db, x.owner, body);

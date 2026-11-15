@@ -187,7 +187,7 @@ it("imports once, isolates owners and leaves deferred/rejected books unchanged",
     (await readCatalogReviews(f.db, x.owner, { status: "deferred" })).total,
   ).toBe(1);
 });
-it("requires edition confirmation, applies only selected fields, preserves notes and records history", async () => {
+it("applies selected fields without edition confirmation, preserves notes and records history", async () => {
   const x = await fixture();
   await importCatalogReview(f.db, x.owner, x);
   const id = (await readCatalogReviews(f.db, x.owner, {})).items![0].id;
@@ -196,11 +196,10 @@ it("requires edition confirmation, applies only selected fields, preserves notes
     expectedVersion: 1,
     requestId: randomUUID(),
     action: "apply",
-    sameEdition: true,
     fields: ["isbn", "publisher"],
   };
   await expect(
-    decideCatalogReview(f.db, x.owner, { ...input, sameEdition: false }),
+    decideCatalogReview(f.db, x.owner, { ...input, fields: [] }),
   ).rejects.toThrow();
   await decideCatalogReview(f.db, x.owner, input);
   await decideCatalogReview(f.db, x.owner, input);

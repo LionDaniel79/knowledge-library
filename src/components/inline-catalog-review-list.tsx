@@ -15,7 +15,6 @@ type Choice = {
   candidateId: string;
   reviewVersion: number;
   fields: string[];
-  confirmed: boolean;
 };
 export function InlineCatalogReviewList({
   items,
@@ -59,7 +58,6 @@ export function InlineCatalogReviewList({
                   !candidate.current[k]?.length &&
                   reviewValue(candidate.record, k)?.length,
               ),
-              confirmed: false,
             },
     };
   }
@@ -77,10 +75,10 @@ export function InlineCatalogReviewList({
       action === "apply" &&
       rows.some((i) => {
         const m = model(i);
-        return !m || !m.choice.confirmed || !m.choice.fields.length;
+        return !m || !m.choice.fields.length;
       })
     ) {
-      setNotice("각 도서의 반영 항목을 선택하고 판본 확인을 체크해 주세요.");
+      setNotice("각 도서의 반영 항목을 선택해 주세요.");
       return;
     }
     pending.current = true;
@@ -99,7 +97,6 @@ export function InlineCatalogReviewList({
             m.candidate.version,
             action,
             m.choice.fields,
-            m.choice.confirmed,
           ]);
           const requestId = requests.current.get(key) ?? crypto.randomUUID();
           requests.current.set(key, requestId);
@@ -114,7 +111,6 @@ export function InlineCatalogReviewList({
               action,
               rejectAll: action === "reject",
               fields: m.choice.fields,
-              sameEdition: m.choice.confirmed,
             }),
           });
           const result = await r.json();
@@ -250,7 +246,6 @@ export function InlineCatalogReviewList({
                                 !next.current[k]?.length &&
                                 reviewValue(next.record, k)?.length,
                             ),
-                            confirmed: false,
                           },
                         }));
                       }}
@@ -339,29 +334,13 @@ export function InlineCatalogReviewList({
                       </span>
                     </label>
                   ))}
-                  <label>
-                    <input
-                      type="checkbox"
-                      aria-label={c.current.title + " 판본 확인"}
-                      checked={choice.confirmed}
-                      disabled={
-                        busy || !["pending", "deferred"].includes(c.status)
-                      }
-                      onChange={(e) =>
-                        update(item, { confirmed: e.target.checked })
-                      }
-                    />
-                    판본 확인
-                  </label>
                 </div>
                 <div className="compact-page-nav">
                   {["pending", "deferred"].includes(c.status) && (
                     <>
                       <button
                         className="primary compact-link"
-                        disabled={
-                          busy || !choice.confirmed || !choice.fields.length
-                        }
+                        disabled={busy || !choice.fields.length}
                         onClick={() => void decide("apply", [item])}
                       >
                         적용
