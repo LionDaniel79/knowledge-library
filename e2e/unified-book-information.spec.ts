@@ -96,6 +96,8 @@ test("merges provider duplicates, preserves alternatives and persists a selected
     });
   });
   await mount(page);
+  const review = page.getByText("변경 내역·되돌리기", { exact: true });
+  if (await review.count()) await review.click();
   const field = page.locator(".unified-information-field");
   await expect(field).toHaveCount(1);
   await expect(
@@ -117,8 +119,13 @@ test("merges provider duplicates, preserves alternatives and persists a selected
   await expect(field.locator(".curation-value").first()).toHaveText(
     "다른 소개",
   );
-  await page.getByText("수집 출처", { exact: true }).click();
-  await expect(page.locator(".information-source")).toHaveCount(3);
+  await expect(page.locator(".information-sources")).toContainText("출처:");
+  await expect(
+    page.getByText("추가 정보 수정·숨기기", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("원자료가 변경되어 다시 확인해야 합니다.", { exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText("근거 보기", { exact: true })).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -166,6 +173,7 @@ test("decided automatic fields leave pending controls, remaining selection survi
     return r.fulfill({ json: { version: posts + 1, application } });
   });
   await mount(page);
+  await page.getByText("변경 내역·되돌리기", { exact: true }).click();
   await page.getByRole("checkbox", { name: "저자", exact: true }).uncheck();
   await page.getByRole("button", { name: "그대로 유지" }).click();
   await expect(page.getByRole("alert").first()).toHaveText("저장 오류");

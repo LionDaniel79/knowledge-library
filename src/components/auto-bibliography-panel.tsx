@@ -313,7 +313,10 @@ export function AutoBibliographyPanel({
     </>
   );
   return embedded ? (
-    <div className="automatic-review">{content}</div>
+    <details className="automatic-review">
+      <summary>변경 내역·되돌리기</summary>
+      {content}
+    </details>
   ) : (
     <details
       className="curation-details"

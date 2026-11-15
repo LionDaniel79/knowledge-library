@@ -5,7 +5,6 @@ import {
   type AutoBibliographyState,
 } from "./auto-bibliography-panel";
 import { CurationDetails } from "./curation-details";
-import { catalogProviderNames } from "@/lib/book-lookup";
 export function UnifiedBookInformation({
   bookId,
   onChanged,
@@ -46,30 +45,6 @@ export function UnifiedBookInformation({
             }}
             embedded
             automatic={a}
-            automaticSource={
-              a && (
-                <article className="information-source">
-                  <h4>자동 보완</h4>
-                  <p>
-                    {catalogProviderNames[
-                      a.provider as keyof typeof catalogProviderNames
-                    ] ?? a.provider}{" "}
-                    · {new Date(a.appliedAt).toLocaleString("ko-KR")}
-                  </p>
-                  <p>{a.reason}</p>
-                  <p>
-                    {a.alternateEdition
-                      ? "다른 판본의 정보를 참고해 보완"
-                      : "동일 판본의 정보로 보완"}
-                  </p>
-                  {a.url && /^https:\/\//i.test(a.url) && (
-                    <a href={a.url} target="_blank" rel="noreferrer">
-                      자료 원문
-                    </a>
-                  )}
-                </article>
-              )
-            }
           />
         </>
       )}
