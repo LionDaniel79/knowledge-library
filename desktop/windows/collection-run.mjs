@@ -1,3 +1,4 @@
+import { writeCollectionState } from "./collection-state.mjs";
 import { acquireCollectionLock } from "./collection-lock.mjs";
 import fs from "node:fs";
 import { join } from "node:path";
@@ -32,9 +33,7 @@ const file = (n) => new URL(n, base),
     }
   },
   write = (n, v) => {
-    const temp = file(n + "." + process.pid + ".tmp");
-    fs.writeFileSync(temp, JSON.stringify(v, null, 2));
-    fs.renameSync(temp, file(n));
+    writeCollectionState(file(n), v);
   };
 const kind = arg("--kind"),
   slot = arg("--slot"),
@@ -124,6 +123,7 @@ try {
     at: new Date().toISOString(),
   };
   ledger.sequences.push(sequence);
+  step = "sequence-save";
   write(ledgerName, ledger);
   for (let i = 0, remaining = allowance; remaining > 0; i++) {
     const limit = nextCollectionBatch(
@@ -141,6 +141,7 @@ try {
       out = join(config.stateDirectory, day, kind, slot, String(i + 1));
     fs.mkdirSync(out, { recursive: true });
     ledger[kind].reserved += limit;
+    step = "reservation-save";
     write(ledgerName, ledger);
     const childEnv = {
       ...env,
@@ -336,6 +337,16 @@ try {
 } catch (e) {
   write("halted.json", {
     ...read("halted.json", {}),
+    ...(e.collectionStateWrite
+      ? {
+          failure: {
+            kind: "state-file",
+            name: "상태 파일 저장 충돌",
+            code: e.code,
+            retryable: ["EPERM", "EACCES", "EBUSY"].includes(e.code),
+          },
+        }
+      : {}),
     kind,
     step,
     name: e.name,

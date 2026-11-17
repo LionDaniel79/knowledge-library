@@ -1,3 +1,4 @@
+import { writeCollectionState } from "./collection-state.mjs";
 import { acquireCollectionLock } from "./collection-lock.mjs";
 import fs from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -21,10 +22,7 @@ export function readState(directory, name, fallback) {
   }
 }
 export function writeState(directory, name, value) {
-  const file = join(directory, name),
-    temp = file + "." + process.pid + ".tmp";
-  fs.writeFileSync(temp, JSON.stringify(value, null, 2));
-  fs.renameSync(temp, file);
+  writeCollectionState(join(directory, name), value);
 }
 export function collectionSnapshot(directory, now = new Date()) {
   const { day } = collectionClock(now),
