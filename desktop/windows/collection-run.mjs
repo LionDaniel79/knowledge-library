@@ -1,4 +1,5 @@
 import { writeCollectionState } from "./collection-state.mjs";
+import { failureGuidance } from "./collection-recovery.mjs";
 import { acquireCollectionLock } from "./collection-lock.mjs";
 import fs from "node:fs";
 import { join } from "node:path";
@@ -145,6 +146,7 @@ try {
     write(ledgerName, ledger);
     const childEnv = {
       ...env,
+      COLLECTION_FAILURE_FILE: join(out, "failure.json"),
       COLLECTION_PROGRESS_FILE: join(
         config.stateDirectory,
         "live-" + kind + ".json",
@@ -233,6 +235,16 @@ try {
           ),
         failure: (() => {
           try {
+            const startup = JSON.parse(
+              fs.readFileSync(join(out, "failure.json"), "utf8"),
+            );
+            if (Date.parse(startup.at) >= started && startup.failure)
+              return {
+                ...startup.failure,
+                ...failureGuidance(startup.failure),
+              };
+          } catch {}
+          try {
             const f =
               kind === "logos"
                 ? join(
@@ -245,10 +257,20 @@ try {
                   )
                 : join(out, "investigated.json");
             const a = JSON.parse(fs.readFileSync(f, "utf8"));
-            return Date.parse(a.at) >= started ? a.failure : undefined;
-          } catch {
-            return undefined;
-          }
+            if (Date.parse(a.at) >= started && a.failure)
+              return { ...a.failure, ...failureGuidance(a.failure) };
+          } catch {}
+          const startupCode = (stderr.match(/ERR_[A-Z_]+/) ?? [])[0];
+          const failure = {
+            kind: startupCode ? "configuration" : "unexpected",
+            name: (stderr.match(
+              /\b(TypeError|ReferenceError|SyntaxError)\b/,
+            ) ?? ["CollectorStartupError"])[0],
+            code: startupCode,
+            retryable: false,
+            safeToRetry: false,
+          };
+          return { ...failure, ...failureGuidance(failure) };
         })(),
         startupCode: (stderr.match(/ERR_[A-Z_]+/) ?? [])[0],
       });
@@ -335,8 +357,26 @@ try {
     sequence,
   });
 } catch (e) {
+  const previous = read("halted.json", {});
   write("halted.json", {
-    ...read("halted.json", {}),
+    ...previous,
+    ...(!previous.failure && !e.collectionStateWrite
+      ? {
+          failure: {
+            kind:
+              e.code === "ENOSPC"
+                ? "storage"
+                : step === "startup"
+                  ? "configuration"
+                  : "unexpected",
+            name: /^[A-Za-z]{1,50}$/.test(e.name ?? "") ? e.name : "Error",
+            code: /^[A-Z0-9_]{1,50}$/.test(e.code ?? "") ? e.code : undefined,
+            phase: step,
+            retryable: false,
+            safeToRetry: false,
+          },
+        }
+      : {}),
     ...(e.collectionStateWrite
       ? {
           failure: {

@@ -92,7 +92,7 @@ partial class PdfDesktop {
                 var status=CollectionRead(kind+"-status.json");var halted=CollectionRead("halted.json");
                 var haltFailure=halted.ContainsKey("failure")?halted["failure"] as Dictionary<string,object>:null;
                 var retryable=haltFailure!=null&&Val(haltFailure,"retryable")=="True";
-                v.Start.Content=retryable?"중단 후 다시 시도":"지금 수집";
+                v.Start.Content=halted.Count>0?(retryable?"중단 후 다시 시도":"원인 해결 후 재시도"):"지금 수집";
                 var state=Val(status,"state");var running=state=="running"&&File.Exists(Path.Combine(collectionDirectory,"running.lock"));
                 var host=CollectionRead("desktop-host.json");
                 var hostAlive=collectionProcess!=null&&!collectionProcess.HasExited;
@@ -111,11 +111,37 @@ partial class PdfDesktop {
                 DateTime updated;var timestamp=DateTime.TryParse(Val(status,"at"),out updated)?updated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"):"아직 없음";
                 text+="\n마지막 상태 갱신 "+timestamp+"\n실행 방식: "+(mode=="continuous"?"예약 없이 연속 실행":mode=="manual"?"수동 실행만":"예약 "+String.Join(" / ",times)+" (한국시간)")+" · 한 번 최대 "+(cfg.ContainsKey("runLimit")?Val(cfg,"runLimit"):"100")+"권";
                 text+="\n조사 대상이 없으면 1시간 대기합니다. PDF와 로고스는 동시에 실행되지 않습니다.";
-                if(halted.Count>0){var failure=halted.ContainsKey("failure")?halted["failure"] as Dictionary<string,object>:null;text+="\n중단 원인: "+(failure!=null&&Val(failure,"kind")=="database-timeout"?"DB 응답 시간 초과":failure!=null&&Val(failure,"kind")=="network"?"외부 연결 오류":failure==null?"상세 원인 기록이 없는 오류":Val(failure,"name"))+" · "+(retryable?"연결이 회복되면 ‘중단 후 다시 시도’를 누르세요.":"원인 확인이 필요합니다. 진행 기록은 보존됩니다.");}
-                if(Val(host,"state")=="error")text+="\n수집 설정 또는 상태 파일을 확인하세요.";
+                if(halted.Count>0)text+="\n"+CollectionFailureText(halted,CollectionRead("retry-status.json"));
+                if(Val(host,"state")=="error")text+="\n수집 설정 또는 상태 파일을 읽지 못했습니다. 저장 장치 연결과 웹 연결 설정을 확인하세요.";
                 v.Detail.Text=text;
             }catch{v.Summary.Text="수집 현황을 읽지 못했습니다. 설정과 저장 장치를 확인하세요.";}
         }
+    }
+    static string CollectionFailureText(Dictionary<string,object> halted,Dictionary<string,object> retry){
+        var failure=halted.ContainsKey("failure")?halted["failure"] as Dictionary<string,object>:null;
+        if(failure==null)failure=new Dictionary<string,object>();
+        string kind=Val(failure,"kind"),reason,action;
+        switch(kind){
+            case "authentication":reason="인증 또는 DB 접근 권한 오류";action="웹 연결 설정의 인증키·계정을 확인하세요. DB 권한 오류는 프로그램 업데이트 또는 관리자 확인이 필요합니다.";break;
+            case "quota":reason="API 호출 한도 도달";action="호출 가능 시각 이후 다시 시도하세요. 호출 원장을 삭제하거나 한도를 우회하지 마세요.";break;
+            case "storage":reason="저장 공간 부족";action="PC 및 웹 표지 저장 공간을 확인하세요. PDF·색인·진행 기록을 지우지 마세요.";break;
+            case "database-timeout":reason="DB 응답 시간 초과";action="인터넷 연결을 확인하세요.";break;
+            case "network":reason="외부 서버 연결 오류";action="인터넷 연결을 확인하세요.";break;
+            case "state-file":reason="진행 기록 파일 저장 충돌";action="잠시 기다린 뒤 다시 시도하세요. 반복되면 보안 프로그램과 저장 장치를 확인하세요.";break;
+            case "configuration":reason="수집 실행 설정 오류";action="웹 연결 설정과 프로그램 설치 파일을 확인하세요.";break;
+            default:reason="프로그램 처리 오류";action="최신 버전으로 업데이트하세요. 반복되면 아래 오류 종류·단계·코드를 전달해 주세요.";break;
+        }
+        string text=(Val(halted,"kind")=="pdf"?"PDF":Val(halted,"kind")=="logos"?"로고스":"수집")+" 중단 원인: "+reason+"\n해결 방법: "+action;
+        if(Val(retry,"haltAt")==Val(halted,"at")&&Val(retry,"allowed")=="True"){
+            DateTime next;string time=DateTime.TryParse(Val(retry,"nextAt"),out next)?next.ToLocalTime().ToString("HH:mm:ss"):"잠시 후";
+            text+="\n자동 재시도: "+(retry.ContainsKey("count")?Convert.ToInt32(retry["count"])+1:1)+"/3 · "+time;
+            if(Val(retry,"waitingForAllowance")=="True")text+=" · 일시정지 해제 또는 일일 한도 여유를 기다립니다.";
+        }else if(Val(retry,"exhausted")=="True")text+="\n자동 재시도 3회 종료. 연결을 확인한 뒤 ‘중단 후 다시 시도’를 누르세요.";
+        else if(Val(failure,"retryable")=="True")text+="\n자동 재실행하지 않습니다. 저장 여부와 연결을 확인한 뒤 ‘중단 후 다시 시도’를 누르세요.";
+        DateTime quotaAt;if(DateTime.TryParse(Val(failure,"retryAt"),out quotaAt))text+="\n호출 가능 시각: "+quotaAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        var details=new List<string>();foreach(var field in new[]{"name","phase","code"}){var value=Val(failure,field);if(System.Text.RegularExpressions.Regex.IsMatch(value,@"^[A-Za-z0-9_-]{1,60}$"))details.Add(field+"="+value);}
+        if(details.Count>0)text+="\n진단: "+String.Join(" · ",details);
+        return text+"\n진행 기록은 보존되어 있습니다.";
     }
     void SaveCollectionLimit(string kind){
         int daily,perRun;var view=collectionViews[kind];
@@ -136,12 +162,13 @@ partial class PdfDesktop {
         try{
             var halt=CollectionRead("halted.json");string retryAt="";
             if(halt.Count>0){var failure=halt.ContainsKey("failure")?halt["failure"] as Dictionary<string,object>:null;
-                if(failure==null||Val(failure,"retryable")!="True"){MessageBox.Show("이 중단은 원인 확인이 필요합니다. 반복 실행하지 말고 중단 원인을 확인하세요. 진행 기록은 보존됩니다.");return;}
-                if(MessageBox.Show("일시적인 연결 오류 후 수집을 다시 시도할까요? 기존 진행 기록과 한도를 유지하며, 다시 실패하면 중단합니다.","수집 다시 시도",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;
+                if(failure==null){MessageBox.Show(CollectionFailureText(halt,CollectionRead("retry-status.json")),"수집 오류 안내");return;}
+                DateTime allowedAt;if(DateTime.TryParse(Val(failure,"retryAt"),out allowedAt)&&allowedAt.ToUniversalTime()>DateTime.UtcNow){MessageBox.Show(CollectionFailureText(halt,CollectionRead("retry-status.json")),"호출 한도 대기");return;}
+                if(MessageBox.Show(CollectionFailureText(halt,CollectionRead("retry-status.json"))+"\n\n안내한 원인을 확인·해결했나요? 기존 진행 기록과 한도 내에서 다시 시도합니다.","수집 다시 시도",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;
                 retryAt=Val(halt,"at");var failedKind=Val(halt,"kind");if(failedKind=="pdf"||failedKind=="logos")kind=failedKind;
             }
             var request=new Dictionary<string,object>{{"kind",kind},{"requestId",Guid.NewGuid().ToString("N")}};
-            if(retryAt.Length>0)request["retryHaltAt"]=retryAt;
+            if(retryAt.Length>0){request["retryHaltAt"]=retryAt;request["reviewedFailure"]=true;}
             CollectionWrite("desktop-request.json",request);
             collectionViews[kind].Summary.Text="수집 요청됨 · 일일 한도와 일시정지 설정을 확인한 뒤 30초 안에 시작합니다.";
         }catch{MessageBox.Show("수집 요청을 저장하지 못했습니다.");}
@@ -165,6 +192,12 @@ partial class PdfDesktop {
         if(!collectionViews["pdf"].Summary.Text.Contains("오류"))throw new Exception("Shared halt must be visible");
         CollectionWrite("halted.json",new Dictionary<string,object>{{"kind","pdf"},{"at","fixture"},{"failure",new Dictionary<string,object>{{"name","Error"},{"kind","database-timeout"},{"retryable",true}}}});RefreshCollectionViews();
         if(Convert.ToString(collectionViews["pdf"].Start.Content)!="중단 후 다시 시도"||!collectionViews["pdf"].Detail.Text.Contains("DB 응답 시간 초과"))throw new Exception("Recoverable halt must offer a clear retry action");
+        CollectionWrite("retry-status.json",new Dictionary<string,object>{{"haltAt","fixture"},{"allowed",true},{"count",1},{"nextAt",DateTime.UtcNow.AddMinutes(5).ToString("o")}});RefreshCollectionViews();
+        if(!collectionViews["pdf"].Detail.Text.Contains("자동 재시도: 2/3"))throw new Exception("Automatic retry progress missing");
+        foreach(var failureKind in new[]{"authentication","quota","unexpected"}){
+            CollectionWrite("halted.json",new Dictionary<string,object>{{"kind","logos"},{"at","other"},{"failure",new Dictionary<string,object>{{"name","Error"},{"kind",failureKind},{"retryable",false}}}});RefreshCollectionViews();
+            if(Convert.ToString(collectionViews["logos"].Start.Content)!="원인 해결 후 재시도"||!collectionViews["logos"].Detail.Text.Contains("해결 방법:"))throw new Exception("Failure must provide cause and action");
+        }
         tabs.SelectedIndex=1;UpdateLayout();
         var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap((int)ActualWidth,(int)ActualHeight,96,96,System.Windows.Media.PixelFormats.Pbgra32);
         bmp.Render(this);var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));using(var file=File.Create(screenshot))encoder.Save(file);

@@ -52,6 +52,7 @@ if (args.includes("--help")) {
     controller = new AbortController();
   process.once("SIGINT", () => controller.abort());
   process.once("SIGTERM", () => controller.abort());
+  let phase = "owner-read";
   try {
     const excluded = await collectionExclusions(
       process.env.COLLECTION_LEDGER,
@@ -61,6 +62,7 @@ if (args.includes("--help")) {
       id: process.env.LIBRARY_CATALOG_OWNER_ID,
       email: process.env.LIBRARY_OWNER_EMAIL,
     });
+    phase = "cover-sources";
     const coverCapacity = await readCoverCapacity(db, owner);
     console.log(
       JSON.stringify({ preflight: "cover-storage", ...coverCapacity }),
@@ -76,6 +78,7 @@ if (args.includes("--help")) {
       "logos",
       createHash("sha256").update(owner).digest("hex"),
     );
+    phase = "initial-select";
     const rows = (
       await db.query(
         `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND source_data->>'app'='Logos' ORDER BY id`,
@@ -165,6 +168,15 @@ if (args.includes("--help")) {
       console.log(JSON.stringify(stats));
       if (["error", "quota"].includes(stats.stopped)) process.exitCode = 1;
     }
+  } catch (error) {
+    const failure = collectionFailure(error, phase);
+    if (process.env.COLLECTION_FAILURE_FILE)
+      await atomicWriteJson(process.env.COLLECTION_FAILURE_FILE, {
+        at: new Date().toISOString(),
+        failure,
+      });
+    console.log(JSON.stringify({ stopped: "error", failed: 0, considered: 0 }));
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

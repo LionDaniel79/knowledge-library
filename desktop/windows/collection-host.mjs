@@ -1,4 +1,5 @@
 import { writeCollectionState } from "./collection-state.mjs";
+import { automaticRetry, failureGuidance } from "./collection-recovery.mjs";
 import { acquireCollectionLock } from "./collection-lock.mjs";
 import fs from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -39,6 +40,7 @@ export function collectionSnapshot(directory, now = new Date()) {
     day,
     settings,
     halted: !!halted,
+    halt: halted,
     errorName: halted?.failure?.name ?? halted?.name ?? "",
     canRetry: halted?.failure?.retryable === true,
     haltAt: halted?.at,
@@ -113,10 +115,13 @@ export async function host(
         );
         if (
           snap.halted &&
-          snap.canRetry &&
+          (snap.canRetry ||
+            (recovery.reviewedFailure === true && !!snap.halt?.failure)) &&
           ["pdf", "logos"].includes(recovery.kind) &&
           recovery.retryHaltAt === snap.haltAt &&
           recovery.kind === snap.haltKind &&
+          (!Number.isFinite(Date.parse(snap.halt?.failure?.retryAt)) ||
+            now().getTime() >= Date.parse(snap.halt.failure.retryAt)) &&
           recovery.requestId !== recovered.requestId &&
           /^[a-zA-Z0-9-]{1,80}$/.test(recovery.requestId ?? "") &&
           collectionAllowance(
@@ -129,6 +134,53 @@ export async function host(
           fs.renameSync(
             join(directory, "halted.json"),
             join(directory, "halted-retry-" + recovery.requestId + ".json"),
+          );
+          snap.halted = false;
+        }
+        const attempts = readState(directory, "automatic-retry.json", {});
+        const retry = snap.halted
+          ? automaticRetry(snap.halt, attempts[snap.haltKind], now().getTime())
+          : { allowed: false };
+        writeState(directory, "retry-status.json", {
+          ...retry,
+          kind: snap.haltKind,
+          haltAt: snap.haltAt,
+          waitingForAllowance:
+            !!retry.allowed &&
+            collectionAllowance(
+              snap.settings,
+              snap.haltKind,
+              snap.collectors[snap.haltKind]?.reserved ?? 0,
+            ) <= 0,
+        });
+        if (
+          snap.halted &&
+          retry.allowed &&
+          retry.due &&
+          ["pdf", "logos"].includes(snap.haltKind) &&
+          collectionAllowance(
+            snap.settings,
+            snap.haltKind,
+            snap.collectors[snap.haltKind].reserved,
+          ) > 0
+        ) {
+          const requestId =
+            "auto-" +
+            snap.haltKind +
+            "-" +
+            (retry.count + 1) +
+            "-" +
+            now().getTime();
+          // Persist before launch so restarts and day boundaries cannot reset the bound.
+          attempts[snap.haltKind] = { count: retry.count + 1 };
+          writeState(directory, "automatic-retry.json", attempts);
+          writeState(directory, "desktop-request.json", {
+            kind: snap.haltKind,
+            requestId,
+          });
+          fs.renameSync(
+            join(directory, "halted.json"),
+            join(directory, "halted-retry-" + requestId + ".json"),
           );
           snap.halted = false;
         }
@@ -168,6 +220,18 @@ export async function host(
           if (due.length) {
             // The runner and old scheduler share running.lock and daily reservations.
             const code = await execute(...due[0]);
+            if (
+              code === 0 &&
+              !fs.existsSync(join(directory, "halted.json")) &&
+              readState(directory, due[0][0] + "-status.json", {}).sequence
+                ?.success === true &&
+              readState(directory, due[0][0] + "-status.json", {}).sequence
+                ?.session ===
+                due[0][0] + ":" + due[0][1]
+            ) {
+              attempts[due[0][0]] = { count: 0 };
+              writeState(directory, "automatic-retry.json", attempts);
+            }
             if (code !== 0 && !fs.existsSync(join(directory, "halted.json")))
               writeState(directory, "halted.json", {
                 kind: due[0][0],
@@ -181,6 +245,7 @@ export async function host(
           state: "error",
           at: now().toISOString(),
           message: "수집 설정 또는 상태 파일을 확인하세요.",
+          ...failureGuidance({ kind: "configuration" }),
         });
       }
       if (once || stopping) break;

@@ -10,7 +10,7 @@ it("records a network cause and code location without leaking URL, key, private 
     stack:
       "TypeError secret-key https://example/key\n at fetch (C:/private/owner/logos-providers.ts:99:17)",
   });
-  expect(collectionFailure(error, "lookup")).toEqual({
+  expect(collectionFailure(error, "lookup")).toMatchObject({
     name: "TypeError",
     phase: "lookup",
     code: "ECONNRESET",
@@ -63,4 +63,35 @@ it("reports the failing lookup phase without falsely completing the book", async
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+it("distinguishes authentication, quotas and unsafe write failures without leaking details", () => {
+  expect(
+    collectionFailure(
+      Object.assign(Error("private key"), { status: 401 }),
+      "lookup",
+    ),
+  ).toMatchObject({
+    kind: "authentication",
+    retryable: false,
+    safeToRetry: false,
+  });
+  expect(
+    collectionFailure(Object.assign(Error("limit"), { status: 429 }), "lookup"),
+  ).toMatchObject({ kind: "quota", retryable: false });
+  expect(
+    collectionFailure(
+      Object.assign(Error("permission"), { code: "42501" }),
+      "initial-select",
+    ),
+  ).toMatchObject({ kind: "authentication", retryable: false });
+  expect(
+    collectionFailure(
+      Object.assign(Error("fetch failed"), { cause: { code: "ECONNRESET" } }),
+      "apply",
+    ),
+  ).toMatchObject({ kind: "network", safeToRetry: false });
+  expect(
+    collectionFailure(Error("Query read timeout"), "initial-select"),
+  ).toMatchObject({ kind: "database-timeout", safeToRetry: true });
 });
