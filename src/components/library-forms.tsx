@@ -46,6 +46,13 @@ export function LibraryForm({
   const [ratingSteps, setRatingSteps] = useState<number | null>(
     "cycle" in editor ? (editor.cycle.ratingSteps ?? null) : null,
   );
+  const [draftNoteId] = useState(() => crypto.randomUUID());
+  const formId = "library-form-" + draftNoteId;
+  const [draftContent, setDraftContent] = useState(
+    editor.kind === "note" ? (editor.note?.content ?? "") : "",
+  );
+  const bookNoteDraft =
+    editor.kind === "note" && !editor.note && !!editor.bookId;
   const [undatedRating, setUndatedRating] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -291,7 +298,7 @@ export function LibraryForm({
         if (!busy && !topicBusy && !shelfBusy) onClose();
       }}
     >
-      <form ref={formRef} className="editor-form" onSubmit={submit}>
+      <form id={formId} ref={formRef} className="editor-form" onSubmit={submit}>
         <fieldset className="editor-fields" disabled={busy || shelfBusy}>
           {preview && (
             <div className="notice">
@@ -529,6 +536,9 @@ export function LibraryForm({
                   rows={7}
                   maxLength={50000}
                   defaultValue={editor.note?.content}
+                  onChange={(e) => {
+                    if (bookNoteDraft) setDraftContent(e.target.value);
+                  }}
                   placeholder="책에서 만난 문장과 나의 생각을 구분해 남겨 보세요."
                 />
               </label>
@@ -772,52 +782,101 @@ export function LibraryForm({
             </p>
           </section>
         )}
-        <footer className="form-footer">
-          {editor.kind === "note" && editor.note && !preview && (
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || topicBusy || conflict}
-              onClick={() => setConfirmDelete(true)}
-            >
-              삭제
-            </button>
+      </form>
+      {bookNoteDraft && !preview && (
+        <AssistLauncher
+          library={library}
+          allowedFocus={["editor_title"]}
+          enabled={!!draftContent.trim()}
+          editorAnalysis={{
+            context: {
+              kind: "note",
+              id: draftNoteId,
+              noteIds: [draftNoteId],
+              draft: { content: draftContent.slice(0, 8000) },
+            },
+            notes: [
+              {
+                id: draftNoteId,
+                bookId: editor.bookId ?? null,
+                title: "",
+                content: draftContent.slice(0, 8000),
+                kind: noteKind,
+                page: null,
+                tags: noteTags,
+                version: 0,
+                createdAt: today,
+                updatedAt: today,
+              },
+            ],
+            onApply: (s) => {
+              const field = formRef.current?.elements.namedItem(
+                "title",
+              ) as HTMLInputElement | null;
+              if (field) {
+                field.value = s.title;
+                field.focus();
+              }
+            },
+          }}
+        >
+          {!draftContent.trim() && (
+            <p className="muted">
+              내용을 입력하면 제목을 추천받을 수 있습니다.
+            </p>
           )}
+        </AssistLauncher>
+      )}
+
+      <footer className="form-footer">
+        {editor.kind === "note" && editor.note && !preview && (
           <button
+            form={formId}
             type="button"
             className="secondary"
-            disabled={busy || topicBusy || shelfBusy}
-            onClick={onClose}
+            disabled={busy || topicBusy || conflict}
+            onClick={() => setConfirmDelete(true)}
           >
-            취소
+            삭제
           </button>
+        )}
+        <button
+          form={formId}
+          type="button"
+          className="secondary"
+          disabled={busy || topicBusy || shelfBusy}
+          onClick={onClose}
+        >
+          취소
+        </button>
+        <button
+          form={formId}
+          className="primary"
+          disabled={busy || topicBusy || shelfBusy || conflict}
+        >
+          {topicBusy
+            ? "주제 생성 중…"
+            : busy
+              ? "저장 중…"
+              : preview
+                ? "저장 안내 확인"
+                : undatedRating || editor.kind === "complete"
+                  ? "완독 저장"
+                  : "저장하기"}
+        </button>
+        {editor.kind === "start" && !undatedRating && (
           <button
-            className="primary"
-            disabled={busy || topicBusy || shelfBusy || conflict}
+            form={formId}
+            type="submit"
+            name="completion"
+            value="undated"
+            className="secondary"
+            disabled={busy || topicBusy || conflict}
           >
-            {topicBusy
-              ? "주제 생성 중…"
-              : busy
-                ? "저장 중…"
-                : preview
-                  ? "저장 안내 확인"
-                  : undatedRating || editor.kind === "complete"
-                    ? "완독 저장"
-                    : "저장하기"}
+            완독
           </button>
-          {editor.kind === "start" && !undatedRating && (
-            <button
-              type="submit"
-              name="completion"
-              value="undated"
-              className="secondary"
-              disabled={busy || topicBusy || conflict}
-            >
-              완독
-            </button>
-          )}
-        </footer>
-      </form>
+        )}
+      </footer>
       {confirmDelete && (
         <section className="notice" aria-label="기록 삭제 확인">
           <p>

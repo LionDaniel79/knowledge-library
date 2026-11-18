@@ -28,6 +28,7 @@ import { AssistHelp } from "./assist-help";
 import { AssistRequestCard } from "./assist-request-card";
 export type AssistProps = {
   library: Library;
+  allowedFocus?: (keyof typeof focusNames)[];
   noteId?: string;
   editorAnalysis?: {
     context: EditorContext;
@@ -95,6 +96,7 @@ export function AssistPanel({
   onWritingSuggestion,
   analysisControls,
   editorAnalysis,
+  allowedFocus,
 }: AssistProps) {
   const replica = useReplicaOptional(),
     key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
@@ -489,6 +491,11 @@ export function AssistPanel({
                 }
               >
                 {Object.entries(focusNames)
+                  .filter(
+                    ([id]) =>
+                      !allowedFocus ||
+                      allowedFocus.includes(id as keyof typeof focusNames),
+                  )
                   .filter(([id]) =>
                     editorAnalysis
                       ? (id === "all" &&
@@ -718,6 +725,8 @@ export function AssistPanel({
                     editorAnalysis
                       ? (suggestion, savedScope) => {
                           if (
+                            JSON.stringify(savedScope.editorContext?.draft) !==
+                              JSON.stringify(editorAnalysis.context.draft) ||
                             savedScope.editorContext?.id !==
                               editorAnalysis.context.id ||
                             savedScope.editorContext?.kind !==
