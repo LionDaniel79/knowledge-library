@@ -47,6 +47,16 @@ export const editorContextSchema = z
     kind: z.enum(["note", "connection", "bundle"]),
     id: z.string().min(1).max(20000),
     noteIds: z.array(z.string().uuid()).min(1).max(MAX_ANALYSIS_NOTES),
+    draft: z
+      .object({
+        content: z
+          .string()
+          .min(1)
+          .max(8000)
+          .refine((v) => !!v.trim()),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type EditorContext = z.infer<typeof editorContextSchema>;

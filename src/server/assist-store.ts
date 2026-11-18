@@ -154,19 +154,36 @@ async function buildTask(
   lock = false,
   freshnessOnly = false,
 ): Promise<AiTask> {
+  const draft = input.editorContext?.draft;
+  if (
+    draft &&
+    (!owner ||
+      input.purpose !== "synthesis" ||
+      input.focus !== "editor_title" ||
+      input.editorContext?.kind !== "note" ||
+      input.sources.length !== 1 ||
+      input.sources[0].source.kind !== "note" ||
+      input.sources[0].source.version !== "0" ||
+      input.editorContext.id !== input.sources[0].source.id ||
+      input.editorContext.noteIds.length !== 1 ||
+      input.editorContext.noteIds[0] !== input.sources[0].source.id)
+  )
+    throw new LibraryError(400, "작성 중인 메모의 제목만 추천할 수 있습니다.");
   const sources: AiTask["payload"]["sources"][number][] = [];
   for (const selected of input.sources) {
     const record =
-      selected.source.kind === "note"
+      !draft && selected.source.kind === "note"
         ? await currentRecord(tx, owner, selected.source.id, lock)
         : null;
-    const s = record
-      ? {
-          text: record.content,
-          version: String(record.version),
-          coverage: "full",
-        }
-      : await readCurationSource(tx, owner, selected.source, lock);
+    const s = draft
+      ? { text: draft.content, version: "0", coverage: "full" }
+      : record
+        ? {
+            text: record.content,
+            version: String(record.version),
+            coverage: "full",
+          }
+        : await readCurationSource(tx, owner, selected.source, lock);
     if (s.version !== selected.source.version)
       throw new LibraryError(409, "선택한 원자료가 변경되었습니다.");
     let text = s.text,
