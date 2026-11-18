@@ -42,11 +42,37 @@ export const writingContextSchema = z
   })
   .strict();
 export type WritingContext = z.infer<typeof writingContextSchema>;
+export const noteFieldResultSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).nullable(),
+    topic: z.string().trim().min(1).max(80).nullable(),
+    tags: z.array(z.string().trim().min(1).max(40)).max(8),
+  })
+  .strict();
 export const editorContextSchema = z
   .object({
     kind: z.enum(["note", "connection", "bundle"]),
     id: z.string().min(1).max(20000),
     noteIds: z.array(z.string().uuid()).min(1).max(MAX_ANALYSIS_NOTES),
+    fields: z
+      .object({
+        kind: z.enum([
+          "thought",
+          "note",
+          "highlight",
+          "review",
+          "claim",
+          "evidence",
+          "counterargument",
+          "reflection",
+        ]),
+        missing: z
+          .array(z.enum(["title", "topic", "tags"]))
+          .min(1)
+          .max(3),
+      })
+      .strict()
+      .optional(),
     draft: z
       .object({
         content: z
@@ -156,6 +182,7 @@ export const synthesisResultSchema = z
             bundleId: z.string().uuid().nullable().optional(),
             outline: z.array(z.string().trim().min(1).max(150)).max(12),
             evidence: z.array(synthesisEvidenceSchema).min(1).max(24),
+            noteFields: noteFieldResultSchema.nullable().optional(),
           })
           .strict(),
       )
@@ -212,7 +239,19 @@ export function validSynthesis(
       evidenceSources.add(e.sourceIndex);
     }
     if (s.sourceIndices.some((i) => !evidenceSources.has(i))) return false;
-    if (s.kind === "editor_title")
+    if (s.kind === "editor_title") {
+      const fields = payload.editorContext?.fields,
+        values = s.noteFields;
+      if (fields) {
+        if (
+          !values ||
+          (!fields.missing.includes("title") && values.title !== null) ||
+          (!fields.missing.includes("topic") && values.topic !== null) ||
+          (!fields.missing.includes("tags") && values.tags.length > 0) ||
+          new Set(values.tags).size !== values.tags.length
+        )
+          return false;
+      } else if (values) return false;
       return (
         !!payload.editorContext &&
         !s.topicIds.length &&
@@ -223,6 +262,7 @@ export function validSynthesis(
           payload.editorContext!.noteIds.includes(payload.sources[i].source.id),
         )
       );
+    }
     if (payload.editorContext && s.kind === "note_connection") {
       const members = s.sourceIndices.filter((i) =>
         payload.editorContext!.noteIds.includes(payload.sources[i].source.id),

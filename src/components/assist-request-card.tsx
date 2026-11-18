@@ -197,14 +197,39 @@ export function AssistRequestCard({
                   <section className="assist-suggestion" key={index}>
                     <small>
                       {s.kind === "editor_title"
-                        ? value.scope?.editorContext?.kind === "note"
-                          ? "메모 제목 추천"
-                          : value.scope?.editorContext?.kind === "connection"
-                            ? "연결 메모 제목 추천"
-                            : "생각 묶음 제목 추천"
+                        ? s.noteFields
+                          ? "빈 항목 추천"
+                          : value.scope?.editorContext?.kind === "note"
+                            ? "메모 제목 추천"
+                            : value.scope?.editorContext?.kind === "connection"
+                              ? "연결 메모 제목 추천"
+                              : "생각 묶음 제목 추천"
                         : kindNames[s.kind]}
                     </small>
-                    <h4>{s.title}</h4>
+                    {s.noteFields ? (
+                      <dl>
+                        {s.noteFields.title && (
+                          <>
+                            <dt>제목</dt>
+                            <dd>{s.noteFields.title}</dd>
+                          </>
+                        )}
+                        {s.noteFields.topic && (
+                          <>
+                            <dt>주제</dt>
+                            <dd>{s.noteFields.topic}</dd>
+                          </>
+                        )}
+                        {!!s.noteFields.tags.length && (
+                          <>
+                            <dt>태그</dt>
+                            <dd>{s.noteFields.tags.join(", ")}</dd>
+                          </>
+                        )}
+                      </dl>
+                    ) : (
+                      <h4>{s.title}</h4>
+                    )}
                     <p>{s.reason}</p>
                     {!!s.outline.length && (
                       <ol>
@@ -242,12 +267,14 @@ export function AssistRequestCard({
                           ? "적용 중…"
                           : appliedWriting.includes(index)
                             ? "입력칸에 반영함"
-                            : value.scope?.editorContext?.kind === "note"
-                              ? "메모 제목으로 사용"
-                              : value.scope?.editorContext?.kind ===
-                                  "connection"
-                                ? "제목과 연결 이유 채우기"
-                                : "제목과 내용 채우기"}
+                            : s.noteFields
+                              ? "빈 항목에 적용"
+                              : value.scope?.editorContext?.kind === "note"
+                                ? "메모 제목으로 사용"
+                                : value.scope?.editorContext?.kind ===
+                                    "connection"
+                                  ? "제목과 연결 이유 채우기"
+                                  : "제목과 내용 채우기"}
                       </button>
                     ) : !value.scope?.writingContext &&
                       [

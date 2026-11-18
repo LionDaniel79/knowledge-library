@@ -188,6 +188,7 @@ it("queues and begins a title request for an unsaved note through existing budge
         id,
         noteIds: [id],
         draft: { content: "아직 저장하지 않은 메모의 제목을 추천합니다." },
+        fields: { kind: "reflection", missing: ["title", "topic", "tags"] },
       },
     };
     const preview = await store.preview(owner, payload);
@@ -202,7 +203,10 @@ it("queues and begins a title request for an unsaved note through existing budge
     await store.heartbeat(d, { keyReady: true, priceVersion: pricingVersion });
     const job = (await store.claim(d))!;
     expect(job).toBeTruthy();
-    await expect(store.begin(d, job.id, job.leaseToken)).resolves.toBeDefined();
+    const begun = await store.begin(d, job.id, job.leaseToken);
+    expect((begun.task.payload as any).editorContext.fields).toEqual(
+      payload.editorContext.fields,
+    );
     expect(
       (await f.db.query("SELECT count(*)::int n FROM library_notes")).rows[0].n,
     ).toBe(0);

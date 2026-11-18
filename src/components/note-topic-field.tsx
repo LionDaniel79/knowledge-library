@@ -1,5 +1,11 @@
 "use client";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import { usePagedResource } from "./use-paged-resource";
 import { topicChangesFor, type NoteTopicSnapshot } from "@/lib/note-context";
 import type { Membership } from "@/lib/thought-map/types";
@@ -8,6 +14,8 @@ import { useLibraryCommand } from "./use-library-command";
 import type { Topic } from "@/lib/thought-map/types";
 
 export type NoteTopicHandle = {
+  selected: () => string[];
+  recommend: (name: string, isCurrent?: () => boolean) => Promise<void>;
   changes: () => ReturnType<typeof topicChangesFor> | undefined;
 };
 export const NoteTopicField = forwardRef<
@@ -17,9 +25,16 @@ export const NoteTopicField = forwardRef<
     initial?: string[];
     preview?: boolean;
     onCreatingChange?: (busy: boolean) => void;
+    onSelectionChange?: (ids: string[]) => void;
   }
 >(function NoteTopicField(
-  { noteId, initial = [], preview = false, onCreatingChange },
+  {
+    noteId,
+    initial = [],
+    preview = false,
+    onCreatingChange,
+    onSelectionChange,
+  },
   ref,
 ) {
   const resource = usePagedResource<NoteTopicSnapshot>(
@@ -41,7 +56,27 @@ export const NoteTopicField = forwardRef<
     (noteId
       ? base.filter((m) => m.status === "accepted").map((m) => m.topicId)
       : initial);
+  const selectedRef = useRef(ids);
+  selectedRef.current = ids;
+  useEffect(() => onSelectionChange?.(ids), [ids.join("|"), onSelectionChange]);
   useImperativeHandle(ref, () => ({
+    selected: () => selectedRef.current,
+    recommend: async (name, isCurrent) => {
+      if (selectedRef.current.length) return;
+      const value = name.trim();
+      if (!value || value.length > 80)
+        throw Error("주제 이름을 확인해 주세요.");
+      const existing = topics.find(
+        (t) => t.name.trim().toLocaleLowerCase() === value.toLocaleLowerCase(),
+      );
+      if (existing) {
+        setSelection({ ids: [existing.id], base });
+        return;
+      }
+      if (!resource.data || preview || command.busy)
+        throw Error("주제를 불러온 뒤 다시 적용해 주세요.");
+      await createTopic(value, true, isCurrent);
+    },
     changes: () =>
       resource.data || selection || (!noteId && initial.length)
         ? topicChangesFor(ids, selection?.base ?? base)
@@ -64,7 +99,13 @@ export const NoteTopicField = forwardRef<
         (t) => t.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
       );
   async function create() {
-    if (!canCreate) return;
+    if (canCreate) await createTopic(name, false);
+  }
+  async function createTopic(
+    name: string,
+    onlyIfEmpty: boolean,
+    isCurrent?: () => boolean,
+  ) {
     const payload = {
       name,
       parentId: null,
@@ -75,7 +116,11 @@ export const NoteTopicField = forwardRef<
     onCreatingChange?.(true);
     try {
       const result = await command.send("upsertTopic", payload);
-      if (!result) return;
+      if (!result) {
+        if (onlyIfEmpty)
+          throw Error("주제를 생성하지 못했습니다. 다시 적용해 주세요.");
+        return;
+      }
       setAdded((old) => [
         ...old,
         {
@@ -85,10 +130,18 @@ export const NoteTopicField = forwardRef<
           confirmed: true,
         },
       ]);
-      setSelection((old) => ({
-        ids: [...new Set([...(old?.ids ?? ids), result.id])],
-        base: old?.base ?? base,
-      }));
+      if (isCurrent && !isCurrent())
+        throw Error(
+          "내용이나 기록 종류가 변경되었습니다. 다시 추천받아 주세요.",
+        );
+      setSelection((old) =>
+        onlyIfEmpty && selectedRef.current.length
+          ? old
+          : {
+              ids: [...new Set([...(old?.ids ?? ids), result.id])],
+              base: old?.base ?? base,
+            },
+      );
     } finally {
       onCreatingChange?.(false);
     }
