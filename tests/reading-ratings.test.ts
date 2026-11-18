@@ -470,3 +470,47 @@ it("enforces rating range in SQL, reruns migration safely, and old clients prese
     await f.pg.close();
   }
 });
+it("upgrades a persisted pre-rating device index from existing local rows without a new download", async () => {
+  const f = await resourceFixture();
+  let next: ReturnType<typeof createReplicaRepository> | undefined;
+  try {
+    await queueReplicaCommand({
+      storage: f.s,
+      repository: f.repo,
+      path: "/api/library",
+      body: {
+        requestId: randomUUID(),
+        type: "startReading",
+        payload: {
+          bookId: f.book,
+          completedWithoutDates: true,
+          ratingSteps: 7,
+        },
+      },
+    });
+    await f.repo.reading({ ratings: "1" });
+    const cp = (await f.s.checkpoint())!,
+      old = structuredClone(
+        await f.s.readIndex("catalog-index-v1", cp.generation),
+      );
+    for (const cycle of old.data.cycles) delete cycle.ratingSteps;
+    const stamp = JSON.parse(old.stamp);
+    stamp[0] = "catalog-dependencies-v3";
+    old.stamp = JSON.stringify(stamp);
+    await f.s.transaction((tx) =>
+      tx.putIndex(cp.generation, "catalog-index-v1", old),
+    );
+    f.repo.close();
+    next = createReplicaRepository(f.s);
+    const result = await next.reading({ ratings: "1" });
+    expect(result.summary).toMatchObject({
+      rated: 1,
+      unrated: 0,
+      average: 3.5,
+    });
+    expect((await f.s.listOutbox()).length).toBe(1);
+  } finally {
+    next?.close();
+    f.repo.close();
+  }
+});

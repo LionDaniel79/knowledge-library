@@ -26,3 +26,4 @@
 - `npx tsc --noEmit`
 - `npx playwright test --config playwright.ratings.config.ts`: 운영 서버 없이 격리된 브라우저에서 완독·반 별·0점·미평가·재시도·날짜 없는 완독·모바일/PC 통계 검증.
 - `npm run build`
+기존 기기의 표시용 캐시는 별점 필드를 포함하는 새 형식으로 자동 갱신한다. 기존 기기 원자료, 미전송 수정 내용과 동기화 체크포인트는 유지하고 재다운로드 없이 로컬 자료에서 다시 계산한다.

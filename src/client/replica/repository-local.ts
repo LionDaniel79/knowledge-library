@@ -74,7 +74,7 @@ const indexStamp = (
   catalogOnly = false,
 ) =>
   JSON.stringify([
-    catalogOnly ? "catalog-dependencies-v3" : "field-search-and-archives-v2",
+    catalogOnly ? "catalog-dependencies-v4-ratings" : "field-search-and-archives-v3-ratings",
     ...(catalogOnly ? catalogEntities : indexEntities).map((e) => [
       e,
       state.entityRevisions?.[e] ?? "0",
