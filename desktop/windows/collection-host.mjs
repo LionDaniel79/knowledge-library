@@ -1,4 +1,5 @@
 import { writeCollectionState } from "./collection-state.mjs";
+import { refreshCollectionOverview } from "./collection-overview.mjs";
 import { automaticRetry, failureGuidance } from "./collection-recovery.mjs";
 import { acquireCollectionLock } from "./collection-lock.mjs";
 import fs from "node:fs";
@@ -69,6 +70,7 @@ export async function host(
   if (!release) return;
   let stopping = false,
     child;
+  let overviewAt = 0;
   const stop = () => {
     stopping = true;
     if (child) child.kill("SIGTERM");
@@ -106,6 +108,10 @@ export async function host(
           at: now().toISOString(),
           pid: process.pid,
         });
+        if (Date.now() - overviewAt >= 15 * 60000) {
+          overviewAt = Date.now();
+          await refreshCollectionOverview(config);
+        }
         const snap = collectionSnapshot(directory, now());
         const recovery = readState(directory, "desktop-request.json", {});
         const recovered = readState(
@@ -220,6 +226,8 @@ export async function host(
           if (due.length) {
             // The runner and old scheduler share running.lock and daily reservations.
             const code = await execute(...due[0]);
+            await refreshCollectionOverview(config);
+            overviewAt = Date.now();
             if (
               code === 0 &&
               !fs.existsSync(join(directory, "halted.json")) &&
