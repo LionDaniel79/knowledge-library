@@ -1,3 +1,4 @@
+import { ratingStepsInput } from "../lib/reading-ratings";
 import { withSyncWrite } from "./sync/write";
 import { writeNoteContext } from "./note-context";
 import { editableFields } from "../lib/replica/command-envelope";
@@ -45,8 +46,7 @@ export class LibraryError extends Error {
 function requiredOwner(owner: string) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
 }
-const cycleSelect =
-  'id,book_id AS "bookId",status,started_on::text AS "startedOn",completed_on::text AS "completedOn",current_page AS "currentPage",version,created_at AS "createdAt"';
+const cycleSelect = `id,book_id AS "bookId",status,started_on::text AS "startedOn",completed_on::text AS "completedOn",current_page AS "currentPage",CASE WHEN source_data ? 'readingRating' THEN (source_data#>>'{readingRating,steps}')::int WHEN source_data#>>'{raw,ZRATING}' ~ '^(10|[1-9])$' THEN (source_data#>>'{raw,ZRATING}')::int ELSE NULL END AS "ratingSteps",version,created_at AS "createdAt"`;
 const noteSelect =
   'id,book_id AS "bookId",title,content,kind,page,tags,version,created_at AS "createdAt",updated_at AS "updatedAt",source_data AS "sourceData"';
 const serialize = <T>(value: unknown): T => JSON.parse(JSON.stringify(value));
@@ -596,6 +596,7 @@ export function createLibraryStore(db: Database) {
               bookId: z.string().uuid(),
               startedOn: dateInput.nullable().default(null),
               completedWithoutDates: z.boolean().default(false),
+              ratingSteps: ratingStepsInput.optional(),
             })
             .parse(cmd.payload);
           const book = await ownBook(p.bookId);
@@ -626,7 +627,7 @@ export function createLibraryStore(db: Database) {
             );
           after = (
             await tx.query(
-              "INSERT INTO library_cycles(id,owner_id,book_id,status,started_on) VALUES($1,$2,$3,$4,$5) RETURNING " +
+              "INSERT INTO library_cycles(id,owner_id,book_id,status,started_on,source_data) VALUES($1,$2,$3,$4,$5,$6::jsonb) RETURNING " +
                 cycleSelect,
               [
                 id,
@@ -634,6 +635,14 @@ export function createLibraryStore(db: Database) {
                 p.bookId,
                 p.completedWithoutDates ? "completed" : "reading",
                 p.completedWithoutDates ? null : p.startedOn,
+                p.completedWithoutDates
+                  ? JSON.stringify({
+                      readingRating: {
+                        steps: p.ratingSteps ?? null,
+                        origin: "user",
+                      },
+                    })
+                  : null,
               ],
             )
           ).rows[0];
@@ -670,9 +679,12 @@ export function createLibraryStore(db: Database) {
             };
           }
         } else if (
-          ["updateProgress", "completeReading", "editCompletion"].includes(
-            cmd.type,
-          )
+          [
+            "updateProgress",
+            "completeReading",
+            "editCompletion",
+            "rateReading",
+          ].includes(cmd.type)
         ) {
           const base = versionInput.parse(cmd.payload);
           id = base.id;
@@ -694,7 +706,20 @@ export function createLibraryStore(db: Database) {
           before = old;
           version = old.version + 1;
           const book = await ownBook(old.bookId);
-          if (cmd.type === "updateProgress") {
+          if (cmd.type === "rateReading") {
+            const p = z
+              .object({ ratingSteps: ratingStepsInput })
+              .parse(cmd.payload);
+            if (old.status !== "completed")
+              throw new LibraryError(409, "완독 기록에서 평가해 주세요.");
+            after = (
+              await tx.query(
+                "UPDATE library_cycles SET source_data=coalesce(source_data,'{}'::jsonb)||jsonb_build_object('readingRating',jsonb_build_object('steps',$3::int,'origin','user')),version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING " +
+                  cycleSelect,
+                [owner, id, p.ratingSteps],
+              )
+            ).rows[0];
+          } else if (cmd.type === "updateProgress") {
             const p = z
               .object({ currentPage: z.number().int().min(0).max(100000) })
               .parse(cmd.payload);
@@ -714,7 +739,12 @@ export function createLibraryStore(db: Database) {
               )
             ).rows[0];
           } else {
-            const p = z.object({ completedOn: dateInput }).parse(cmd.payload);
+            const p = z
+              .object({
+                completedOn: dateInput,
+                ratingSteps: ratingStepsInput.optional(),
+              })
+              .parse(cmd.payload);
             if (
               (cmd.type === "completeReading" && old.status !== "reading") ||
               (cmd.type === "editCompletion" && old.status !== "completed")
@@ -730,9 +760,16 @@ export function createLibraryStore(db: Database) {
               );
             after = (
               await tx.query(
-                "UPDATE library_cycles SET status='completed',completed_on=$3,current_page=$4,version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING " +
+                "UPDATE library_cycles SET status='completed',completed_on=$3,current_page=$4,source_data=CASE WHEN $5::boolean THEN coalesce(source_data,'{}'::jsonb)||jsonb_build_object('readingRating',jsonb_build_object('steps',$6::int,'origin','user')) ELSE source_data END,version=version+1 WHERE owner_id=$1 AND id=$2 RETURNING " +
                   cycleSelect,
-                [owner, id, p.completedOn, book.totalPages ?? old.currentPage],
+                [
+                  owner,
+                  id,
+                  p.completedOn,
+                  book.totalPages ?? old.currentPage,
+                  p.ratingSteps !== undefined,
+                  p.ratingSteps ?? null,
+                ],
               )
             ).rows[0];
           }

@@ -95,10 +95,15 @@ export async function lookupLibrary(
       cache: "no-store",
       redirect: "error",
     });
-  } catch {
-    throw Error("도서관에 연결하지 못했습니다. 연결 상태를 확인해 주세요.");
+  } catch (cause) {
+    throw Error("도서관에 연결하지 못했습니다. 연결 상태를 확인해 주세요.", {
+      cause,
+    });
   }
-  if (!res.ok) throw Error("도서관 조회를 완료하지 못했습니다.");
+  if (!res.ok)
+    throw Object.assign(Error("도서관 조회를 완료하지 못했습니다."), {
+      status: res.status,
+    });
   return parseLibraryResult(await res.json(), normalized);
 }
 
@@ -171,10 +176,13 @@ export async function lookupLibraryTitle(
       cache: "no-store",
       redirect: "error",
     });
-  } catch {
-    throw Error("도서관 검색에 연결하지 못했습니다.");
+  } catch (cause) {
+    throw Error("도서관 검색에 연결하지 못했습니다.", { cause });
   }
-  if (!response.ok) throw Error("도서관 검색을 완료하지 못했습니다.");
+  if (!response.ok)
+    throw Object.assign(Error("도서관 검색을 완료하지 못했습니다."), {
+      status: response.status,
+    });
   let json: unknown;
   try {
     json = await response.json();

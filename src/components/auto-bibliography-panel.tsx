@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { libraryRequest } from "@/client/replica/request";
 import { catalogProviderNames } from "@/lib/book-lookup";
 
-interface AutoBibliographyState {
+import { pendingAutomaticFields } from "@/lib/unified-book-information";
+
+export interface AutoBibliographyState {
   version: number;
   application: {
     provider: string;
@@ -13,6 +15,7 @@ interface AutoBibliographyState {
     alternateEdition: boolean;
     status: string;
     fields: string[];
+    pendingFields?: string[];
     beforeValues: Record<string, unknown>;
     afterValues: Record<string, unknown>;
     appliedAt: string;
@@ -42,11 +45,17 @@ function displayValue(value: unknown): string {
 export function AutoBibliographyPanel({
   bookId,
   onChanged,
+  embedded = false,
+  onState,
+  refreshKey = 0,
 }: {
   bookId: string;
   onChanged: () => Promise<void>;
+  embedded?: boolean;
+  refreshKey?: number;
+  onState?: (state: AutoBibliographyState) => void;
 }) {
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState(embedded);
   const [reload, setReload] = useState(0);
   const [state, setState] = useState<AutoBibliographyState | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -80,7 +89,8 @@ export function AutoBibliographyPanel({
           throw Error(result.error ?? "자동 보완 내역을 불러오지 못했습니다.");
         if (controller.signal.aborted) return;
         setState(result);
-        setSelected(result.application?.fields ?? []);
+        onState?.(result);
+        setSelected(pendingAutomaticFields(result.application));
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted)
@@ -94,7 +104,7 @@ export function AutoBibliographyPanel({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [bookId, opened, reload]);
+  }, [bookId, opened, reload, refreshKey]);
 
   async function decide(action: "keep" | "undo") {
     if (
@@ -118,7 +128,7 @@ export function AutoBibliographyPanel({
             bookId,
             expectedVersion: state.version,
             action,
-            ...(action === "undo" ? { fields: selected } : {}),
+            fields: selected,
           }),
         },
         { preferServer: true, awaitDeviceSync: true },
@@ -135,7 +145,8 @@ export function AutoBibliographyPanel({
       }
       if (mounted.current) {
         setState(result);
-        setSelected(result.application?.fields ?? []);
+        onState?.(result);
+        setSelected(pendingAutomaticFields(result.application));
         const skipped = Array.isArray(result.skipped)
           ? result.skipped.map((field: string) => fieldNames[field] ?? field)
           : [];
@@ -171,26 +182,12 @@ export function AutoBibliographyPanel({
 
   const application = state?.application;
   const undone = application?.status === "undone";
-  const comparisonFields = application
-    ? [
-        ...new Set([
-          ...Object.keys(application.afterValues),
-          ...application.fields,
-        ]),
-      ]
-    : [];
-  const canDecide = !!application?.fields.length && !undone;
+  const comparisonFields = pendingAutomaticFields(application);
+  const canDecide = comparisonFields.length > 0;
   const appliedDate = application ? new Date(application.appliedAt) : null;
 
-  return (
-    <details
-      className="curation-details"
-      onToggle={(event) => {
-        if (event.target === event.currentTarget && event.currentTarget.open)
-          setOpened(true);
-      }}
-    >
-      <summary>자동 보완 내역</summary>
+  const content = (
+    <>
       {loading && <p role="status">자동 보완 내역을 불러오고 있습니다…</p>}
       {error && (
         <p className="error" role="alert">
@@ -213,38 +210,40 @@ export function AutoBibliographyPanel({
       )}
       {application && (
         <>
-          <dl>
-            <dt>정보 제공</dt>
-            <dd>
-              {catalogProviderNames[
-                application.provider as keyof typeof catalogProviderNames
-              ] ?? application.provider}
-              {application.url && /^https:\/\//i.test(application.url) && (
-                <>
-                  {" · "}
-                  <a href={application.url} target="_blank" rel="noreferrer">
-                    자료 원문
-                  </a>
-                </>
-              )}
-            </dd>
-            <dt>보완 시각</dt>
-            <dd>
-              {appliedDate && !Number.isNaN(appliedDate.getTime())
-                ? appliedDate.toLocaleString("ko-KR")
-                : application.appliedAt || "기록 없음"}
-            </dd>
-            <dt>보완 근거</dt>
-            <dd className="curation-value">
-              {application.reason || "기록 없음"}
-            </dd>
-            <dt>판본</dt>
-            <dd>
-              {application.alternateEdition
-                ? "다른 판본의 정보를 참고해 보완"
-                : "동일 판본의 정보로 보완"}
-            </dd>
-          </dl>
+          {!embedded && (
+            <dl>
+              <dt>정보 제공</dt>
+              <dd>
+                {catalogProviderNames[
+                  application.provider as keyof typeof catalogProviderNames
+                ] ?? application.provider}
+                {application.url && /^https:\/\//i.test(application.url) && (
+                  <>
+                    {" · "}
+                    <a href={application.url} target="_blank" rel="noreferrer">
+                      자료 원문
+                    </a>
+                  </>
+                )}
+              </dd>
+              <dt>보완 시각</dt>
+              <dd>
+                {appliedDate && !Number.isNaN(appliedDate.getTime())
+                  ? appliedDate.toLocaleString("ko-KR")
+                  : application.appliedAt || "기록 없음"}
+              </dd>
+              <dt>보완 근거</dt>
+              <dd className="curation-value">
+                {application.reason || "기록 없음"}
+              </dd>
+              <dt>판본</dt>
+              <dd>
+                {application.alternateEdition
+                  ? "다른 판본의 정보를 참고해 보완"
+                  : "동일 판본의 정보로 보완"}
+              </dd>
+            </dl>
+          )}
           {undone ? (
             <p className="muted">이 자동 보완은 이전 정보로 되돌렸습니다.</p>
           ) : application.status === "kept" ? (
@@ -256,16 +255,13 @@ export function AutoBibliographyPanel({
             </p>
           )}
           {comparisonFields.map((field) => (
-            <article className="curation-item" key={field}>
+            <article className="curation-item automatic-comparison" key={field}>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
                   checked={selected.includes(field)}
                   disabled={
-                    !!busy ||
-                    loading ||
-                    undone ||
-                    !application.fields.includes(field)
+                    !!busy || loading || !comparisonFields.includes(field)
                   }
                   onChange={(event) => {
                     const checked = event.currentTarget.checked;
@@ -296,7 +292,7 @@ export function AutoBibliographyPanel({
                 <button
                   type="button"
                   className="secondary"
-                  disabled={!!busy || loading}
+                  disabled={!!busy || loading || !selected.length}
                   onClick={() => void decide("keep")}
                 >
                   {busy === "keep" ? "저장 중…" : "그대로 유지"}
@@ -314,6 +310,23 @@ export function AutoBibliographyPanel({
           )}
         </>
       )}
+    </>
+  );
+  return embedded ? (
+    <details className="automatic-review">
+      <summary>변경 내역·되돌리기</summary>
+      {content}
+    </details>
+  ) : (
+    <details
+      className="curation-details"
+      onToggle={(event) => {
+        if (event.target === event.currentTarget && event.currentTarget.open)
+          setOpened(true);
+      }}
+    >
+      <summary>자동 보완 내역</summary>
+      {content}
     </details>
   );
 }

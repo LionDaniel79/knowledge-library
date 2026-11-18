@@ -70,6 +70,7 @@ try {
   );
   await client.query(await readFile("db/041_logos_format.sql", "utf8"));
   await client.query(await readFile("db/042_book_recommendations.sql", "utf8"));
+  await client.query(await readFile("db/043_reading_ratings.sql", "utf8"));
   if (role) {
     await client.query(
       'GRANT SELECT,INSERT,UPDATE ON library_book_recommendations,library_book_recommendation_requests TO "' +

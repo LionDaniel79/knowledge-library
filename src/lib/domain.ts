@@ -69,6 +69,7 @@ export interface Book {
   sourceData?: ImportSource | null;
 }
 export interface ReadingCycle {
+  ratingSteps?: number | null;
   id: string;
   bookId: string;
   status: "reading" | "completed";
@@ -267,6 +268,7 @@ export const commandInput = z.object({
     "updateProgress",
     "completeReading",
     "editCompletion",
+    "rateReading",
     "addNote",
     "editNote",
     "deleteNote",

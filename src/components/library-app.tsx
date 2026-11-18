@@ -3,7 +3,7 @@ import { libraryRequest } from "@/client/replica/request";
 import type { ModalAnchor } from "@/lib/modal-placement";
 import { projectLibrarySave } from "@/client/replica/save-projection";
 import { CatalogAttribution } from "./catalog-attribution";
-import { AutoBibliographyPanel } from "./auto-bibliography-panel";
+import { UnifiedBookInformation } from "./unified-book-information";
 import { SyncButton, SyncSummary } from "./replica/sync-button";
 import { useReplicaDataOptional } from "./replica/provider";
 import { writeStartup } from "@/client/replica/startup-cache";
@@ -27,6 +27,7 @@ import {
   Feather,
   History,
   RefreshCw,
+  Settings,
 } from "lucide-react";
 import {
   readingStats,
@@ -54,6 +55,8 @@ import { Modal } from "./modal";
 import { RevisionContent } from "./revision-content";
 import { NavigationDrawer } from "./navigation-drawer";
 import { BookShelves } from "./shelf-picker";
+import { RatingStatistics } from "./rating-statistics";
+import { RatingStars } from "./reading-rating";
 import { BookRecords } from "./book-records";
 import {
   useListPagination,
@@ -61,11 +64,9 @@ import {
   PageNavigation,
 } from "./list-pagination";
 
-import { CurationDetails } from "./curation-details";
 import { BookRelations } from "./book-relations";
 import { BookDelete } from "./book-delete";
 import { PdfIdentityEvidence } from "./pdf-identity-evidence";
-import { PdfStorageLocations } from "./pdf-storage-locations";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
 import { containsSearchField } from "@/lib/search-fields";
@@ -185,6 +186,7 @@ export function LibraryApp({
   const [readingIndex, setReadingIndex] = useState(0);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
+  const [statisticsTab, setStatisticsTab] = useState("reading");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [openingNote, setOpeningNote] = useState<{
     id: string;
@@ -240,6 +242,14 @@ export function LibraryApp({
       ? detailState.book
       : undefined
     : data.books.find((b) => b.id === detail);
+  const detailCyclePaging = useListPagination("book-reading", detail ?? "");
+  const detailNotePaging = useListPagination("book-notes", detail ?? "");
+  const detailCycles = data.cycles.filter(
+    (cycle) => cycle.bookId === detailBook?.id,
+  );
+  const detailNotes = data.notes.filter(
+    (note) => note.bookId === detailBook?.id,
+  );
   const booksById = useMemo(
     () =>
       new Map(
@@ -463,9 +473,12 @@ export function LibraryApp({
   }
   async function save(command: Command) {
     if (
-      ["updateProgress", "completeReading", "editCompletion"].includes(
-        command.type,
-      )
+      [
+        "updateProgress",
+        "completeReading",
+        "editCompletion",
+        "rateReading",
+      ].includes(command.type)
     ) {
       const p = command.payload as {
         id: string;
@@ -674,16 +687,72 @@ export function LibraryApp({
               </button>
             ))}
           </nav>
+          {!preview && (
+            <details className="sidebar-settings">
+              <summary>
+                <Settings size={18} />
+                <span>설정</span>
+              </summary>
+              <div className="sidebar-settings-actions">
+                <button
+                  className="text-button"
+                  disabled={refreshing}
+                  onClick={async () => {
+                    setRefreshing(true);
+                    try {
+                      await refresh();
+                      setMessage("최신 기록을 불러왔습니다.");
+                      setFailure("");
+                    } catch (e) {
+                      setFailure(
+                        e instanceof Error ? e.message : "새로고침 실패",
+                      );
+                    } finally {
+                      setRefreshing(false);
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  {refreshing ? "새로고침 중" : "새로고침"}
+                </button>
+                <button
+                  className="text-button"
+                  onClick={() => setImporting(true)}
+                >
+                  기존 자료 가져오기
+                </button>
+                <a className="text-button" href="/api/export">
+                  <Download size={14} />
+                  전체 기록 내려받기
+                </a>
+                <button
+                  className="text-button"
+                  onClick={() => setBackupOpen(true)}
+                >
+                  백업과 복원
+                </button>
+                <button
+                  className="text-button"
+                  onClick={() => setSyncSettingsOpen(true)}
+                >
+                  기기 저장·동기화
+                </button>
+                <a className="text-button" href="/desktop/connect">
+                  Windows PDF 서재 연결
+                </a>
+                <a className="text-button" href="/logos/import">
+                  로고스 도서 가져오기
+                </a>
+                <button
+                  className="text-button"
+                  onClick={() => setExclusionsOpen(true)}
+                >
+                  삭제·제외한 자료
+                </button>
+              </div>
+            </details>
+          )}
           <div className="sidebar-bottom">
-            <div className="sidebar-quote">
-              <Feather size={22} />
-              <p>
-                책을 읽는 시간은
-                <br />
-                나를 넓히는 시간.
-              </p>
-              <span>한 권씩, 오래도록.</span>
-            </div>
             <div className="connection-status">
               <CloudCheck size={17} />
               {preview
@@ -935,7 +1004,6 @@ export function LibraryApp({
                       {currentStats.readingCount}
                       <small>권</small>
                     </strong>
-                    <p>저마다의 속도로 읽고 있어요</p>
                     <BookOpen />
                   </div>
                   <div className="stat-card">
@@ -956,7 +1024,6 @@ export function LibraryApp({
                       {data.notes.length}
                       <small>개</small>
                     </strong>
-                    <p>내 안에 남은 독서의 흔적</p>
                     <Feather />
                   </div>
                 </div>
@@ -980,7 +1047,6 @@ export function LibraryApp({
                       <section className="recent-notes">
                         <div className="section-heading">
                           <div>
-                            <span className="eyebrow">WORDS THAT STAY</span>
                             <h2>최근 남긴 생각</h2>
                           </div>
                           <button
@@ -1036,7 +1102,11 @@ export function LibraryApp({
                 <>
                   <div className="book-toolbar">
                     <div className="book-view-actions">
-                      <PageSizeSelect label="소장 도서" paging={bookPaging} />
+                      <PageSizeSelect
+                        label="소장 도서"
+                        paging={bookPaging}
+                        compact
+                      />
                       <div className="book-view-review">
                         <select
                           aria-label="도서 보기 방식"
@@ -1050,20 +1120,7 @@ export function LibraryApp({
                           <option value="list">목록형</option>
                           <option value="covers">표지형</option>
                         </select>
-                        {!preview && (
-                          <button onClick={() => setCatalogReviewOpen(true)}>
-                            도서정보 검토
-                          </button>
-                        )}
                       </div>
-                      {!preview && (
-                        <button
-                          className="secondary"
-                          onClick={() => setExclusionsOpen(true)}
-                        >
-                          삭제·제외한 자료
-                        </button>
-                      )}
                     </div>
                     <div className="filter-tabs">
                       {[
@@ -1088,7 +1145,17 @@ export function LibraryApp({
                         </button>
                       ))}
                     </div>
-                    <span>{matchedCount}권</span>
+                    <div className="book-toolbar-end">
+                      {!preview && (
+                        <button
+                          className="secondary catalog-review-button"
+                          onClick={() => setCatalogReviewOpen(true)}
+                        >
+                          도서정보 검토
+                        </button>
+                      )}
+                      <span>{matchedCount}권</span>
+                    </div>
                   </div>
                   {catalog.loading && !matchedBooks.length ? (
                     <p role="status">도서를 불러오고 있습니다…</p>
@@ -1173,136 +1240,168 @@ export function LibraryApp({
               )}
 
               {view === "calendar" && (
-                <div className="calendar-full">
-                  <ReadingCalendar
-                    library={data}
-                    month={month}
-                    setMonth={setMonth}
-                    selected={selected}
-                    setSelected={setSelected}
-                    onEdit={(cycle) => setEditor({ kind: "date", cycle })}
-                    onOpenBook={setDetail}
-                    today={today}
-                  />
-                  <div className="panel calendar-summary">
-                    <span className="eyebrow">THIS MONTH</span>
-                    <h2>{Number(month.slice(5))}월의 독서</h2>
-                    <strong>
-                      {stats.monthCount}
-                      <small>권 완독</small>
-                    </strong>
-                    <p>
-                      서로 다른 책 {stats.uniqueBooks}권<br />
-                      다시 읽은 책 {stats.rereads}권
-                    </p>
-                    <p className="muted">
-                      책 표지가 있는 날짜를 눌러 완독한 책을 확인하고 날짜를
-                      수정할 수 있습니다.
-                    </p>
-                  </div>
-                </div>
+                <ReadingCalendar
+                  library={data}
+                  month={month}
+                  setMonth={setMonth}
+                  selected={selected}
+                  setSelected={setSelected}
+                  onEdit={(cycle) => setEditor({ kind: "date", cycle })}
+                  onOpenBook={setDetail}
+                  today={today}
+                  monthSummary={
+                    <div className="panel calendar-summary">
+                      <span className="eyebrow">THIS MONTH</span>
+                      <h2>{Number(month.slice(5))}월의 독서</h2>
+                      <strong>
+                        {stats.monthCount}
+                        <small>권 완독</small>
+                      </strong>
+                      <p>
+                        서로 다른 책 {stats.uniqueBooks}권<br />
+                        다시 읽은 책 {stats.rereads}권
+                      </p>
+                    </div>
+                  }
+                />
               )}
               {view === "stats" && (
                 <section className="panel">
-                  <div className="stat-grid">
-                    <div className="stat-card">
-                      <span>전체 완독 기록</span>
-                      <strong>
-                        {data.readingSummary?.totalCompleted ??
-                          data.cycles.filter((c) => c.status === "completed")
-                            .length}
-                        <small>권</small>
-                      </strong>
-                    </div>
-                    <div className="stat-card">
-                      <span>현재 읽는 책</span>
-                      <strong>
-                        {readingIds.size}
-                        <small>권</small>
-                      </strong>
-                    </div>
-                    <div className="stat-card">
-                      <span>{month.slice(0, 4)}년 완독 날짜 기준</span>
-                      <strong>
-                        {stats.yearCount}
-                        <small>권</small>
-                      </strong>
-                    </div>
+                  <div
+                    className="statistics-tabs"
+                    role="tablist"
+                    aria-label="독서 통계"
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={statisticsTab === "reading"}
+                      onClick={() => setStatisticsTab("reading")}
+                    >
+                      독서 현황
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={statisticsTab === "ratings"}
+                      onClick={() => setStatisticsTab("ratings")}
+                    >
+                      별점
+                    </button>
                   </div>
-                  <div className="section-heading">
-                    <div>
-                      <span className="eyebrow">A YEAR IN BOOKS</span>
-                      <h2>
-                        {month.slice(0, 4)}년, {stats.yearCount}권 완독
-                      </h2>
-                    </div>
-                    <label>
-                      연도
-                      <select
-                        aria-label="통계 연도"
-                        value={month.slice(0, 4)}
-                        onChange={(e) =>
-                          setMonth(e.target.value + month.slice(4))
-                        }
-                      >
-                        {[
-                          ...new Set([
-                            today.slice(0, 4),
-                            month.slice(0, 4),
-                            ...Object.keys(
-                              data.readingSummary?.months ?? {},
-                            ).map((m) => m.slice(0, 4)),
-                            ...data.cycles.flatMap((c) =>
-                              c.completedOn ? [c.completedOn.slice(0, 4)] : [],
+                  {statisticsTab === "ratings" ? (
+                    <RatingStatistics
+                      library={data}
+                      today={today}
+                      onOpenBook={setDetail}
+                      onRate={(cycle) => setEditor({ kind: "rating", cycle })}
+                    />
+                  ) : (
+                    <div role="tabpanel" aria-label="독서 현황">
+                      <div className="stat-grid">
+                        <div className="stat-card">
+                          <span>전체 완독 기록</span>
+                          <strong>
+                            {data.readingSummary?.totalCompleted ??
+                              data.cycles.filter(
+                                (c) => c.status === "completed",
+                              ).length}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                        <div className="stat-card">
+                          <span>현재 읽는 책</span>
+                          <strong>
+                            {readingIds.size}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                        <div className="stat-card">
+                          <span>{month.slice(0, 4)}년 완독 날짜 기준</span>
+                          <strong>
+                            {stats.yearCount}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                      </div>
+                      <div className="section-heading">
+                        <div>
+                          <span className="eyebrow">A YEAR IN BOOKS</span>
+                          <h2>
+                            {month.slice(0, 4)}년, {stats.yearCount}권 완독
+                          </h2>
+                        </div>
+                        <label>
+                          연도
+                          <select
+                            aria-label="통계 연도"
+                            value={month.slice(0, 4)}
+                            onChange={(e) =>
+                              setMonth(e.target.value + month.slice(4))
+                            }
+                          >
+                            {[
+                              ...new Set([
+                                today.slice(0, 4),
+                                month.slice(0, 4),
+                                ...Object.keys(
+                                  data.readingSummary?.months ?? {},
+                                ).map((m) => m.slice(0, 4)),
+                                ...data.cycles.flatMap((c) =>
+                                  c.completedOn
+                                    ? [c.completedOn.slice(0, 4)]
+                                    : [],
+                                ),
+                              ]),
+                            ]
+                              .sort()
+                              .reverse()
+                              .map((y) => (
+                                <option key={y}>{y}</option>
+                              ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="year-chart">
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const m =
+                            month.slice(0, 4) +
+                            "-" +
+                            String(i + 1).padStart(2, "0");
+                          const n = statsFor(m).monthCount;
+                          const max = Math.max(
+                            1,
+                            ...Array.from(
+                              { length: 12 },
+                              (_, j) =>
+                                statsFor(
+                                  month.slice(0, 4) +
+                                    "-" +
+                                    String(j + 1).padStart(2, "0"),
+                                ).monthCount,
                             ),
-                          ]),
-                        ]
-                          .sort()
-                          .reverse()
-                          .map((y) => (
-                            <option key={y}>{y}</option>
-                          ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="year-chart">
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const m =
-                        month.slice(0, 4) +
-                        "-" +
-                        String(i + 1).padStart(2, "0");
-                      const n = statsFor(m).monthCount;
-                      const max = Math.max(
-                        1,
-                        ...Array.from(
-                          { length: 12 },
-                          (_, j) =>
-                            statsFor(
-                              month.slice(0, 4) +
-                                "-" +
-                                String(j + 1).padStart(2, "0"),
-                            ).monthCount,
-                        ),
-                      );
-                      return (
-                        <button
-                          key={m}
-                          aria-label={m + " 완독 " + n + "권"}
-                          className={m === month ? "selected" : ""}
-                          onClick={() => setMonth(m)}
-                        >
-                          <span>{n}</span>
-                          <i style={{ height: Math.max(3, (n / max) * 150) }} />
-                          <small>{i + 1}월</small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <MonthCompletedBooks
-                    library={data}
-                    month={month}
-                    onOpenBook={setDetail}
-                  />
+                          );
+                          return (
+                            <button
+                              key={m}
+                              aria-label={m + " 완독 " + n + "권"}
+                              className={m === month ? "selected" : ""}
+                              onClick={() => setMonth(m)}
+                            >
+                              <span>{n}</span>
+                              <i
+                                style={{ height: Math.max(3, (n / max) * 150) }}
+                              />
+                              <small>{i + 1}월</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <MonthCompletedBooks
+                        library={data}
+                        month={month}
+                        onOpenBook={setDetail}
+                      />
+                    </div>
+                  )}
                 </section>
               )}
               {view === "knowledge" &&
@@ -1353,65 +1452,6 @@ export function LibraryApp({
             />
           )}
           {!preview && <ConflictReviewPanel />}
-
-          <footer className="workspace-footer">
-            <span>당신의 책, 당신의 생각.</span>
-            <div>
-              {!preview && (
-                <>
-                  <button
-                    className="text-button"
-                    disabled={refreshing}
-                    onClick={async () => {
-                      setRefreshing(true);
-                      try {
-                        await refresh();
-                        setMessage("최신 기록을 불러왔습니다.");
-                        setFailure("");
-                      } catch (e) {
-                        setFailure(
-                          e instanceof Error ? e.message : "새로고침 실패",
-                        );
-                      } finally {
-                        setRefreshing(false);
-                      }
-                    }}
-                  >
-                    <RefreshCw size={14} />
-                    {refreshing ? "불러오는 중" : "새로고침"}
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setImporting(true)}
-                  >
-                    기존 자료 가져오기
-                  </button>
-                  <a className="text-button" href="/api/export">
-                    <Download size={14} />
-                    전체 기록 내려받기
-                  </a>
-                  <button
-                    className="text-button"
-                    onClick={() => setBackupOpen(true)}
-                  >
-                    백업과 복원
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setSyncSettingsOpen(true)}
-                  >
-                    기기 저장·동기화
-                  </button>
-                  <a className="text-button" href="/desktop/connect">
-                    Windows PDF 서재 연결
-                  </a>
-                  <a className="text-button" href="/logos/import">
-                    로고스 도서 가져오기
-                  </a>
-                </>
-              )}
-            </div>
-          </footer>
         </main>
       </div>
       {importing && (
@@ -1489,7 +1529,7 @@ export function LibraryApp({
       {detail && remote && !detailBook && !editor && (
         <Modal
           className="book-detail-modal"
-          title="책을 펼쳐 보기"
+          title="상세 정보"
           onClose={() => setDetail(null)}
         >
           <p
@@ -1503,7 +1543,7 @@ export function LibraryApp({
       {detailBook && !editor && (
         <Modal
           className="book-detail-modal"
-          title="책을 펼쳐 보기"
+          title="상세 정보"
           onClose={() => setDetail(null)}
         >
           {detailState?.error && (
@@ -1562,29 +1602,6 @@ export function LibraryApp({
               </dl>
             </div>
           </div>
-          <CatalogAttribution
-            value={detailBook.enrichment?.catalogSelection}
-            automatic={detailBook.enrichment}
-          />
-          {!preview && (
-            <AutoBibliographyPanel
-              key={detailBook.id + ":auto-bibliography"}
-              bookId={detailBook.id}
-              onChanged={refresh}
-            />
-          )}
-          <details className="book-evidence">
-            <summary>근거 보기</summary>
-            <dl>
-              <dt>분류 출처</dt>
-              <dd>
-                {detailBook.classification?.source ?? "미입력"}
-                {detailBook.classification?.verified
-                  ? " · 서지 확인됨"
-                  : " · 검토 필요"}
-              </dd>
-            </dl>
-          </details>
           <div className="detail-actions">
             {!readingIds.has(detailBook.id) && (
               <button
@@ -1651,16 +1668,36 @@ export function LibraryApp({
             onSave={save}
             preview={preview}
           />
+          <CatalogAttribution
+            value={detailBook.enrichment?.catalogSelection}
+            automatic={detailBook.enrichment}
+            section="introduction"
+          />
           {!preview && (
-            <CurationDetails
-              key={detailBook.id + ":curation"}
-              kind="book"
-              id={detailBook.id}
+            <UnifiedBookInformation
+              key={detailBook.id + ":information"}
+              bookId={detailBook.id}
               onChanged={refresh}
             />
           )}
-          <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
-          <PdfStorageLocations book={detailBook} />
+          <details className="book-evidence">
+            <summary>출처</summary>
+            <CatalogAttribution
+              value={detailBook.enrichment?.catalogSelection}
+              automatic={detailBook.enrichment}
+              section="sources"
+            />
+            <dl>
+              <dt>분류 출처</dt>
+              <dd>
+                {detailBook.classification?.source ?? "미입력"}
+                {detailBook.classification?.verified
+                  ? " · 서지 확인됨"
+                  : " · 검토 필요"}
+              </dd>
+            </dl>
+            <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
+          </details>
           {!preview && (
             <BookRelations
               key={detailBook.id + ":relations"}
@@ -1671,6 +1708,7 @@ export function LibraryApp({
           {!preview && remote ? (
             <BookRecords
               bookId={detailBook.id}
+              onRate={(cycle) => setEditor({ kind: "rating", cycle })}
               onNote={(id) => void openNote(id)}
               onCycle={(cycle) =>
                 setEditor({
@@ -1682,16 +1720,26 @@ export function LibraryApp({
             />
           ) : (
             <>
-              <h3>독서 이력</h3>
+              <div className="book-records-header">
+                <h3>독서이력 {detailCycles.length}개</h3>
+                <PageSizeSelect
+                  label="책별 독서 이력"
+                  paging={detailCyclePaging}
+                  compact
+                />
+              </div>
               <div className="cycle-list">
-                {data.cycles
-                  .filter((c) => c.bookId === detailBook.id)
+                {detailCycles
+                  .slice(
+                    detailCyclePaging.offset,
+                    detailCyclePaging.offset + detailCyclePaging.size,
+                  )
                   .map((c) => (
                     <div key={c.id}>
                       <span>
                         {c.status === "reading"
                           ? "읽는 중"
-                          : c.completedOn + " 완독"}{" "}
+                          : (c.completedOn ?? "날짜 미입력") + " 완독"}{" "}
                         · {c.currentPage}쪽
                       </span>
                       <button
@@ -1705,16 +1753,51 @@ export function LibraryApp({
                       >
                         수정
                       </button>
+                      {c.status === "completed" && (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            setEditor({ kind: "rating", cycle: c })
+                          }
+                        >
+                          <RatingStars steps={c.ratingSteps} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 {!data.cycles.some((c) => c.bookId === detailBook.id) && (
                   <p className="muted">아직 독서 기록이 없습니다.</p>
                 )}
               </div>
-              <h3>이 책에 남긴 기록</h3>
-              {data.notes
-                .filter((n) => n.bookId === detailBook.id)
-                .map(noteCard)}
+              <PageNavigation
+                label="책별 독서 이력"
+                paging={detailCyclePaging}
+                total={detailCycles.length}
+              />
+              <div className="book-records-header">
+                <h3>기록 {detailNotes.length}개</h3>
+                <PageSizeSelect
+                  label="책별 기록"
+                  paging={detailNotePaging}
+                  compact
+                />
+              </div>
+              {detailNotes
+                .slice(
+                  detailNotePaging.offset,
+                  detailNotePaging.offset + detailNotePaging.size,
+                )
+                .map((note) => (
+                  <details key={note.id} className="book-record-details">
+                    <summary>{note.title}</summary>
+                    {noteCard(note)}
+                  </details>
+                ))}
+              <PageNavigation
+                label="책별 기록"
+                paging={detailNotePaging}
+                total={detailNotes.length}
+              />
             </>
           )}
         </Modal>

@@ -1,4 +1,5 @@
 "use client";
+import { RatingStars, RatingInput } from "./reading-rating";
 import { useRef, useState, type FormEvent } from "react";
 import type { Book, Command, Library, Note, ReadingCycle } from "@/lib/domain";
 import { formats, formatNames } from "@/lib/domain";
@@ -22,7 +23,7 @@ export type Editor =
   | { kind: "book"; book?: Book; focusCover?: boolean }
   | ({ kind: "note"; note?: Note; anchor?: ModalAnchor } & NewNoteContext)
   | { kind: "start"; book: Book }
-  | { kind: "progress" | "complete" | "date"; cycle: ReadingCycle };
+  | { kind: "progress" | "complete" | "date" | "rating"; cycle: ReadingCycle };
 export function LibraryForm({
   editor,
   library,
@@ -42,6 +43,10 @@ export function LibraryForm({
 }) {
   const verifiedQuote =
     editor.kind === "note" && editor.note?.sourceData?.app === "PDF";
+  const [ratingSteps, setRatingSteps] = useState<number | null>(
+    "cycle" in editor ? (editor.cycle.ratingSteps ?? null) : null,
+  );
+  const [undatedRating, setUndatedRating] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [topicBusy, setTopicBusy] = useState(false);
@@ -95,6 +100,7 @@ export function LibraryForm({
     progress: "읽은 쪽 기록",
     complete: "한 권을 다 읽었습니다",
     date: "완독 날짜 수정",
+    rating: "별점 수정",
   }[editor.kind];
   const duplicateLookup = useBookCatalog({
     enabled:
@@ -183,12 +189,19 @@ export function LibraryForm({
     } else if (editor.kind === "start") {
       type = "startReading";
       const completedWithoutDates =
+        undatedRating ||
         (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
-        "undated";
+          "undated";
+      if (completedWithoutDates && !undatedRating) {
+        setUndatedRating(true);
+        return;
+      }
       payload = {
         bookId: editor.book.id,
         startedOn: completedWithoutDates ? null : text("date") || null,
-        ...(completedWithoutDates ? { completedWithoutDates: true } : {}),
+        ...(completedWithoutDates
+          ? { completedWithoutDates: true, ratingSteps }
+          : {}),
       };
     } else {
       type =
@@ -196,13 +209,17 @@ export function LibraryForm({
           ? "updateProgress"
           : editor.kind === "complete"
             ? "completeReading"
-            : "editCompletion";
+            : editor.kind === "rating"
+              ? "rateReading"
+              : "editCompletion";
       payload = {
         id: editor.cycle.id,
         expectedVersion: baseVersion ?? editor.cycle.version,
         ...(editor.kind === "progress"
           ? { currentPage: number("currentPage") ?? 0 }
-          : { completedOn: text("date") }),
+          : editor.kind === "rating"
+            ? { ratingSteps }
+            : { completedOn: text("date"), ratingSteps }),
       };
     }
     const signature = JSON.stringify({ type, payload });
@@ -624,7 +641,7 @@ export function LibraryForm({
               )}
             </>
           )}
-          {editor.kind === "start" && (
+          {editor.kind === "start" && !undatedRating && (
             <>
               <p>
                 <strong>{editor.book.title}</strong>의 새로운 독서 회차를
@@ -638,6 +655,11 @@ export function LibraryForm({
                 재독을 시작해도 이전 완독 기록은 유지됩니다.
               </p>
             </>
+          )}
+          {editor.kind === "start" && undatedRating && (
+            <p>
+              <strong>{editor.book.title}</strong> · 날짜 없이 완독
+            </p>
           )}
           {editor.kind === "progress" && (
             <label>
@@ -677,6 +699,16 @@ export function LibraryForm({
               </p>
             </>
           )}
+          {(editor.kind === "complete" ||
+            editor.kind === "date" ||
+            editor.kind === "rating" ||
+            undatedRating) && (
+            <RatingInput
+              value={ratingSteps}
+              onChange={setRatingSteps}
+              disabled={busy}
+            />
+          )}
         </fieldset>
         {error && (
           <p className="error" role="alert">
@@ -706,7 +738,8 @@ export function LibraryForm({
                 <p>
                   {latest.status === "reading" ? "읽는 중" : "완독"} ·{" "}
                   {latest.currentPage}쪽 ·{" "}
-                  {latest.completedOn ?? latest.startedOn ?? "날짜 미입력"}
+                  {latest.completedOn ?? latest.startedOn ?? "날짜 미입력"} ·{" "}
+                  <RatingStars steps={latest.ratingSteps} />
                 </p>
               ) : (
                 <p>최신 기록을 불러오지 못했습니다.</p>
@@ -768,9 +801,11 @@ export function LibraryForm({
                 ? "저장 중…"
                 : preview
                   ? "저장 안내 확인"
-                  : "저장하기"}
+                  : undatedRating || editor.kind === "complete"
+                    ? "완독 저장"
+                    : "저장하기"}
           </button>
-          {editor.kind === "start" && (
+          {editor.kind === "start" && !undatedRating && (
             <button
               type="submit"
               name="completion"

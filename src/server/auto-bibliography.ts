@@ -10,6 +10,7 @@ import {
   decideAutomaticCandidate,
   type LogosCandidate,
 } from "../local/curation/logos-discovery";
+import { pendingAutomaticFields } from "../lib/unified-book-information";
 import { isbn13 } from "../lib/bibliography";
 import {
   identityFrontierReady,
@@ -34,10 +35,11 @@ const set = (b: any, k: string, v: any) => {
   if (extra.includes(k)) b.enrichment["auto_" + k] = v;
   else b[k] = v;
 };
-const fingerprint = (r: LogosCandidate) =>
+export const bibliographyCandidateFingerprint = (r: LogosCandidate) =>
   createHash("sha256")
     .update(JSON.stringify([r.provider, r.url, r.isbn, r.facts]))
     .digest("hex");
+const fingerprint = bibliographyCandidateFingerprint;
 async function book(tx: any, owner: string, id: string) {
   return (
     await tx.query(
@@ -304,10 +306,11 @@ export async function decideAutomaticBibliography(
     if (Number(b.version) !== p.expectedVersion)
       throw new LibraryError(409, "도서가 변경되었습니다. 다시 열어 주세요.");
     const a = b.enrichment?.autoBibliography;
-    if (!a || a.status === "undone")
+    const pending = pendingAutomaticFields(a);
+    if (!a || !pending.length)
       throw new LibraryError(409, "처리할 자동 보완 내역이 없습니다.");
-    const chosen: string[] = (p.fields ?? a.fields).filter((k: string) =>
-      a.fields.includes(k),
+    const chosen: string[] = (p.fields ?? pending).filter((k: string) =>
+      pending.includes(k),
     );
     if (!chosen.length) throw new LibraryError(400, "항목을 선택해 주세요.");
     const next = structuredClone(b),
@@ -335,12 +338,16 @@ export async function decideAutomaticBibliography(
     next.enrichment.autoBibliography = {
       ...a,
       fields: remaining,
-      status:
-        p.action === "keep"
+      pendingFields: pending.filter((f: string) => !chosen.includes(f)),
+      decisions: {
+        ...a.decisions,
+        ...Object.fromEntries(chosen.map((f) => [f, p.action])),
+      },
+      status: pending.some((f: string) => !chosen.includes(f))
+        ? "partially_reviewed"
+        : remaining.length
           ? "kept"
-          : remaining.length
-            ? "partially_reviewed"
-            : "undone",
+          : "undone",
       reviewedAt: new Date().toISOString(),
     };
     return {

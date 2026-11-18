@@ -137,7 +137,7 @@ test("calendar offers book details next to date editing and book-add appears onl
   const row = page.locator(".completed-row").first();
   await row.getByRole("button", { name: "세부정보", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "책을 펼쳐 보기" }),
+    page.getByRole("dialog", { name: "상세 정보" }),
   ).toBeVisible();
   await expect(
     page

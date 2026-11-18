@@ -132,7 +132,7 @@ test("keeps the open detail, cover, scroll and pending shelf selection through s
   await page.evaluate(() => (window as any).mount());
   await page.locator(".shelf-card").click();
   const dialog = page.getByRole("dialog", {
-    name: "책을 펼쳐 보기",
+    name: "상세 정보",
     exact: true,
   });
   await expect(

@@ -28,7 +28,15 @@ export async function runLogosCompletion(options: {
   decide?: typeof decideLogosCandidate;
   onInvestigated?: (book: LogosCompletionBook) => void;
   shouldStop?: () => boolean;
-  onFailure?: (error: unknown) => void;
+  onFailure?: (error: unknown, phase: string) => void;
+  onProgress?: (stats: {
+    considered: number;
+    applied: number;
+    review: number;
+    missing: number;
+    failed: number;
+    pending: number;
+  }) => Promise<void>;
 }) {
   if (
     !options.owner ||
@@ -62,157 +70,167 @@ export async function runLogosCompletion(options: {
     if (!stats.retryAt || iso < stats.retryAt) stats.retryAt = iso;
   }
   let activeIndex = 0;
+  let phase = "checkpoint";
   try {
     for (const [index, book] of options.books.entries()) {
       activeIndex = index;
-      if (options.signal?.aborted || options.shouldStop?.()) {
-        stats.stopped = "paused";
-        stats.pending += options.books.length - index;
-        break;
-      }
-      const fingerprint = hash(["logos-completion/v1", options.owner, book]);
-      const path = join(options.dir, fingerprint + ".json");
-      let checkpoint:
-        | {
-            fingerprint: string;
-            records: LogosCandidate[];
-            applied?: boolean;
-            coverRetry?: { attempts: number; nextAttemptAt: number };
-            lookupRetry?: { attempts: number; nextAttemptAt: number };
-          }
-        | undefined;
+      phase = "checkpoint";
       try {
-        checkpoint = JSON.parse(await readFile(path, "utf8"));
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-      }
-      if (
-        checkpoint &&
-        (checkpoint.fingerprint !== fingerprint ||
-          !Array.isArray(checkpoint.records))
-      )
-        throw Error("서지 작업 기록 형식을 확인하세요.");
-      for (const retry of [checkpoint?.coverRetry, checkpoint?.lookupRetry])
-        if (
-          retry &&
-          (!Number.isSafeInteger(retry.attempts) ||
-            retry.attempts < 1 ||
-            !Number.isSafeInteger(retry.nextAttemptAt) ||
-            retry.nextAttemptAt < 0)
-        )
-          throw Error("서지 재시도 기록 형식을 확인하세요.");
-      if (checkpoint?.lookupRetry && checkpoint.applied)
-        throw Error("서지 재시도 기록 형식을 확인하세요.");
-      if (
-        checkpoint &&
-        !checkpoint.lookupRetry &&
-        (!options.apply || checkpoint.applied)
-      ) {
-        stats.cached++;
-        stats[decideLogosCandidate(book, checkpoint.records).state]++;
-        continue;
-      }
-      if (checkpoint?.lookupRetry && checkpoint.lookupRetry.attempts >= 3) {
-        stats.quarantined++;
-        stats.pending++;
-        continue;
-      }
-      if (
-        checkpoint?.lookupRetry &&
-        checkpoint.lookupRetry.nextAttemptAt > now()
-      ) {
-        stats.deferred++;
-        stats.pending++;
-        retryAt(checkpoint.lookupRetry.nextAttemptAt);
-        continue;
-      }
-      // Three failed image attempts require a manual cover choice. Keeping this
-      // checkpoint prevents a broken first URL from starving later finite runs.
-      if (checkpoint?.coverRetry && checkpoint.coverRetry.attempts >= 3) {
-        stats.quarantined++;
-        stats.pending++;
-        continue;
-      }
-      if (
-        checkpoint?.coverRetry &&
-        checkpoint.coverRetry.nextAttemptAt > now()
-      ) {
-        stats.deferred++;
-        stats.pending++;
-        retryAt(checkpoint.coverRetry.nextAttemptAt);
-        continue;
-      }
-      if (stats.considered >= options.limit) {
-        stats.pending++;
-        continue;
-      }
-      if (!checkpoint || checkpoint.lookupRetry) {
-        if (!options.online || stats.requests >= options.limit) {
-          stats.pending++;
-          continue;
+        if (options.signal?.aborted || options.shouldStop?.()) {
+          stats.stopped = "paused";
+          stats.pending += options.books.length - index;
+          break;
         }
-        stats.requests++;
+        const fingerprint = hash(["logos-completion/v1", options.owner, book]);
+        const path = join(options.dir, fingerprint + ".json");
+        let checkpoint:
+          | {
+              fingerprint: string;
+              records: LogosCandidate[];
+              applied?: boolean;
+              coverRetry?: { attempts: number; nextAttemptAt: number };
+              lookupRetry?: { attempts: number; nextAttemptAt: number };
+            }
+          | undefined;
         try {
-          checkpoint = { fingerprint, records: await options.lookup(book) };
-        } catch (error) {
-          // A malformed provider JSON response belongs to this resource. Never
-          // apply an empty result for it, leak the payload, or block later books.
-          // Quota and other service-wide failures retain the existing safe stop.
+          checkpoint = JSON.parse(await readFile(path, "utf8"));
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        }
+        if (
+          checkpoint &&
+          (checkpoint.fingerprint !== fingerprint ||
+            !Array.isArray(checkpoint.records))
+        )
+          throw Error("서지 작업 기록 형식을 확인하세요.");
+        for (const retry of [checkpoint?.coverRetry, checkpoint?.lookupRetry])
           if (
-            !(error instanceof SyntaxError) &&
-            ![400, 404, 422].includes(
-              (error as { status?: number })?.status ?? 0,
-            )
+            retry &&
+            (!Number.isSafeInteger(retry.attempts) ||
+              retry.attempts < 1 ||
+              !Number.isSafeInteger(retry.nextAttemptAt) ||
+              retry.nextAttemptAt < 0)
           )
-            throw error;
-          const attempts = (checkpoint?.lookupRetry?.attempts ?? 0) + 1;
-          const nextAttemptAt =
-            attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
-          checkpoint = {
-            fingerprint,
-            records: [],
-            lookupRetry: { attempts, nextAttemptAt },
-          };
-          await atomicWriteJson(path, checkpoint);
-          stats.considered++;
-          options.onInvestigated?.(book);
-          stats.failed++;
-          stats.pending++;
-          if (attempts >= 3) stats.quarantined++;
-          else retryAt(nextAttemptAt);
+            throw Error("서지 재시도 기록 형식을 확인하세요.");
+        if (checkpoint?.lookupRetry && checkpoint.applied)
+          throw Error("서지 재시도 기록 형식을 확인하세요.");
+        if (
+          checkpoint &&
+          !checkpoint.lookupRetry &&
+          (!options.apply || checkpoint.applied)
+        ) {
+          phase = "cached-decision";
+          stats.cached++;
+          stats[decideLogosCandidate(book, checkpoint.records).state]++;
           continue;
         }
-        await atomicWriteJson(path, checkpoint);
-      }
-      stats.considered++;
-      options.onInvestigated?.(book);
-      const decision = (options.decide ?? decideLogosCandidate)(
-        book,
-        checkpoint.records,
-      );
-      stats[decision.state]++;
-      if (options.apply && !checkpoint.applied) {
-        const state = await options.applyDecision(book, decision);
-        if (state === "complete") {
-          checkpoint.applied = true;
-          delete checkpoint.coverRetry;
-          await atomicWriteJson(path, checkpoint);
-          stats.applied++;
-        } else if (state === "cover_failed") {
-          const attempts = (checkpoint.coverRetry?.attempts ?? 0) + 1;
-          const nextAttemptAt =
-            attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
-          checkpoint.coverRetry = { attempts, nextAttemptAt };
-          await atomicWriteJson(path, checkpoint);
-          stats.failed++;
+        if (checkpoint?.lookupRetry && checkpoint.lookupRetry.attempts >= 3) {
+          stats.quarantined++;
           stats.pending++;
-          if (attempts >= 3) stats.quarantined++;
-          else retryAt(nextAttemptAt);
-        } else stats.pending++;
+          continue;
+        }
+        if (
+          checkpoint?.lookupRetry &&
+          checkpoint.lookupRetry.nextAttemptAt > now()
+        ) {
+          stats.deferred++;
+          stats.pending++;
+          retryAt(checkpoint.lookupRetry.nextAttemptAt);
+          continue;
+        }
+        // Three failed image attempts require a manual cover choice. Keeping this
+        // checkpoint prevents a broken first URL from starving later finite runs.
+        if (checkpoint?.coverRetry && checkpoint.coverRetry.attempts >= 3) {
+          stats.quarantined++;
+          stats.pending++;
+          continue;
+        }
+        if (
+          checkpoint?.coverRetry &&
+          checkpoint.coverRetry.nextAttemptAt > now()
+        ) {
+          stats.deferred++;
+          stats.pending++;
+          retryAt(checkpoint.coverRetry.nextAttemptAt);
+          continue;
+        }
+        if (stats.considered >= options.limit) {
+          stats.pending++;
+          continue;
+        }
+        if (!checkpoint || checkpoint.lookupRetry) {
+          if (!options.online || stats.requests >= options.limit) {
+            stats.pending++;
+            continue;
+          }
+          stats.requests++;
+          phase = "lookup";
+          try {
+            checkpoint = { fingerprint, records: await options.lookup(book) };
+          } catch (error) {
+            // A malformed provider JSON response belongs to this resource. Never
+            // apply an empty result for it, leak the payload, or block later books.
+            // Quota and other service-wide failures retain the existing safe stop.
+            if (
+              !(error instanceof SyntaxError) &&
+              ![400, 404, 422].includes(
+                (error as { status?: number })?.status ?? 0,
+              )
+            )
+              throw error;
+            const attempts = (checkpoint?.lookupRetry?.attempts ?? 0) + 1;
+            const nextAttemptAt =
+              attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
+            checkpoint = {
+              fingerprint,
+              records: [],
+              lookupRetry: { attempts, nextAttemptAt },
+            };
+            await atomicWriteJson(path, checkpoint);
+            stats.considered++;
+            options.onInvestigated?.(book);
+            stats.failed++;
+            stats.pending++;
+            if (attempts >= 3) stats.quarantined++;
+            else retryAt(nextAttemptAt);
+            continue;
+          }
+          await atomicWriteJson(path, checkpoint);
+        }
+        stats.considered++;
+        options.onInvestigated?.(book);
+        phase = "decision";
+        const decision = (options.decide ?? decideLogosCandidate)(
+          book,
+          checkpoint.records,
+        );
+        stats[decision.state]++;
+        if (options.apply && !checkpoint.applied) {
+          phase = "apply";
+          const state = await options.applyDecision(book, decision);
+          if (state === "complete") {
+            checkpoint.applied = true;
+            delete checkpoint.coverRetry;
+            await atomicWriteJson(path, checkpoint);
+            stats.applied++;
+          } else if (state === "cover_failed") {
+            const attempts = (checkpoint.coverRetry?.attempts ?? 0) + 1;
+            const nextAttemptAt =
+              attempts >= 3 ? 0 : now() + 60000 * 2 ** (attempts - 1);
+            checkpoint.coverRetry = { attempts, nextAttemptAt };
+            await atomicWriteJson(path, checkpoint);
+            stats.failed++;
+            stats.pending++;
+            if (attempts >= 3) stats.quarantined++;
+            else retryAt(nextAttemptAt);
+          } else stats.pending++;
+        }
+      } finally {
+        await options.onProgress?.({ ...stats });
       }
     }
   } catch (error) {
-    options.onFailure?.(error);
+    options.onFailure?.(error, phase);
     stats.stopped = error instanceof CatalogQuotaError ? "quota" : "error";
     if (error instanceof CatalogQuotaError) stats.retryAt = error.retryAt;
     // Neither provider exceptions nor credentials are serialized to disk/logs.

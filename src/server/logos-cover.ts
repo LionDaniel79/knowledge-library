@@ -7,6 +7,89 @@ import { prepareCover, storePreparedCover } from "./book-covers";
 import { randomUUID } from "node:crypto";
 import { bookSelect } from "./book-records";
 import { carryCuration } from "./book-curation-history";
+import { bibliographyCandidateFingerprint } from "./auto-bibliography";
+
+// A changed candidate set becomes reviewable again; unrelated book edits do not.
+export const logosCoverReviewPredicate = `coalesce(b.enrichment#>>'{logosCoverReview,rejectedCandidateSet}','') <> md5(coalesce(b.enrichment#>'{logosCompletion,candidates}','[]'::jsonb)::text)`;
+
+export async function rejectLogosCoverCandidates(
+  db: Database,
+  owner: string,
+  raw: unknown,
+) {
+  if (process.env.LIBRARY_STAGE5_WRITE_ENABLED !== "true")
+    throw new LibraryError(403, "로고스 표지 검토 저장이 허용되지 않았습니다.");
+  const p = z
+    .object({
+      bookId: z.string().uuid(),
+      expectedVersion: z.number().int().positive(),
+    })
+    .strict()
+    .parse(raw);
+  return withSyncWrite(db, owner, async (tx) => {
+    const b = (
+      await tx.query(
+        `SELECT ${bookSelect},source_data->>'app' AS app,md5(coalesce(enrichment#>'{logosCompletion,candidates}','[]'::jsonb)::text) AS "candidateSet" FROM library_books b WHERE owner_id=$1 AND id=$2 AND NOT EXISTS(SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=b.owner_id AND e.id=b.id AND e.state='excluded') FOR UPDATE`,
+        [owner, p.bookId],
+      )
+    ).rows[0];
+    if (!b || b.app !== "Logos")
+      throw new LibraryError(404, "로고스 도서를 찾을 수 없습니다.");
+    if (b.coverUrl)
+      throw new LibraryError(
+        409,
+        "표지가 이미 저장되었습니다. 목록을 새로고침하세요.",
+      );
+    if (b.enrichment?.logosCoverReview?.rejectedCandidateSet === b.candidateSet)
+      return { bookId: p.bookId, version: Number(b.version), dismissed: true };
+    if (Number(b.version) !== p.expectedVersion)
+      throw new LibraryError(409, "다른 기기에서 도서가 수정되었습니다.");
+    const candidates = Array.isArray(b.enrichment?.logosCompletion?.candidates)
+      ? b.enrichment.logosCompletion.candidates
+      : [];
+    const enrichment = {
+      ...b.enrichment,
+      logosCoverReview: {
+        rejectedCandidateSet: b.candidateSet,
+        rejectedAt: new Date().toISOString(),
+      },
+      rejectedBibliography: [
+        ...new Set([
+          ...(b.enrichment?.rejectedBibliography ?? []),
+          ...candidates
+            .filter((r: any) => r && typeof r === "object")
+            .map(bibliographyCandidateFingerprint),
+        ]),
+      ],
+    };
+    await tx.query(
+      "UPDATE library_books SET enrichment=$3,version=version+1 WHERE owner_id=$1 AND id=$2",
+      [owner, p.bookId, JSON.stringify(enrichment)],
+    );
+    await carryCuration(
+      tx,
+      owner,
+      p.bookId,
+      String(b.version),
+      String(Number(b.version) + 1),
+    );
+    await tx.query(
+      "INSERT INTO library_revisions(id,owner_id,entity_id,action,before_data,after_data) VALUES($1,$2,$3,'logosCoverRejected',$4,$5)",
+      [
+        randomUUID(),
+        owner,
+        p.bookId,
+        JSON.stringify(b),
+        JSON.stringify({ ...b, enrichment, version: Number(b.version) + 1 }),
+      ],
+    );
+    return {
+      bookId: p.bookId,
+      version: Number(b.version) + 1,
+      dismissed: true,
+    };
+  });
+}
 
 const input = z
   .object({

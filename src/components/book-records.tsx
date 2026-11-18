@@ -1,4 +1,5 @@
 "use client";
+import { RatingStars } from "./reading-rating";
 import type { Note, ReadingCycle } from "../lib/domain";
 import {
   useListPagination,
@@ -10,11 +11,13 @@ export function BookRecords({
   bookId,
   onNote,
   onCycle,
+  onRate,
   revision,
 }: {
   bookId: string;
   onNote: (id: string) => void;
   onCycle: (c: ReadingCycle) => void;
+  onRate?: (c: ReadingCycle) => void;
   revision: unknown;
 }) {
   const notePaging = useListPagination("book-notes", bookId);
@@ -31,8 +34,10 @@ export function BookRecords({
   );
   return (
     <>
-      <h3>독서 이력 {cycles.data?.total ?? ""}</h3>
-      <PageSizeSelect label="책별 독서 이력" paging={cyclePaging} />
+      <div className="book-records-header">
+        <h3>독서이력 {cycles.data?.total ?? 0}개</h3>
+        <PageSizeSelect label="책별 독서 이력" paging={cyclePaging} compact />
+      </div>
       {cycles.error && (
         <p role="alert">
           {cycles.error} <button onClick={cycles.reload}>다시 조회</button>
@@ -48,6 +53,14 @@ export function BookRecords({
             · {c.currentPage}쪽
           </span>
           <button onClick={() => onCycle(c)}>수정</button>
+          {c.status === "completed" &&
+            (onRate ? (
+              <button aria-label="별점 수정" onClick={() => onRate(c)}>
+                <RatingStars steps={c.ratingSteps} />
+              </button>
+            ) : (
+              <RatingStars steps={c.ratingSteps} />
+            ))}
         </div>
       ))}
       {cycles.data?.total === 0 && <p>아직 독서 기록이 없습니다.</p>}
@@ -57,8 +70,10 @@ export function BookRecords({
         total={cycles.data?.total ?? 0}
         busy={cycles.loading || !!cycles.error}
       />
-      <h3>이 책에 남긴 기록 {notes.data?.total ?? ""}</h3>
-      <PageSizeSelect label="책별 기록" paging={notePaging} />
+      <div className="book-records-header">
+        <h3>기록 {notes.data?.total ?? 0}개</h3>
+        <PageSizeSelect label="책별 기록" paging={notePaging} compact />
+      </div>
       {notes.error && (
         <p role="alert">
           {notes.error} <button onClick={notes.reload}>다시 조회</button>
@@ -66,12 +81,13 @@ export function BookRecords({
       )}
       {notes.loading && <p role="status">기록을 불러오는 중…</p>}
       {notes.data?.items.map((n) => (
-        <article key={n.id} className="note-card">
-          <button onClick={() => onNote(n.id)}>
-            <strong>{n.title}</strong>
-            <p>{n.content}</p>
+        <details key={n.id} className="book-record-details">
+          <summary>{n.title}</summary>
+          <p>{n.content}</p>
+          <button className="secondary" onClick={() => onNote(n.id)}>
+            기록 열기
           </button>
-        </article>
+        </details>
       ))}
       <PageNavigation
         label="책별 기록"

@@ -1,3 +1,4 @@
+import { currentBookInformation } from "../lib/unified-book-information";
 import { syncQuery, withSyncWrite } from "./sync/write";
 import { randomUUID, createHash } from "node:crypto";
 import { readActiveNote } from "./active-note";
@@ -36,7 +37,11 @@ export async function readCurationDetails(
       [owner, kind, id],
     ),
   ]);
+  const displayBook =
+    kind === "book" ? await readActiveBook(db, owner, id) : null;
   return {
+    informationSelections: displayBook?.enrichment?.informationSelections ?? {},
+    currentInformation: currentBookInformation(displayBook?.enrichment),
     items,
     references: references.rows,
     history: history.rows,

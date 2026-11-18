@@ -28,9 +28,12 @@ export async function queueReplicaCommand(input: {
     !cp?.complete &&
     !!seed &&
     path === "/api/library" &&
-    ["updateProgress", "completeReading", "editCompletion"].includes(
-      original.type,
-    ) &&
+    [
+      "updateProgress",
+      "completeReading",
+      "editCompletion",
+      "rateReading",
+    ].includes(original.type) &&
     seed?.cycle.id === original.payload?.id &&
     seed.cycle.bookId === seed.book.id;
   if (!cp?.complete && !partialProgress)

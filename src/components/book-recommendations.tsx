@@ -296,14 +296,10 @@ function OwnerRecommendations({
     >
       <div className="section-heading">
         <div>
-          <span className="eyebrow">FROM YOUR LIBRARY</span>
-          <h2 id={`${id}-title`}>AI가 추천하는 나의 책</h2>
+          <h2 id={`${id}-title`}>AI 추천</h2>
         </div>
         <Sparkles size={20} aria-hidden="true" />
       </div>
-      <p className="recommendation-intro">
-        내가 소장한 책에서 다음에 읽을 책을 골라 보세요.
-      </p>
       <div
         className="recommendation-tabs"
         role="tablist"
@@ -450,10 +446,6 @@ function OwnerRecommendations({
           </div>
         )}
       </div>
-      <p className="recommendation-basis">
-        제목·저자·분류 등 등록된 정보에 근거한 추천이며, 책 본문을 확인한 내용은
-        아닙니다.
-      </p>
       {saved.updatedAt && (
         <p className="recommendation-date">
           마지막 추천{" "}

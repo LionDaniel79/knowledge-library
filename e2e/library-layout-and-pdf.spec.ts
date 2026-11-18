@@ -8,85 +8,54 @@ test("ambiguous editions appear once per book and allow switching the candidate 
   let grouped = false;
   await page.route("https://library.test/api/catalog-review**", (r) => {
     const p = new URL(r.request().url()).searchParams;
-    grouped ||= p.get("groupBy") === "book";
-    const alternatives = [
-      {
-        id: "a",
-        title: "초판",
-        author: "저자",
-        publisher: "출판사",
-        isbn: "9780306406157",
-      },
-      {
-        id: "b",
-        title: "개정판",
-        author: "저자",
-        publisher: "출판사",
-        isbn: "9780131103627",
-      },
-    ];
+    if (p.has("summary")) return r.fulfill({ json: { formats: [] } });
+    grouped = p.get("groupBy") === "book";
     return r.fulfill({
-      json: p.has("id")
-        ? {
-            id: p.get("id"),
-            status: "pending",
-            version: 1,
-            current: {
-              title: "내 소장본",
-              author: "내 저자 표기",
-              publisher: "출판사",
-              isbn: "",
-            },
-            record: {
-              facts: {
-                title: p.get("id") === "b" ? "개정판" : "초판",
-                author: "저자",
-                publisher: "출판사",
-                isbn: "9780306406157",
-              },
-              url: "https://www.yes24.com/product/goods/1234",
-              toc: [],
-            },
-            alternatives,
-            decision: { precheck: { reasons: ["isbn", "title"] } },
-          }
-        : {
-            items: [
-              {
-                id: "a",
+      json: {
+        items: [
+          {
+            id: "a",
+            book_id: "book",
+            title: "내 소장본",
+            alternatives: ["a", "b"].map((id) => ({
+              id,
+              version: 1,
+              status: "pending",
+              current: {
                 title: "내 소장본",
-                candidate_title: "초판",
-                isbn: "9780306406157",
-                candidateCount: 2,
-                precheck: { reasons: ["isbn", "title"] },
+                author: "내 저자 표기",
+                publisher: "출판사",
+                isbn: "",
               },
-            ],
-            total: 1,
-            nextOffset: null,
+              record: {
+                title: id === "a" ? "초판" : "개정판",
+                isbn: "9780306406157",
+                url: "https://www.yes24.com/product/goods/1234",
+                facts: {
+                  title: id === "a" ? "초판" : "개정판",
+                  author: "저자",
+                  publisher: "출판사",
+                  isbn: "9780306406157",
+                },
+              },
+            })),
           },
+        ],
+        total: 1,
+        nextOffset: null,
+      },
     });
   });
   await mount(
     page,
     `import {createRoot} from 'react-dom/client';import {CatalogReviewPanel} from './src/components/catalog-review-panel';createRoot(document.getElementById('root')).render(<CatalogReviewPanel onChanged={async()=>{}}/>);`,
   );
-  await expect(page.locator(".review-list li")).toHaveCount(1);
+  await expect(page.locator(".inline-review-card")).toHaveCount(1);
   expect(grouped).toBe(true);
-  await page.getByRole("button", { name: /내 소장본/ }).click();
-  await expect(
-    page.getByText("ISBN 확인 · 제목·판본 확인", { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("비교할 후보").selectOption("b");
-  await expect(page.getByLabel("비교할 후보")).toHaveValue("b");
-  await expect(
-    page.getByRole("cell", { name: "개정판", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("cell", { name: "내 저자 표기", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByLabel("소장본과 같은 판본으로 확인했습니다."),
-  ).not.toBeChecked();
+  await page.getByLabel("내 소장본 비교할 후보").selectOption("b");
+  await expect(page.getByLabel("내 소장본 비교할 후보")).toHaveValue("b");
+  await expect(page.getByText("현재: 내 저자 표기 · 출판사")).toBeVisible();
+  await expect(page.getByLabel("내 소장본 판본 확인")).not.toBeChecked();
 });
 async function mount(
   page: any,

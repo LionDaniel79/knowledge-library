@@ -1,3 +1,4 @@
+import { storedRating } from "../reading-ratings";
 import type { OutboxEntry } from "./contracts";
 import { categoryName } from "../catalog";
 import { noteKindNames } from "../note-kinds";
@@ -64,6 +65,7 @@ const operations: Record<string, string> = {
   updateProgress: "읽은 쪽 기록",
   completeReading: "완독 설정",
   editCompletion: "완독 날짜 수정",
+  rateReading: "별점 수정",
   startReading: "읽기 시작",
   addBook: "도서 추가",
   editBook: "도서 정보 수정",
@@ -376,6 +378,7 @@ export function presentConflict(review: ReviewInput) {
         "updateProgress",
         "completeReading",
         "editCompletion",
+        "rateReading",
         "startReading",
       ].includes(type)
     ) {
@@ -388,6 +391,12 @@ export function presentConflict(review: ReviewInput) {
       add("status", "독서 상태", states[r.status] || "미입력");
       add("started_on", "읽기 시작", r.started_on);
       add("completed_on", "완독 날짜", r.completed_on);
+      const rating = storedRating(r.source_data);
+      add(
+        "reading_rating",
+        "별점",
+        rating == null ? "미평가" : `${rating / 2}점`,
+      );
     } else if (
       entity === "library_notes" ||
       ["addNote", "editNote", "deleteNote", "restoreNote"].includes(type)

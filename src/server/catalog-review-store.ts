@@ -1,3 +1,7 @@
+import {
+  readLogosCatalogReviews,
+  decideStoredLogosReview,
+} from "./logos-catalog-review";
 import { searchFieldSql } from "./search-sql";
 import { syncQuery, withSyncWrite } from "./sync/write";
 import { catalogPrecheck } from "../lib/catalog-precheck";
@@ -6,6 +10,9 @@ import { z } from "zod";
 import {
   collectedReviewSchema,
   reviewDecisionSchema,
+  currentReviewSnapshot,
+  reviewValue,
+  storedLogosReviewCandidates,
 } from "../lib/catalog-review";
 import { isbn13 } from "../lib/bibliography";
 import {
@@ -46,8 +53,7 @@ function eligible(book: any, docs: any[]) {
   );
 }
 function snapshot(book: any) {
-  const { id, title, author, publisher, isbn, coverUrl, version } = book;
-  return { id, title, author, publisher, isbn, coverUrl, version };
+  return currentReviewSnapshot(book);
 }
 /** Operator import: one statement per bounded batch; decisions remain immutable. */
 export async function importCatalogReviewBatch(
@@ -141,8 +147,14 @@ export async function readCatalogReviews(
       limit: z.coerce.number().int().min(1).max(50).default(20),
       id: z.string().uuid().optional(),
       groupBy: z.enum(["candidate", "book"]).default("candidate"),
+      format: z
+        .enum(["all", "pdf", "logos", "ebook", "paper", "other"])
+        .default("all"),
+      inline: z.enum(["0", "1"]).default("0"),
     })
     .parse(query);
+  if (q.format === "logos" && !q.id)
+    return readLogosCatalogReviews(db, owner, q);
   if (q.id) {
     const row = (
       await db.query(
@@ -166,7 +178,11 @@ export async function readCatalogReviews(
     return { ...row, current: snapshot(b), alternatives };
   }
   const params = [owner, q.status, q.q];
-  const where = `owner_id=$1 AND status=$2 AND (${searchFieldSql("book_snapshot->>'title'", "$3")} OR ${searchFieldSql("record->>'title'", "$3")})`;
+  const formatWhere =
+    q.format === "all"
+      ? ""
+      : ` AND EXISTS(SELECT 1 FROM library_books fb WHERE fb.owner_id=library_catalog_reviews.owner_id AND fb.id=library_catalog_reviews.book_id AND ${q.format === "other" ? "NOT(fb.formats && ARRAY['pdf','logos','ebook','paper']::text[])" : `'${q.format}'=ANY(fb.formats)`})`;
+  const where = `owner_id=$1 AND status=$2 AND (${searchFieldSql("book_snapshot->>'title'", "$3")} OR ${searchFieldSql("record->>'title'", "$3")})${formatWhere}`;
   const count = (
     await db.query(
       `SELECT count(${q.groupBy === "book" ? "DISTINCT book_id" : "*"})::int AS n FROM library_catalog_reviews WHERE ${where}`,
@@ -181,6 +197,22 @@ export async function readCatalogReviews(
       [...params, q.offset, q.limit],
     )
   ).rows;
+  if (q.inline === "1" && items.length) {
+    const rows = (
+      await db.query(
+        `SELECT r.id,r.book_id,r.version,r.status,r.record AS record,r.decision,jsonb_build_object('id',b.id,'title',b.title,'author',b.author,'publisher',b.publisher,'isbn',b.isbn,'coverUrl',b.cover_url,'version',b.version,'description',coalesce((SELECT value FROM library_curation_items ci WHERE ci.owner_id=b.owner_id AND ci.source_id=b.id::text AND ci.source_version=b.version::text AND ci.state='active' AND ci.kind IN ('description','publisher_intro') ORDER BY ci.reviewed_by NULLS LAST,ci.created_at DESC LIMIT 1),b.enrichment->'auto_description',b.enrichment->'catalogSelection'->'description','""'::jsonb),'toc',coalesce((SELECT value FROM library_curation_items ci WHERE ci.owner_id=b.owner_id AND ci.source_id=b.id::text AND ci.source_version=b.version::text AND ci.state='active' AND ci.kind='toc' ORDER BY ci.reviewed_by NULLS LAST,ci.created_at DESC LIMIT 1),b.enrichment->'auto_toc','[]'::jsonb)) AS current FROM library_catalog_reviews r JOIN library_books b ON b.owner_id=r.owner_id AND b.id=r.book_id WHERE r.owner_id=$1 AND r.book_id=ANY($2::uuid[]) AND r.status=$3 ORDER BY r.created_at,r.id`,
+        [owner, items.map((i) => i.book_id), q.status],
+      )
+    ).rows;
+    const groups = new Map<string, any[]>();
+    for (const r of rows) {
+      const group = groups.get(r.book_id) ?? [];
+      group.push(r);
+      groups.set(r.book_id, group);
+    }
+    for (const item of items)
+      item.alternatives = groups.get(item.book_id) ?? [];
+  }
   return {
     items,
     total: count,
@@ -196,6 +228,7 @@ export async function decideCatalogReview(
 ) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const input = reviewDecisionSchema.parse(raw);
+  if (input.candidateKey) return decideStoredLogosReview(db, owner, input);
   const automatic = reviewer === "catalog_precheck";
   if (automatic && input.action !== "apply")
     throw new LibraryError(400, "자동 검토는 확실한 후보만 반영합니다.");
@@ -222,11 +255,8 @@ export async function decideCatalogReview(
       reviewedBy: reviewer,
     };
     if (input.action === "apply") {
-      if ((!input.sameEdition || !input.fields.length) && !automatic)
-        throw new LibraryError(
-          400,
-          "같은 판본인지 확인하고 반영할 항목을 선택하세요.",
-        );
+      if (!input.fields.length && !automatic)
+        throw new LibraryError(400, "반영할 항목을 선택하세요.");
       const b = (
         await tx.query(
           `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 FOR UPDATE`,
@@ -246,7 +276,9 @@ export async function decideCatalogReview(
         );
       const record = collectedReviewSchema.parse(row.record),
         selected = Object.fromEntries(
-          input.fields.map((k) => [k, record.facts[k]]),
+          input.fields
+            .filter((k) => k !== "description" && k !== "toc")
+            .map((k) => [k, reviewValue(record, k)]),
         ),
         merged = { ...b, ...selected };
       if (!isbn13(merged.isbn) || isbn13(merged.isbn) !== isbn13(record.isbn))
@@ -346,7 +378,9 @@ export async function decideCatalogReview(
             catalogSelection: {
               provider: "yes24",
               sourceUrl: record.url,
-              description: (record.description ?? "").slice(0, 3000),
+              description: input.fields.includes("description")
+                ? (record.description ?? "").slice(0, 3000)
+                : (b.enrichment?.catalogSelection?.description ?? ""),
             },
           },
         });
@@ -356,12 +390,15 @@ export async function decideCatalogReview(
           { kind: "book", id: b.id, version: String(b.version + 1) },
           {
             ...record,
-            facts: {
-              ...record.facts,
-              coverUrl: input.fields.includes("coverUrl")
-                ? record.facts.coverUrl
-                : "",
-            },
+            description: input.fields.includes("description")
+              ? record.description
+              : "",
+            toc: input.fields.includes("toc") ? record.toc : [],
+            facts: Object.fromEntries(
+              Object.entries(record.facts).filter(([key]) =>
+                input.fields.includes(key as any),
+              ),
+            ) as typeof record.facts,
           },
           true,
         );
@@ -370,11 +407,67 @@ export async function decideCatalogReview(
           [owner, b.id, String(b.version + 1)],
         );
       }
+      const decisions = { ...b.enrichment?.catalogReviewDecisions };
+      for (const c of [
+        ...storedLogosReviewCandidates(b, "pending"),
+        ...storedLogosReviewCandidates(b, "deferred"),
+      ])
+        decisions[c.candidateKey] = {
+          status: "superseded",
+          requestId: input.requestId,
+          reviewedBy: reviewer,
+        };
+      if (!automatic)
+        await tx.query(
+          "UPDATE library_books SET enrichment=enrichment || jsonb_build_object('catalogReviewDecisions',$3::jsonb,'autoBibliographyLocks',$4::jsonb) WHERE owner_id=$1 AND id=$2",
+          [
+            owner,
+            b.id,
+            JSON.stringify(decisions),
+            JSON.stringify([
+              ...new Set([
+                ...(b.enrichment?.autoBibliographyLocks ?? []),
+                ...input.fields,
+              ]),
+            ]),
+          ],
+        );
       await tx.query(
         "UPDATE library_catalog_reviews SET status='superseded',version=version+1,updated_at=now() WHERE owner_id=$1 AND book_id=$2 AND id<>$3 AND status IN ('pending','deferred')",
         [owner, b.id, row.id],
       );
       result.bookId = b.id;
+    }
+    if (input.action === "reject" && input.rejectAll) {
+      const b = (
+        await tx.query(
+          `SELECT ${bookSelect} FROM library_books WHERE owner_id=$1 AND id=$2 AND NOT EXISTS (SELECT 1 FROM library_book_exclusions e WHERE e.owner_id=$1 AND e.id=$2 AND e.state='excluded') FOR UPDATE`,
+          [owner, row.book_id],
+        )
+      ).rows[0];
+      const stored =
+        b?.sourceData?.app === "Logos"
+          ? [
+              ...storedLogosReviewCandidates(b, "pending"),
+              ...storedLogosReviewCandidates(b, "deferred"),
+            ]
+          : [];
+      if (stored.length)
+        await decideStoredLogosReview(
+          { query: tx.query, transaction: (fn) => fn(tx) },
+          owner,
+          {
+            ...input,
+            id: b.id,
+            candidateKey: stored[0].candidateKey,
+            expectedVersion: Number(b.version),
+            skipTable: true,
+          },
+        );
+      await tx.query(
+        "UPDATE library_catalog_reviews SET status='rejected',version=version+1,decision_request_id=$4,decision=$5,updated_at=now() WHERE owner_id=$1 AND book_id=$2 AND id<>$3 AND status IN ('pending','deferred')",
+        [owner, row.book_id, row.id, input.requestId, JSON.stringify(result)],
+      );
     }
     await tx.query(
       "UPDATE library_catalog_reviews SET status=$3,version=version+1,decision_request_id=$4,decision=$5,updated_at=now() WHERE owner_id=$1 AND id=$2",

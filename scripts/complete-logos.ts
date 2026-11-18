@@ -1,3 +1,5 @@
+import { retryCatalogRead } from "../src/local/curation/catalog-read-retry";
+import { collectionFailure } from "../src/local/curation/collection-failure";
 /** Finite operator run. No startup hook, watcher, or background polling. */
 import { Pool } from "pg";
 import { join, resolve } from "node:path";
@@ -51,16 +53,22 @@ if (args.includes("--help")) {
     controller = new AbortController();
   process.once("SIGINT", () => controller.abort());
   process.once("SIGTERM", () => controller.abort());
+  let phase = "owner-read";
   try {
     const excluded = await collectionExclusions(
       process.env.COLLECTION_LEDGER,
       "logos",
     );
-    const owner = await resolveLogosOwner(db, {
-      id: process.env.LIBRARY_CATALOG_OWNER_ID,
-      email: process.env.LIBRARY_OWNER_EMAIL,
-    });
-    const coverCapacity = await readCoverCapacity(db, owner);
+    const owner = await retryCatalogRead(() =>
+      resolveLogosOwner(db, {
+        id: process.env.LIBRARY_CATALOG_OWNER_ID,
+        email: process.env.LIBRARY_OWNER_EMAIL,
+      }),
+    );
+    phase = "cover-sources";
+    const coverCapacity = await retryCatalogRead(() =>
+      readCoverCapacity(db, owner),
+    );
     console.log(
       JSON.stringify({ preflight: "cover-storage", ...coverCapacity }),
     );
@@ -75,10 +83,13 @@ if (args.includes("--help")) {
       "logos",
       createHash("sha256").update(owner).digest("hex"),
     );
+    phase = "initial-select";
     const rows = (
-      await db.query(
-        `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND source_data->>'app'='Logos' ORDER BY id`,
-        [owner],
+      await retryCatalogRead(() =>
+        db.query(
+          `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND source_data->>'app'='Logos' ORDER BY id`,
+          [owner],
+        ),
       )
     ).rows;
     if (args.includes("--classify-only")) {
@@ -123,22 +134,17 @@ if (args.includes("--help")) {
       const investigated = new Set<string>();
       let failure: unknown;
       const stats = await runLogosCompletion({
-        onFailure: (error) => {
-          const e = error as {
-            name?: unknown;
-            status?: unknown;
-            code?: unknown;
-          } | null;
-          failure = {
-            name: /^[A-Za-z]{1,50}$/.test(String(e?.name ?? ""))
-              ? e?.name
-              : "Error",
-            status: Number.isInteger(e?.status) ? e?.status : undefined,
-            code: /^[A-Z0-9_]{1,50}$/.test(String(e?.code ?? ""))
-              ? e?.code
-              : undefined,
-          };
+        onFailure: (error, phase) => {
+          failure = collectionFailure(error, phase);
         },
+        onProgress: process.env.COLLECTION_PROGRESS_FILE
+          ? async (stats) => {
+              await atomicWriteJson(process.env.COLLECTION_PROGRESS_FILE!, {
+                ...stats,
+                at: new Date().toISOString(),
+              });
+            }
+          : undefined,
         onInvestigated: (book) => {
           investigated.add(book.id);
         },
@@ -169,6 +175,15 @@ if (args.includes("--help")) {
       console.log(JSON.stringify(stats));
       if (["error", "quota"].includes(stats.stopped)) process.exitCode = 1;
     }
+  } catch (error) {
+    const failure = collectionFailure(error, phase);
+    if (process.env.COLLECTION_FAILURE_FILE)
+      await atomicWriteJson(process.env.COLLECTION_FAILURE_FILE, {
+        at: new Date().toISOString(),
+        failure,
+      });
+    console.log(JSON.stringify({ stopped: "error", failed: 0, considered: 0 }));
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

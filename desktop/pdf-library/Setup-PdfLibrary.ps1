@@ -4,6 +4,7 @@ param(
  [Parameter(Mandatory)][string]$Python,
  [Parameter(Mandatory)][string]$Root,
  [string]$Index='',
+ [string]$IconFile='',
  [string]$InstallRoot=(Join-Path $env:LOCALAPPDATA 'KnowledgeLibrary\PdfLibrary'),
  [switch]$PreparePython,
  [switch]$NoShortcut,
@@ -25,6 +26,8 @@ foreach($target in @($install,$pdfRoot)){
 $marker=Join-Path $install 'pdf-library-install.json'
 if((Test-Path -LiteralPath $install) -and !(Test-Path -LiteralPath $marker)){throw '다른 파일을 보호하기 위해 새 빈 설치 경로를 지정하세요.'}
 $previousCatalog=$null
+$previousCollection=$null
+$previousIcon=$null
 $previousState=$null
 if(Test-Path -LiteralPath $marker){
  $old=Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json
@@ -32,6 +35,8 @@ if(Test-Path -LiteralPath $marker){
  $previousConfiguration=Join-Path $install 'library.json'
  if(Test-Path -LiteralPath $previousConfiguration -PathType Leaf){
   try{$savedConfiguration=Get-Content -LiteralPath $previousConfiguration -Raw -Encoding UTF8|ConvertFrom-Json;if($savedConfiguration.catalogConfiguration -is [string] -and ![string]::IsNullOrWhiteSpace($savedConfiguration.catalogConfiguration)){$previousCatalog=$savedConfiguration.catalogConfiguration};if($savedConfiguration.directory -is [string] -and ![string]::IsNullOrWhiteSpace($savedConfiguration.directory)){$previousState=[IO.Path]::GetFullPath($savedConfiguration.directory)}}catch{throw '기존 설치 설정을 읽지 못했습니다. 기존 관리 자료를 먼저 확인하세요.'}
+  if($savedConfiguration.collectionConfiguration -is [string]){$previousCollection=$savedConfiguration.collectionConfiguration}
+  if($savedConfiguration.iconFile -is [string]){$previousIcon=$savedConfiguration.iconFile}
  }
 }
 $state=Join-Path $install 'state'
@@ -93,17 +98,22 @@ finally:
 & $interpreter -B -c $verifyRuntime $scripts
 if($LASTEXITCODE){throw 'PDF/OCR 도구가 필요합니다. Python 3.12 이상과 Windows OCR 언어를 확인하고 -PreparePython으로 설치하세요.'}
 $exe=Join-Path $app 'PdfDesktop.exe'
-& (Join-Path $app 'Build.ps1') -Output $exe
+if(!$IconFile -and $previousIcon -and (Test-Path -LiteralPath $previousIcon)){$IconFile=$previousIcon}
+$installedIcon=''
+if($IconFile){$installedIcon=Join-Path $app 'PdfLibrary.ico';Copy-Item -LiteralPath $IconFile -Destination $installedIcon}
+& (Join-Path $app 'Build.ps1') -Output $exe -IconFile $installedIcon
 $config=Join-Path $install 'library.json'
 $configuration=@{version=1;python=$interpreter;worker=(Join-Path $app 'worker.py');index=$Index;root=$pdfRoot;directory=$state}
 if($previousCatalog){$configuration.catalogConfiguration=$previousCatalog}
+if($previousCollection){$configuration.collectionConfiguration=$previousCollection}
+if($installedIcon){$configuration.iconFile=$installedIcon}
 $configuration|ConvertTo-Json|Set-Content -LiteralPath $config -Encoding UTF8
 $files=Get-ChildItem -LiteralPath $release -Recurse -File | ForEach-Object {[pscustomobject]@{path=$_.FullName.Substring($release.Length+1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}}
 @{application='KnowledgeLibrary.PdfLibrary';version=1;setupState='ready';installedAt=[DateTime]::UtcNow.ToString('o');release=$release;files=@($files)}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $marker -Encoding UTF8
 $shell=New-Object -ComObject WScript.Shell
-function New-PdfShortcut([string]$path){$link=$shell.CreateShortcut($path);$link.TargetPath=$exe;$link.Arguments='--config "'+$config+'"';$link.WorkingDirectory=$app;$link.Description='전자도서관 PDF 서재';$link.Save()}
+function New-PdfShortcut([string]$path,[switch]$Background){$link=$shell.CreateShortcut($path);$link.TargetPath=$exe;$link.Arguments='--config "'+$config+'"';if($Background){$link.Arguments+=' --tray'};$link.WorkingDirectory=$app;$link.Description='전자도서관 PDF 서재';$link.Save()}
 New-PdfShortcut (Join-Path $install 'PdfLibrary.lnk')
 if(!$NoShortcut){New-PdfShortcut (Join-Path ([Environment]::GetFolderPath('Desktop')) '전자도서관 PDF 서재.lnk')}
-if($StartWithWindows){New-PdfShortcut (Join-Path ([Environment]::GetFolderPath('Startup')) '전자도서관 PDF 서재.lnk')}
+if($StartWithWindows){New-PdfShortcut (Join-Path ([Environment]::GetFolderPath('Startup')) '전자도서관 PDF 서재.lnk') -Background}
 if($Start){Start-Process -FilePath $exe -ArgumentList @('--config',('"'+$config+'"'))}
 Write-Output '설치 완료 · PDF 서재 바로가기로 시작하세요. 웹 연결은 앱의 웹 연결 설정에서 선택할 수 있습니다.'

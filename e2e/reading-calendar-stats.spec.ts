@@ -224,7 +224,7 @@ for (const remote of [false, true]) {
       })
       .click();
     const detail = page.getByRole("dialog", {
-      name: "책을 펼쳐 보기",
+      name: "상세 정보",
       exact: true,
     });
     await expect(detail).toContainText("처음 읽은 책");

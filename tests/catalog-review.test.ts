@@ -187,7 +187,7 @@ it("imports once, isolates owners and leaves deferred/rejected books unchanged",
     (await readCatalogReviews(f.db, x.owner, { status: "deferred" })).total,
   ).toBe(1);
 });
-it("requires edition confirmation, applies only selected fields, preserves notes and records history", async () => {
+it("applies selected fields without edition confirmation, preserves notes and records history", async () => {
   const x = await fixture();
   await importCatalogReview(f.db, x.owner, x);
   const id = (await readCatalogReviews(f.db, x.owner, {})).items![0].id;
@@ -196,11 +196,10 @@ it("requires edition confirmation, applies only selected fields, preserves notes
     expectedVersion: 1,
     requestId: randomUUID(),
     action: "apply",
-    sameEdition: true,
     fields: ["isbn", "publisher"],
   };
   await expect(
-    decideCatalogReview(f.db, x.owner, { ...input, sameEdition: false }),
+    decideCatalogReview(f.db, x.owner, { ...input, fields: [] }),
   ).rejects.toThrow();
   await decideCatalogReview(f.db, x.owner, input);
   await decideCatalogReview(f.db, x.owner, input);
@@ -222,7 +221,7 @@ it("requires edition confirmation, applies only selected fields, preserves notes
         [x.owner],
       )
     ).rows,
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   expect(
     (
       await f.db.query("select * from library_revisions where owner_id=$1", [
@@ -276,4 +275,43 @@ it("prechecks only pending owned books and preserves review versions on repeated
   });
   expect((await precheckCatalogReviews(f.db, x.owner, true)).books).toBe(0);
   expect((await precheckCatalogReviews(f.db, "other", true)).books).toBe(0);
+});
+it("filters by current format and returns inline comparison data only for the requested page and owner", async () => {
+  const x = await fixture();
+  await f.db.query(
+    "UPDATE library_books SET formats=ARRAY['pdf'] WHERE id=$1",
+    [x.bookId],
+  );
+  await importCatalogReview(f.db, x.owner, x);
+  const page = await readCatalogReviews(f.db, x.owner, {
+    format: "pdf",
+    inline: "1",
+    groupBy: "book",
+  });
+  expect(page.total).toBe(1);
+  expect(page.items![0].alternatives[0]).toMatchObject({
+    current: { title: "현재 책" },
+    record: { facts: { title: record.facts.title } },
+  });
+  expect(page.items![0].alternatives[0].record.description).toBe(
+    record.description,
+  );
+  expect(
+    (
+      await readCatalogReviews(f.db, x.owner, {
+        format: "other",
+        inline: "1",
+        groupBy: "book",
+      })
+    ).total,
+  ).toBe(0);
+  expect(
+    (
+      await readCatalogReviews(f.db, "other", {
+        format: "pdf",
+        inline: "1",
+        groupBy: "book",
+      })
+    ).items,
+  ).toHaveLength(0);
 });

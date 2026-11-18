@@ -138,6 +138,8 @@ it("stores provenance, keeps/undoes selected fields safely, preserves later read
       fields: ["coverUrl"],
     });
     expect(kept.application.fields).toContain("coverUrl");
+    expect(kept.application.pendingFields).not.toContain("coverUrl");
+    expect(kept.application.status).toBe("partially_reviewed");
     await f.db.query(
       "UPDATE library_books SET publisher='Reader publisher',version=version+1 WHERE id=$1",
       [b.id],
@@ -155,7 +157,9 @@ it("stores provenance, keeps/undoes selected fields safely, preserves later read
       )
     ).rows[0];
     expect(saved.publisher).toBe("Reader publisher");
-    expect(saved.cover_url).toBe("");
+    expect(saved.cover_url).not.toBe("");
+    expect(undo.application.pendingFields).toEqual([]);
+    expect(undo.application.fields).toEqual(["coverUrl"]);
     expect(saved.isbn).toBe("");
     expect(
       (

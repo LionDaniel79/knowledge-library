@@ -2,11 +2,7 @@
 import type { ReactNode } from "react";
 import type { Book, Library, ReadingCycle } from "@/lib/domain";
 import { recentCompletedCycles } from "@/lib/recent-reading";
-import {
-  PageNavigation,
-  PageSizeSelect,
-  useListPagination,
-} from "./list-pagination";
+import { PageNavigation, useListPagination } from "./list-pagination";
 import { useBookCatalog } from "./use-book-catalog";
 import { usePagedResource } from "./use-paged-resource";
 
@@ -36,13 +32,13 @@ export function QueuedBooks({ library, renderBook }: Props) {
   return (
     <HomeBookSection
       label="책 대기열"
-      description="다음으로 펼쳐 볼 책"
       total={remote ? catalog.total : local.length}
       paging={paging}
       loading={remote && (!paging.ready || catalog.loading)}
       error={catalog.error}
       reload={catalog.reload}
       empty="책 대기열에 담긴 책이 없습니다."
+      horizontal
     >
       {items.map(renderBook)}
     </HomeBookSection>
@@ -77,13 +73,14 @@ export function RecentCompletedBooks({
   return (
     <HomeBookSection
       label="최근 읽은 책"
-      description="오늘을 포함한 최근 30일 · 책마다 마지막 완독"
       total={remote ? (resource.data?.total ?? 0) : local.length}
       paging={paging}
       loading={remote && (!paging.ready || resource.loading)}
       error={resource.error}
       reload={resource.reload}
       empty="최근 30일 동안 완독한 책이 없습니다."
+      horizontal
+      hideTotal
     >
       {cycles.map((c) => {
         const book = books.get(c.bookId);
@@ -104,23 +101,25 @@ export function RecentCompletedBooks({
 }
 function HomeBookSection({
   label,
-  description,
   total,
   paging,
   loading,
   error,
   reload,
   empty,
+  horizontal = false,
+  hideTotal = false,
   children,
 }: {
   label: string;
-  description: string;
   total: number;
   paging: ReturnType<typeof useListPagination>;
   loading: boolean;
   error: string;
   reload: () => void;
   empty: string;
+  horizontal?: boolean;
+  hideTotal?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -132,9 +131,8 @@ function HomeBookSection({
       <div className="section-heading">
         <div>
           <h2>{label}</h2>
-          <p className="muted">{description}</p>
         </div>
-        <span>{total}권</span>
+        {!hideTotal && <span>{total}권</span>}
       </div>
       {loading ? (
         <p role="status">책을 불러오는 중…</p>
@@ -143,20 +141,19 @@ function HomeBookSection({
           {error} <button onClick={reload}>다시 조회</button>
         </p>
       ) : total ? (
-        <div className="shelf-grid">{children}</div>
+        <div className={horizontal ? "dashboard-book-strip" : "shelf-grid"}>
+          {children}
+        </div>
       ) : (
         <p className="panel empty-state">{empty}</p>
       )}
       {total > 0 && (
-        <>
-          <PageNavigation
-            label={label}
-            paging={paging}
-            total={total}
-            busy={loading || !!error}
-          />
-          <PageSizeSelect label={label} paging={paging} />
-        </>
+        <PageNavigation
+          label={label}
+          paging={paging}
+          total={total}
+          busy={loading || !!error}
+        />
       )}
     </section>
   );

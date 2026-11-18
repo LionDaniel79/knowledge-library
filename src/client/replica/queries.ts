@@ -1,3 +1,8 @@
+import {
+  ratingSummary,
+  ratingGroup,
+  latestRatedCycles,
+} from "../../lib/reading-ratings";
 import { z } from "zod";
 import {
   buildTopicMaterials,
@@ -369,6 +374,32 @@ export function readingSummary(data: LocalIndex) {
   };
 }
 export function queryReading(data: LocalIndex, input: unknown) {
+  if ((input as any)?.ratings === "1") {
+    const q = z
+      .object({
+        year: z
+          .string()
+          .regex(/^all$|^(19|20|21|22)\d{2}$/)
+          .default("all"),
+        group: z
+          .enum(["all", "0", "2", "4", "6", "8", "10", "unrated"])
+          .default("all"),
+        ...paging,
+      })
+      .parse(input);
+    const cycles = latestRatedCycles(activeCycles(data), q.year),
+      matched = cycles.filter(
+        (c) => q.group === "all" || ratingGroup(c.ratingSteps) === q.group,
+      ),
+      items = matched.slice(q.offset, q.offset + q.limit),
+      ids = new Set(items.map((c) => c.bookId));
+    return {
+      summary: ratingSummary(cycles),
+      items,
+      total: matched.length,
+      books: data.books.filter((b) => ids.has(b.book.id)).map((b) => b.book),
+    };
+  }
   const p = z
     .object({
       id: z.string().uuid().optional(),

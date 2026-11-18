@@ -1,0 +1,404 @@
+import { writeCollectionState } from "./collection-state.mjs";
+import { failureGuidance } from "./collection-recovery.mjs";
+import { acquireCollectionLock } from "./collection-lock.mjs";
+import fs from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { validateBatch } from "./collection-capacity.mjs";
+import { runtimeEnvironment, unlockProfile } from "./runtime-profile.mjs";
+import {
+  collectionSettings,
+  collectionAllowance,
+  collectionClock,
+  nextCollectionBatch,
+  settleCollectionReservation,
+} from "./collection-settings.mjs";
+const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
+if (!process.argv.includes("--config")) throw Error("Configuration required");
+const config = JSON.parse(
+  fs.readFileSync(arg("--config"), "utf8").replace(/^\uFEFF/, ""),
+);
+const base = pathToFileURL(config.stateDirectory.replace(/[\\/]$/, "") + "/");
+fs.mkdirSync(base, { recursive: true });
+const file = (n) => new URL(n, base),
+  read = (n, fallback) => {
+    try {
+      return JSON.parse(
+        fs.readFileSync(file(n), "utf8").replace(/^\uFEFF/, ""),
+      );
+    } catch (e) {
+      if (e.code === "ENOENT") return fallback;
+      throw Error("Invalid collection state");
+    }
+  },
+  write = (n, v) => {
+    writeCollectionState(file(n), v);
+  };
+const kind = arg("--kind"),
+  slot = arg("--slot"),
+  check = process.argv.includes("--check"),
+  day = collectionClock().day;
+if (
+  !["logos", "pdf"].includes(kind) ||
+  !/^(morning|evening|daily|scheduled-\d{4}|continuous-\d+|manual-[a-zA-Z0-9-]+)$/.test(
+    slot,
+  )
+)
+  throw Error("Invalid collection invocation");
+if (fs.existsSync(file("halted.json"))) process.exit(1);
+const lock = file("running.lock");
+let step = "startup";
+let release;
+const leave = (code) => {
+  if (release) {
+    release();
+    release = null;
+  }
+  process.exit(code);
+};
+try {
+  release = acquireCollectionLock(lock, { kind, at: new Date().toISOString() });
+  if (!release) leave(0);
+  const settings = read("user-settings.json", {}),
+    ledgerName = day + ".json",
+    ledger = read(ledgerName, {
+      day,
+      stage: 1,
+      sequences: [],
+      logos: { reserved: 0, ids: [] },
+      pdf: { reserved: 0, ids: [] },
+    }),
+    caps = collectionSettings(settings),
+    session = kind + ":" + slot;
+  if (ledger.sequences.some((s) => s.session === session)) leave(0);
+  const allowance = Math.min(
+    caps[kind].runLimit,
+    collectionAllowance(settings, kind, ledger[kind].reserved),
+  );
+  if (!allowance) leave(0);
+  const c = JSON.parse(
+      fs
+        .readFileSync(config.runtimeConfiguration, "utf8")
+        .replace(/^\uFEFF/, ""),
+    ),
+    installed = JSON.parse(
+      fs.readFileSync(config.libraryConfiguration, "utf8"),
+    ),
+    env = {
+      ...process.env,
+      ...runtimeEnvironment(c, unlockProfile(c)),
+      LIBRARY_STAGE5_WRITE_ENABLED: "true",
+    },
+    app = c.app;
+  if (check) {
+    if (
+      !fs.existsSync(
+        join(
+          app,
+          "scripts",
+          kind === "pdf" ? "complete-pdfs.ts" : "complete-logos.ts",
+        ),
+      )
+    )
+      throw Error("Installed source missing");
+    console.log(
+      JSON.stringify({
+        preflight: "PASS",
+        stage: ledger.stage,
+        caps,
+        allowance,
+      }),
+    );
+    leave(0);
+  }
+  const sequence = {
+    session,
+    kind,
+    slot,
+    stage: ledger.stage,
+    success: false,
+    batches: [],
+    notBefore: new Date(Date.now() + 15 * 60000).toISOString(),
+    at: new Date().toISOString(),
+  };
+  ledger.sequences.push(sequence);
+  step = "sequence-save";
+  write(ledgerName, ledger);
+  for (let i = 0, remaining = allowance; remaining > 0; i++) {
+    const limit = nextCollectionBatch(
+      kind,
+      settings,
+      read("user-settings.json", {}),
+      ledger[kind].reserved,
+      allowance - remaining,
+      remaining,
+      slot.startsWith("manual-"),
+    );
+    if (!limit) break;
+    remaining -= limit;
+    const started = Date.now(),
+      out = join(config.stateDirectory, day, kind, slot, String(i + 1));
+    fs.mkdirSync(out, { recursive: true });
+    ledger[kind].reserved += limit;
+    step = "reservation-save";
+    write(ledgerName, ledger);
+    const childEnv = {
+      ...env,
+      COLLECTION_FAILURE_FILE: join(out, "failure.json"),
+      COLLECTION_PROGRESS_FILE: join(
+        config.stateDirectory,
+        "live-" + kind + ".json",
+      ),
+      COLLECTION_LEDGER: join(config.stateDirectory, ledgerName),
+      COLLECTION_STOP_AT: String(
+        Date.parse(day + "T00:00:00+09:00") + 86400000,
+      ),
+      LIBRARY_PDF_ROOT: installed.root,
+      LIBRARY_PDF_INDEX: installed.index,
+      PDF_IDENTITY_PYTHON: installed.python,
+      PDF_AUTO_LEGACY_REPORT_DIR: config.legacyReportDirectory,
+      PDF_AUTO_REPORT_DIR: out,
+      PDF_FRONTIER_CACHE_DIR: config.frontierDirectory,
+    };
+    write(kind + "-status.json", {
+      state: "running",
+      stage: ledger.stage,
+      batch: i + 1,
+      at: new Date().toISOString(),
+    });
+    let output = "";
+    const child = spawn(
+      c.node,
+      [
+        "--import",
+        pathToFileURL(join(app, "node_modules/tsx/dist/loader.mjs")).href,
+        join(
+          app,
+          "scripts",
+          kind === "pdf" ? "complete-pdfs.ts" : "complete-logos.ts",
+        ),
+        "--online",
+        "--apply",
+        "--limit",
+        String(limit),
+      ],
+      {
+        cwd: app,
+        env: childEnv,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    child.stderr.on("data", (b) => {
+      if (stderr.length < 4096) stderr += b.toString();
+    });
+    child.stdout.on("data", (b) => {
+      if (output.length < 65536) output += b.toString();
+    });
+    const code = await new Promise((resolve) => {
+      child.once("error", () => resolve(-1));
+      child.once("close", resolve);
+    });
+    let result;
+    try {
+      result = JSON.parse(output.trim().split(/\r?\n/).at(-1));
+    } catch {}
+    step = "child-result";
+    if (
+      !result ||
+      code !== 0 ||
+      !["complete", "budget", "busy", "paused"].includes(result.stopped)
+    ) {
+      write("halted.json", {
+        kind,
+        at: new Date().toISOString(),
+        reason: "Global collection failure",
+        processCode: code,
+        result:
+          result &&
+          Object.fromEntries(
+            [
+              "stopped",
+              "considered",
+              "requests",
+              "applied",
+              "failed",
+              "errors",
+              "pending",
+              "retryAt",
+            ]
+              .filter((k) => k in result)
+              .map((k) => [k, result[k]]),
+          ),
+        failure: (() => {
+          try {
+            const startup = JSON.parse(
+              fs.readFileSync(join(out, "failure.json"), "utf8"),
+            );
+            if (Date.parse(startup.at) >= started && startup.failure)
+              return {
+                ...startup.failure,
+                ...failureGuidance(startup.failure),
+              };
+          } catch {}
+          try {
+            const f =
+              kind === "logos"
+                ? join(
+                    env.CATALOG_CACHE_DIR,
+                    "logos",
+                    createHash("sha256")
+                      .update(env.LIBRARY_CATALOG_OWNER_ID)
+                      .digest("hex"),
+                    "last-pass-books.json",
+                  )
+                : join(out, "investigated.json");
+            const a = JSON.parse(fs.readFileSync(f, "utf8"));
+            if (Date.parse(a.at) >= started && a.failure)
+              return { ...a.failure, ...failureGuidance(a.failure) };
+          } catch {}
+          const startupCode = (stderr.match(/ERR_[A-Z_]+/) ?? [])[0];
+          const failure = {
+            kind: startupCode ? "configuration" : "unexpected",
+            name: (stderr.match(
+              /\b(TypeError|ReferenceError|SyntaxError)\b/,
+            ) ?? ["CollectorStartupError"])[0],
+            code: startupCode,
+            retryable: false,
+            safeToRetry: false,
+          };
+          return { ...failure, ...failureGuidance(failure) };
+        })(),
+        startupCode: (stderr.match(/ERR_[A-Z_]+/) ?? [])[0],
+      });
+      throw Error("Global collection failure");
+    }
+    if (result.stopped === "busy") {
+      sequence.reason = "Existing collector lock active";
+      break;
+    }
+    step = "audit-load";
+    const auditPath =
+      kind === "pdf"
+        ? join(out, "investigated.json")
+        : join(
+            env.CATALOG_CACHE_DIR,
+            "logos",
+            createHash("sha256")
+              .update(env.LIBRARY_CATALOG_OWNER_ID)
+              .digest("hex"),
+            "last-pass-books.json",
+          );
+    const audit = JSON.parse(fs.readFileSync(auditPath, "utf8"));
+    if (Date.parse(audit.at) < started)
+      throw Error("Stale investigation audit");
+    if (audit.ids.length > limit) throw Error("Batch exceeded reservation");
+    const localError = (result.failed ?? result.errors ?? 0) > 0;
+    step = "audit-validate";
+    validateBatch(
+      kind,
+      {
+        ...result,
+        stopped: result.stopped === "paused" ? "complete" : result.stopped,
+        failed: 0,
+        errors: 0,
+      },
+      audit.ids,
+      ledger[kind].ids,
+    );
+    ledger[kind].reserved = settleCollectionReservation(
+      ledger[kind].reserved,
+      limit,
+      audit.ids.length,
+    );
+    ledger[kind].ids.push(...audit.ids);
+    sequence.batches.push(result);
+    write(ledgerName, ledger);
+    write(kind + "-status.json", {
+      state: localError ? "resource_deferred" : "running",
+      stage: ledger.stage,
+      at: new Date().toISOString(),
+      newToday: ledger[kind].ids.length,
+      dayLimit: caps[kind].dailyLimit,
+      result,
+    });
+    if (result.stopped === "paused") {
+      sequence.reason = "Day boundary reached";
+      break;
+    }
+    if (localError) {
+      sequence.reason = "Resource errors; expansion held";
+      break;
+    }
+    if (audit.ids.length === 0)
+      sequence.notBefore = new Date(Date.now() + 3600000).toISOString();
+    if (remaining === 0 || audit.ids.length === 0) {
+      sequence.success = true;
+      break;
+    }
+  }
+  if (
+    sequence.success &&
+    !sequence.batches.some(
+      (b) => (kind === "logos" ? b.considered : b.processed) === 0,
+    )
+  )
+    sequence.notBefore = new Date(Date.now() + 60000).toISOString();
+  write(ledgerName, ledger);
+  write(kind + "-status.json", {
+    state: sequence.success ? "complete" : "deferred",
+    stage: ledger.stage,
+    at: new Date().toISOString(),
+    newToday: ledger[kind].ids.length,
+    dayLimit: caps[kind].dailyLimit,
+    sequence,
+  });
+} catch (e) {
+  const previous = read("halted.json", {});
+  write("halted.json", {
+    ...previous,
+    ...(!previous.failure && !e.collectionStateWrite
+      ? {
+          failure: {
+            kind:
+              e.code === "ENOSPC"
+                ? "storage"
+                : step === "startup"
+                  ? "configuration"
+                  : "unexpected",
+            name: /^[A-Za-z]{1,50}$/.test(e.name ?? "") ? e.name : "Error",
+            code: /^[A-Z0-9_]{1,50}$/.test(e.code ?? "") ? e.code : undefined,
+            phase: step,
+            retryable: false,
+            safeToRetry: false,
+          },
+        }
+      : {}),
+    ...(e.collectionStateWrite
+      ? {
+          failure: {
+            kind: "state-file",
+            name: "상태 파일 저장 충돌",
+            code: e.code,
+            retryable: ["EPERM", "EACCES", "EBUSY"].includes(e.code),
+          },
+        }
+      : {}),
+    kind,
+    step,
+    name: e.name,
+    code: e.code,
+    at: new Date().toISOString(),
+    reason: "Startup, audit or global failure; operator review required",
+  });
+  write(kind + "-status.json", {
+    state: "halted",
+    at: new Date().toISOString(),
+  });
+  process.exitCode = 1;
+} finally {
+  if (release) release();
+}

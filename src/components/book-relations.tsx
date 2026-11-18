@@ -100,10 +100,6 @@ function BookRelationsBody({
       }}
     >
       <summary>다른 소장본·판본 연결</summary>
-      <p className="form-hint">
-        파일이 같거나 ISBN이 같은 자료를 후보로 보여 줍니다. 연결해도 각 책의
-        위치·독서 이력·메모는 그대로 남습니다.
-      </p>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -111,12 +107,6 @@ function BookRelationsBody({
       )}
       {data && (
         <>
-          {!data.localAvailable && (
-            <p>
-              이 환경에서는 PDF 파일 비교를 할 수 없습니다. ISBN 비교와 판본
-              연결은 사용할 수 있습니다.
-            </p>
-          )}
           {data.candidates.map((c: RelatedBook) => (
             <article key={c.id}>
               <strong>{c.title}</strong>
