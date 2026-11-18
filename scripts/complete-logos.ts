@@ -1,3 +1,4 @@
+import { retryCatalogRead } from "../src/local/curation/catalog-read-retry";
 import { collectionFailure } from "../src/local/curation/collection-failure";
 /** Finite operator run. No startup hook, watcher, or background polling. */
 import { Pool } from "pg";
@@ -58,12 +59,16 @@ if (args.includes("--help")) {
       process.env.COLLECTION_LEDGER,
       "logos",
     );
-    const owner = await resolveLogosOwner(db, {
-      id: process.env.LIBRARY_CATALOG_OWNER_ID,
-      email: process.env.LIBRARY_OWNER_EMAIL,
-    });
+    const owner = await retryCatalogRead(() =>
+      resolveLogosOwner(db, {
+        id: process.env.LIBRARY_CATALOG_OWNER_ID,
+        email: process.env.LIBRARY_OWNER_EMAIL,
+      }),
+    );
     phase = "cover-sources";
-    const coverCapacity = await readCoverCapacity(db, owner);
+    const coverCapacity = await retryCatalogRead(() =>
+      readCoverCapacity(db, owner),
+    );
     console.log(
       JSON.stringify({ preflight: "cover-storage", ...coverCapacity }),
     );
@@ -80,9 +85,11 @@ if (args.includes("--help")) {
     );
     phase = "initial-select";
     const rows = (
-      await db.query(
-        `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND source_data->>'app'='Logos' ORDER BY id`,
-        [owner],
+      await retryCatalogRead(() =>
+        db.query(
+          `SELECT ${bookSelect} FROM library_active_books WHERE owner_id=$1 AND source_data->>'app'='Logos' ORDER BY id`,
+          [owner],
+        ),
       )
     ).rows;
     if (args.includes("--classify-only")) {

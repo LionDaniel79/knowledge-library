@@ -1,5 +1,17 @@
 import { it, expect } from "vitest";
 import { retryCatalogRead } from "../src/local/curation/catalog-read-retry";
+it("recovers a code-less pg disconnect in an idempotent capacity read", async () => {
+  let calls = 0;
+  const result = await retryCatalogRead(
+    async () => {
+      if (++calls < 3) throw Error("Connection terminated unexpectedly");
+      return { remainingAssets: 100 };
+    },
+    async () => {},
+  );
+  expect(calls).toBe(3);
+  expect(result.remainingAssets).toBe(100);
+});
 it("retries only transient read failures twice, without treating an error as success", async () => {
   let calls = 0;
   const delays: number[] = [];

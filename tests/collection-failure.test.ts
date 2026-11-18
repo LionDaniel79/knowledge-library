@@ -4,6 +4,24 @@ import { runLogosCompletion } from "../src/local/curation/logos-runner";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+it("recognizes pg connection failures without SQLSTATE or socket codes", () => {
+  for (const [message, code] of [
+    ["Connection terminated unexpectedly", "DB_CONNECTION_LOST"],
+    ["Connection terminated due to connection timeout", "DB_CONNECT_TIMEOUT"],
+    ["timeout exceeded when trying to connect", "DB_POOL_TIMEOUT"],
+    ["Query read timeout", "DB_READ_TIMEOUT"],
+  ]) {
+    expect(collectionFailure(Error(message), "cover-sources")).toMatchObject({
+      code,
+      retryable: true,
+      safeToRetry: true,
+    });
+    expect(collectionFailure(Error(message), "apply")).toMatchObject({
+      code,
+      safeToRetry: false,
+    });
+  }
+});
 it("records a network cause and code location without leaking URL, key, private path or raw message", () => {
   const error = Object.assign(new TypeError("fetch failed"), {
     cause: { code: "ECONNRESET" },

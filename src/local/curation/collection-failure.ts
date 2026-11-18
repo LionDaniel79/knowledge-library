@@ -9,9 +9,17 @@ export function collectionFailure(error: unknown, phase: string) {
     cause?: { code?: unknown; name?: unknown };
     stack?: unknown;
   } | null;
-  const code = e?.code ?? e?.cause?.code;
   const status = Number(e?.status);
   const message = String(e?.message ?? "");
+  // pg sometimes supplies only a fixed message and no SQLSTATE/socket code.
+  // Convert only known driver messages; never log arbitrary messages or URLs.
+  const driverCodes: Record<string, string> = {
+    "Connection terminated unexpectedly": "DB_CONNECTION_LOST",
+    "Connection terminated due to connection timeout": "DB_CONNECT_TIMEOUT",
+    "timeout exceeded when trying to connect": "DB_POOL_TIMEOUT",
+    "Query read timeout": "DB_READ_TIMEOUT",
+  };
+  const code = e?.code ?? e?.cause?.code ?? driverCodes[message];
   const auth =
     [401, 403].includes(status) ||
     ["28P01", "28000", "42501"].includes(String(code)) ||
@@ -33,6 +41,10 @@ export function collectionFailure(error: unknown, phase: string) {
         "08006",
         "08001",
         "57P01",
+        "DB_CONNECTION_LOST",
+        "DB_CONNECT_TIMEOUT",
+        "DB_POOL_TIMEOUT",
+        "DB_READ_TIMEOUT",
       ].includes(String(code)) ||
       (status >= 500 && status <= 599));
   const storage =
@@ -45,7 +57,9 @@ export function collectionFailure(error: unknown, phase: string) {
       : storage
         ? "storage"
         : network
-          ? message === "Query read timeout" || code === "57014"
+          ? message === "Query read timeout" ||
+            code === "57014" ||
+            ["DB_CONNECT_TIMEOUT", "DB_POOL_TIMEOUT"].includes(String(code))
             ? "database-timeout"
             : "network"
           : "unexpected";
