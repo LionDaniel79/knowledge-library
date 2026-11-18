@@ -33,7 +33,9 @@ export type AssistProps = {
   editorAnalysis?: {
     context: EditorContext;
     notes: Note[];
-    onApply: (suggestion: SynthesisResult["suggestions"][number]) => void;
+    onApply: (
+      suggestion: SynthesisResult["suggestions"][number],
+    ) => void | Promise<void>;
   };
   onAdopt?: (result: any) => void;
   onOpen?: (kind: string, id: string) => void;
@@ -98,6 +100,7 @@ export function AssistPanel({
   editorAnalysis,
   allowedFocus,
 }: AssistProps) {
+  const noteFieldsMode = !!editorAnalysis?.context.fields;
   const replica = useReplicaOptional(),
     key = `library:assist-model:${ownerId || replica?.runtime?.owner || "default"}`;
   const [state, setState] = useState<any>(null),
@@ -119,7 +122,7 @@ export function AssistPanel({
     hidden.current = new Set();
     try {
       const v = assistModelSchema.safeParse(localStorage.getItem(key));
-      setModel(v.success ? v.data : "gpt-6-luna");
+      setModel(!noteFieldsMode && v.success ? v.data : "gpt-6-luna");
       const values = JSON.parse(localStorage.getItem(hiddenKey) ?? "[]");
       hidden.current = new Set(
         Array.isArray(values)
@@ -127,7 +130,7 @@ export function AssistPanel({
           : [],
       );
     } catch {}
-  }, [key, hiddenKey]);
+  }, [key, hiddenKey, noteFieldsMode]);
   const query = {
     ...scope,
     kind: "note",
@@ -481,51 +484,57 @@ export function AssistPanel({
       ) : (
         <div className="assist-topline">
           <div className="assist-synthesis-controls">
-            <label>
-              도움 방향
-              <select
-                aria-label="도움 방향"
-                value={focus}
-                onChange={(e) =>
-                  setFocus(e.target.value as keyof typeof focusNames)
-                }
-              >
-                {Object.entries(focusNames)
-                  .filter(
-                    ([id]) =>
-                      !allowedFocus ||
-                      allowedFocus.includes(id as keyof typeof focusNames),
-                  )
-                  .filter(([id]) =>
-                    editorAnalysis
-                      ? (id === "all" &&
-                          editorAnalysis.context.kind === "note") ||
-                        id === "editor_title" ||
-                        (id === "note_connection" &&
-                          editorAnalysis.context.kind !== "bundle")
-                      : ["all", "note_connection"].includes(id),
-                  )
-                  .map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {id === "editor_title"
-                        ? editorAnalysis?.context.kind === "note"
-                          ? "메모 제목 추천"
-                          : editorAnalysis?.context.kind === "bundle"
-                            ? "생각 묶음 제목 추천"
-                            : "연결 메모 제목 추천"
-                        : editorAnalysis && id === "note_connection"
-                          ? "연결 메모 추천"
-                          : name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+            {!noteFieldsMode && (
+              <label>
+                도움 방향
+                <select
+                  aria-label="도움 방향"
+                  value={focus}
+                  onChange={(e) =>
+                    setFocus(e.target.value as keyof typeof focusNames)
+                  }
+                >
+                  {Object.entries(focusNames)
+                    .filter(
+                      ([id]) =>
+                        !allowedFocus ||
+                        allowedFocus.includes(id as keyof typeof focusNames),
+                    )
+                    .filter(([id]) =>
+                      editorAnalysis
+                        ? (id === "all" &&
+                            editorAnalysis.context.kind === "note") ||
+                          id === "editor_title" ||
+                          (id === "note_connection" &&
+                            editorAnalysis.context.kind !== "bundle")
+                        : ["all", "note_connection"].includes(id),
+                    )
+                    .map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {id === "editor_title"
+                          ? editorAnalysis?.context.kind === "note"
+                            ? "메모 제목 추천"
+                            : editorAnalysis?.context.kind === "bundle"
+                              ? "생각 묶음 제목 추천"
+                              : "연결 메모 제목 추천"
+                          : editorAnalysis && id === "note_connection"
+                            ? "연결 메모 추천"
+                            : name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
-              disabled={busy}
+              disabled={
+                busy ||
+                (noteFieldsMode &&
+                  !editorAnalysis?.context.fields?.missing.length)
+              }
               onClick={() => void prepare()}
             >
-              {busy ? "처리 중…" : "분석"}
+              {busy ? "처리 중…" : noteFieldsMode ? "빈 항목 추천" : "분석"}
             </button>
           </div>
         </div>
@@ -634,43 +643,45 @@ export function AssistPanel({
           </button>
         </section>
       )}
-      <div className="assist-model-row">
-        <details className="assist-model-choice">
-          <summary>모델 선택</summary>
-          <label>
-            AI 모델
-            <select
-              aria-label="AI 모델"
-              value={model}
-              onChange={(e) => {
-                const v = assistModelSchema.parse(e.target.value);
-                setModel(v);
-                try {
-                  localStorage.setItem(key, v);
-                } catch {}
-              }}
-            >
-              {Object.entries(assistModels).map(([id, m]) => (
-                <option key={id} value={id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            전송 메모 수
-            <select
-              value={maximum}
-              onChange={(e) => setMaximum(Number(e.target.value))}
-            >
-              <option value={0}>전체</option>
-              <option value={24}>최대 24개</option>
-              <option value={12}>최대 12개</option>
-              <option value={6}>최대 6개</option>
-            </select>
-          </label>
-        </details>
-      </div>
+      {!noteFieldsMode && (
+        <div className="assist-model-row">
+          <details className="assist-model-choice">
+            <summary>모델 선택</summary>
+            <label>
+              AI 모델
+              <select
+                aria-label="AI 모델"
+                value={model}
+                onChange={(e) => {
+                  const v = assistModelSchema.parse(e.target.value);
+                  setModel(v);
+                  try {
+                    localStorage.setItem(key, v);
+                  } catch {}
+                }}
+              >
+                {Object.entries(assistModels).map(([id, m]) => (
+                  <option key={id} value={id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              전송 메모 수
+              <select
+                value={maximum}
+                onChange={(e) => setMaximum(Number(e.target.value))}
+              >
+                <option value={0}>전체</option>
+                <option value={24}>최대 24개</option>
+                <option value={12}>최대 12개</option>
+                <option value={6}>최대 6개</option>
+              </select>
+            </label>
+          </details>
+        </div>
+      )}
       <div className="assist-results">
         <details
           className="assist-results-toggle"
@@ -723,8 +734,10 @@ export function AssistPanel({
                   }
                   onEditorSuggestion={
                     editorAnalysis
-                      ? (suggestion, savedScope) => {
+                      ? async (suggestion, savedScope) => {
                           if (
+                            savedScope.editorContext?.fields?.kind !==
+                              editorAnalysis.context.fields?.kind ||
                             JSON.stringify(savedScope.editorContext?.draft) !==
                               JSON.stringify(editorAnalysis.context.draft) ||
                             savedScope.editorContext?.id !==
@@ -743,7 +756,7 @@ export function AssistPanel({
                             throw Error(
                               "대상 메모가 변경되었습니다. 다시 분석해 주세요.",
                             );
-                          editorAnalysis.onApply(suggestion);
+                          await editorAnalysis.onApply(suggestion);
                         }
                       : undefined
                   }

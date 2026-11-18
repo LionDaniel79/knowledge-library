@@ -53,6 +53,9 @@ export function LibraryForm({
   );
   const bookNoteDraft =
     editor.kind === "note" && !editor.note && !!editor.bookId;
+  const [draftTopicIds, setDraftTopicIds] = useState<string[]>(
+    editor.kind === "note" ? (editor.topicIds ?? []) : [],
+  );
   const [undatedRating, setUndatedRating] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -84,6 +87,13 @@ export function LibraryForm({
   const [noteTags, setNoteTags] = useState(
     editor.kind === "note" ? (editor.note?.tags ?? []) : [],
   );
+  const draftContextRef = useRef({ content: draftContent, kind: noteKind });
+  draftContextRef.current = { content: draftContent, kind: noteKind };
+  const missingNoteFields: ("title" | "topic" | "tags")[] = [
+    ...(!title.trim() ? ["title" as const] : []),
+    ...(!draftTopicIds.length ? ["topic" as const] : []),
+    ...(!noteTags.length ? ["tags" as const] : []),
+  ];
   const [conflict, setConflict] = useState(false);
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
   const latest = book
@@ -548,6 +558,9 @@ export function LibraryForm({
                   name="title"
                   maxLength={300}
                   aria-label="제목"
+                  onChange={(e) => {
+                    if (bookNoteDraft) setTitle(e.target.value);
+                  }}
                   defaultValue={
                     editor.note?.title === "미분류 메모"
                       ? ""
@@ -630,6 +643,7 @@ export function LibraryForm({
                 initial={editor.topicIds}
                 preview={preview}
                 onCreatingChange={setTopicBusy}
+                onSelectionChange={bookNoteDraft ? setDraftTopicIds : undefined}
               />
               {!!editor.relatedNotes?.length && (
                 <small>
@@ -794,6 +808,7 @@ export function LibraryForm({
               id: draftNoteId,
               noteIds: [draftNoteId],
               draft: { content: draftContent.slice(0, 8000) },
+              fields: { kind: noteKind, missing: missingNoteFields },
             },
             notes: [
               {
@@ -809,20 +824,38 @@ export function LibraryForm({
                 updatedAt: today,
               },
             ],
-            onApply: (s) => {
+            onApply: async (s) => {
+              const values = s.noteFields;
+              if (!values) return;
+              const isCurrent = () =>
+                draftContextRef.current.content === draftContent &&
+                draftContextRef.current.kind === noteKind;
+              if (values.topic)
+                await topicRef.current?.recommend(values.topic, isCurrent);
+              if (!isCurrent())
+                throw Error(
+                  "내용이나 기록 종류가 변경되었습니다. 다시 추천받아 주세요.",
+                );
               const field = formRef.current?.elements.namedItem(
                 "title",
               ) as HTMLInputElement | null;
-              if (field) {
-                field.value = s.title;
-                field.focus();
+              if (values.title && field && !field.value.trim()) {
+                field.value = values.title;
+                setTitle(values.title);
               }
+              if (values.tags.length)
+                setNoteTags((current) =>
+                  current.length ? current : values.tags,
+                );
             },
           }}
         >
+          {!missingNoteFields.length && (
+            <p className="muted">제목·주제·태그가 모두 입력되어 있습니다.</p>
+          )}
           {!draftContent.trim() && (
             <p className="muted">
-              내용을 입력하면 제목을 추천받을 수 있습니다.
+              내용을 입력하면 빈 항목을 추천받을 수 있습니다.
             </p>
           )}
         </AssistLauncher>
