@@ -1,3 +1,4 @@
+import { legacyRating } from "./reading-ratings";
 import { validDate, type Book } from "./domain";
 export interface LegacyCycle {
   bookId: string;
@@ -14,6 +15,13 @@ export function mapLegacyReading(books: Book[]): LegacyCycle[] {
     const source = book.sourceData;
     if (source?.app !== "iReadItNow HD") continue;
     const sessions = source.sessions ?? [];
+    const latestCompleted = sessions
+      .filter((s) => s.statusCode === 2 && s.endedOn && validDate(s.endedOn))
+      .sort(
+        (a, b) =>
+          (b.endedOn ?? "").localeCompare(a.endedOn ?? "") ||
+          String(b.sourceId).localeCompare(String(a.sourceId)),
+      )[0];
     const active =
       source.statusCode === 4
         ? sessions
@@ -57,6 +65,19 @@ export function mapLegacyReading(books: Book[]): LegacyCycle[] {
           app: source.app,
           libraryId: source.libraryId,
           mappingVersion: 1,
+          ...(completed &&
+          (legacyRating(session.raw?.ZRATING) !== null ||
+            (session === latestCompleted &&
+              legacyRating(source.raw?.ZRATING) !== null))
+            ? {
+                readingRating: {
+                  steps:
+                    legacyRating(session.raw?.ZRATING) ??
+                    legacyRating(source.raw?.ZRATING),
+                  origin: "ireaditnow",
+                },
+              }
+            : {}),
         },
       });
     }

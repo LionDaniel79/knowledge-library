@@ -137,8 +137,7 @@ export async function readReadingSummary(db: Executor, owner: string) {
     ),
   };
 }
-const cycleSelect =
-  'id,book_id AS "bookId",status,started_on::text AS "startedOn",completed_on::text AS "completedOn",current_page AS "currentPage",version,created_at AS "createdAt"';
+const cycleSelect = `id,book_id AS "bookId",status,started_on::text AS "startedOn",completed_on::text AS "completedOn",current_page AS "currentPage",CASE WHEN source_data ? 'readingRating' THEN (source_data#>>'{readingRating,steps}')::int WHEN source_data#>>'{raw,ZRATING}' ~ '^(10|[1-9])$' THEN (source_data#>>'{raw,ZRATING}')::int ELSE NULL END AS "ratingSteps",version,created_at AS "createdAt"`;
 export async function readCyclePage(db: Executor, owner: string, raw: unknown) {
   if (!owner) throw new LibraryError(401, "로그인이 필요합니다.");
   const p = z

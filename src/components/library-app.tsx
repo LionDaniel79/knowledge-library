@@ -55,6 +55,8 @@ import { Modal } from "./modal";
 import { RevisionContent } from "./revision-content";
 import { NavigationDrawer } from "./navigation-drawer";
 import { BookShelves } from "./shelf-picker";
+import { RatingStatistics } from "./rating-statistics";
+import { RatingStars } from "./reading-rating";
 import { BookRecords } from "./book-records";
 import {
   useListPagination,
@@ -184,6 +186,7 @@ export function LibraryApp({
   const [readingIndex, setReadingIndex] = useState(0);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
+  const [statisticsTab, setStatisticsTab] = useState("reading");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [openingNote, setOpeningNote] = useState<{
     id: string;
@@ -470,9 +473,12 @@ export function LibraryApp({
   }
   async function save(command: Command) {
     if (
-      ["updateProgress", "completeReading", "editCompletion"].includes(
-        command.type,
-      )
+      [
+        "updateProgress",
+        "completeReading",
+        "editCompletion",
+        "rateReading",
+      ].includes(command.type)
     ) {
       const p = command.payload as {
         id: string;
@@ -1261,105 +1267,141 @@ export function LibraryApp({
               )}
               {view === "stats" && (
                 <section className="panel">
-                  <div className="stat-grid">
-                    <div className="stat-card">
-                      <span>전체 완독 기록</span>
-                      <strong>
-                        {data.readingSummary?.totalCompleted ??
-                          data.cycles.filter((c) => c.status === "completed")
-                            .length}
-                        <small>권</small>
-                      </strong>
-                    </div>
-                    <div className="stat-card">
-                      <span>현재 읽는 책</span>
-                      <strong>
-                        {readingIds.size}
-                        <small>권</small>
-                      </strong>
-                    </div>
-                    <div className="stat-card">
-                      <span>{month.slice(0, 4)}년 완독 날짜 기준</span>
-                      <strong>
-                        {stats.yearCount}
-                        <small>권</small>
-                      </strong>
-                    </div>
+                  <div
+                    className="statistics-tabs"
+                    role="tablist"
+                    aria-label="독서 통계"
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={statisticsTab === "reading"}
+                      onClick={() => setStatisticsTab("reading")}
+                    >
+                      독서 현황
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={statisticsTab === "ratings"}
+                      onClick={() => setStatisticsTab("ratings")}
+                    >
+                      별점
+                    </button>
                   </div>
-                  <div className="section-heading">
-                    <div>
-                      <span className="eyebrow">A YEAR IN BOOKS</span>
-                      <h2>
-                        {month.slice(0, 4)}년, {stats.yearCount}권 완독
-                      </h2>
-                    </div>
-                    <label>
-                      연도
-                      <select
-                        aria-label="통계 연도"
-                        value={month.slice(0, 4)}
-                        onChange={(e) =>
-                          setMonth(e.target.value + month.slice(4))
-                        }
-                      >
-                        {[
-                          ...new Set([
-                            today.slice(0, 4),
-                            month.slice(0, 4),
-                            ...Object.keys(
-                              data.readingSummary?.months ?? {},
-                            ).map((m) => m.slice(0, 4)),
-                            ...data.cycles.flatMap((c) =>
-                              c.completedOn ? [c.completedOn.slice(0, 4)] : [],
+                  {statisticsTab === "ratings" ? (
+                    <RatingStatistics
+                      library={data}
+                      today={today}
+                      onOpenBook={setDetail}
+                      onRate={(cycle) => setEditor({ kind: "rating", cycle })}
+                    />
+                  ) : (
+                    <div role="tabpanel" aria-label="독서 현황">
+                      <div className="stat-grid">
+                        <div className="stat-card">
+                          <span>전체 완독 기록</span>
+                          <strong>
+                            {data.readingSummary?.totalCompleted ??
+                              data.cycles.filter(
+                                (c) => c.status === "completed",
+                              ).length}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                        <div className="stat-card">
+                          <span>현재 읽는 책</span>
+                          <strong>
+                            {readingIds.size}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                        <div className="stat-card">
+                          <span>{month.slice(0, 4)}년 완독 날짜 기준</span>
+                          <strong>
+                            {stats.yearCount}
+                            <small>권</small>
+                          </strong>
+                        </div>
+                      </div>
+                      <div className="section-heading">
+                        <div>
+                          <span className="eyebrow">A YEAR IN BOOKS</span>
+                          <h2>
+                            {month.slice(0, 4)}년, {stats.yearCount}권 완독
+                          </h2>
+                        </div>
+                        <label>
+                          연도
+                          <select
+                            aria-label="통계 연도"
+                            value={month.slice(0, 4)}
+                            onChange={(e) =>
+                              setMonth(e.target.value + month.slice(4))
+                            }
+                          >
+                            {[
+                              ...new Set([
+                                today.slice(0, 4),
+                                month.slice(0, 4),
+                                ...Object.keys(
+                                  data.readingSummary?.months ?? {},
+                                ).map((m) => m.slice(0, 4)),
+                                ...data.cycles.flatMap((c) =>
+                                  c.completedOn
+                                    ? [c.completedOn.slice(0, 4)]
+                                    : [],
+                                ),
+                              ]),
+                            ]
+                              .sort()
+                              .reverse()
+                              .map((y) => (
+                                <option key={y}>{y}</option>
+                              ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="year-chart">
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const m =
+                            month.slice(0, 4) +
+                            "-" +
+                            String(i + 1).padStart(2, "0");
+                          const n = statsFor(m).monthCount;
+                          const max = Math.max(
+                            1,
+                            ...Array.from(
+                              { length: 12 },
+                              (_, j) =>
+                                statsFor(
+                                  month.slice(0, 4) +
+                                    "-" +
+                                    String(j + 1).padStart(2, "0"),
+                                ).monthCount,
                             ),
-                          ]),
-                        ]
-                          .sort()
-                          .reverse()
-                          .map((y) => (
-                            <option key={y}>{y}</option>
-                          ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="year-chart">
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const m =
-                        month.slice(0, 4) +
-                        "-" +
-                        String(i + 1).padStart(2, "0");
-                      const n = statsFor(m).monthCount;
-                      const max = Math.max(
-                        1,
-                        ...Array.from(
-                          { length: 12 },
-                          (_, j) =>
-                            statsFor(
-                              month.slice(0, 4) +
-                                "-" +
-                                String(j + 1).padStart(2, "0"),
-                            ).monthCount,
-                        ),
-                      );
-                      return (
-                        <button
-                          key={m}
-                          aria-label={m + " 완독 " + n + "권"}
-                          className={m === month ? "selected" : ""}
-                          onClick={() => setMonth(m)}
-                        >
-                          <span>{n}</span>
-                          <i style={{ height: Math.max(3, (n / max) * 150) }} />
-                          <small>{i + 1}월</small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <MonthCompletedBooks
-                    library={data}
-                    month={month}
-                    onOpenBook={setDetail}
-                  />
+                          );
+                          return (
+                            <button
+                              key={m}
+                              aria-label={m + " 완독 " + n + "권"}
+                              className={m === month ? "selected" : ""}
+                              onClick={() => setMonth(m)}
+                            >
+                              <span>{n}</span>
+                              <i
+                                style={{ height: Math.max(3, (n / max) * 150) }}
+                              />
+                              <small>{i + 1}월</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <MonthCompletedBooks
+                        library={data}
+                        month={month}
+                        onOpenBook={setDetail}
+                      />
+                    </div>
+                  )}
                 </section>
               )}
               {view === "knowledge" &&
@@ -1666,6 +1708,7 @@ export function LibraryApp({
           {!preview && remote ? (
             <BookRecords
               bookId={detailBook.id}
+              onRate={(cycle) => setEditor({ kind: "rating", cycle })}
               onNote={(id) => void openNote(id)}
               onCycle={(cycle) =>
                 setEditor({
@@ -1710,6 +1753,16 @@ export function LibraryApp({
                       >
                         수정
                       </button>
+                      {c.status === "completed" && (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            setEditor({ kind: "rating", cycle: c })
+                          }
+                        >
+                          <RatingStars steps={c.ratingSteps} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 {!data.cycles.some((c) => c.bookId === detailBook.id) && (

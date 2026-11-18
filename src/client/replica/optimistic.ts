@@ -1,3 +1,4 @@
+import { ratingStepsInput } from "../../lib/reading-ratings";
 import {
   memoGroupEditSchema,
   planMemoGroupEdit,
@@ -389,6 +390,14 @@ export async function prepareOptimistic(
             ? null
             : dateInput.parse(p.startedOn),
         completed_on: null,
+        source_data: p.completedWithoutDates
+          ? {
+              readingRating: {
+                steps: ratingStepsInput.parse(p.ratingSteps ?? null),
+                origin: "user",
+              },
+            }
+          : null,
         current_page: 0,
         version: 1,
         created_at: at,
@@ -417,11 +426,28 @@ export async function prepareOptimistic(
         };
       }
     } else if (
-      ["updateProgress", "completeReading", "editCompletion"].includes(cmd.type)
+      [
+        "updateProgress",
+        "completeReading",
+        "editCompletion",
+        "rateReading",
+      ].includes(cmd.type)
     ) {
       const old = await own("library_cycles", p.id);
       check(old, p.expectedVersion);
-      if (cmd.type === "updateProgress") {
+      if (cmd.type === "rateReading") {
+        if (old.status !== "completed")
+          throw new ReplicaQueryError(409, "완독 기록에서 평가해 주세요.");
+        edit("library_cycles", old, {
+          source_data: {
+            ...(old.source_data ?? {}),
+            readingRating: {
+              steps: ratingStepsInput.parse(p.ratingSteps),
+              origin: "user",
+            },
+          },
+        });
+      } else if (cmd.type === "updateProgress") {
         const current_page = z
           .number()
           .int()
@@ -449,6 +475,17 @@ export async function prepareOptimistic(
           status: "completed",
           completed_on,
           current_page: b.total_pages ?? old.current_page,
+          ...(p.ratingSteps !== undefined
+            ? {
+                source_data: {
+                  ...(old.source_data ?? {}),
+                  readingRating: {
+                    steps: ratingStepsInput.parse(p.ratingSteps),
+                    origin: "user",
+                  },
+                },
+              }
+            : {}),
         });
       }
     } else if (cmd.type === "deleteNote" || cmd.type === "restoreNote") {

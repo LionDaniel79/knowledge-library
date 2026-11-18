@@ -95,9 +95,23 @@ export function projectLibrarySave(
         startedOn: p.completedWithoutDates ? null : (p.startedOn ?? null),
         completedOn: null,
         currentPage: 0,
+        ratingSteps: p.completedWithoutDates ? (p.ratingSteps ?? null) : null,
         createdAt: at,
       }),
     };
+  if (command.type === "rateReading") {
+    const old = data.cycles.find((c) => c.id === p.id);
+    return !old || old.version >= result.version
+      ? data
+      : {
+          ...data,
+          cycles: upsert(data.cycles, {
+            ...old,
+            version: result.version,
+            ratingSteps: p.ratingSteps,
+          }),
+        };
+  }
   if (
     ["updateProgress", "completeReading", "editCompletion"].includes(
       command.type,
@@ -113,6 +127,9 @@ export function projectLibrarySave(
         ? {
             status: "completed" as const,
             completedOn: p.completedOn,
+            ...(p.ratingSteps !== undefined
+              ? { ratingSteps: p.ratingSteps }
+              : {}),
             currentPage:
               data.books.find((b) => b.id === old.bookId)?.totalPages ??
               old.currentPage,

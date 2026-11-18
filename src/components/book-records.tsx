@@ -1,4 +1,5 @@
 "use client";
+import { RatingStars } from "./reading-rating";
 import type { Note, ReadingCycle } from "../lib/domain";
 import {
   useListPagination,
@@ -10,11 +11,13 @@ export function BookRecords({
   bookId,
   onNote,
   onCycle,
+  onRate,
   revision,
 }: {
   bookId: string;
   onNote: (id: string) => void;
   onCycle: (c: ReadingCycle) => void;
+  onRate?: (c: ReadingCycle) => void;
   revision: unknown;
 }) {
   const notePaging = useListPagination("book-notes", bookId);
@@ -50,6 +53,14 @@ export function BookRecords({
             · {c.currentPage}쪽
           </span>
           <button onClick={() => onCycle(c)}>수정</button>
+          {c.status === "completed" &&
+            (onRate ? (
+              <button aria-label="별점 수정" onClick={() => onRate(c)}>
+                <RatingStars steps={c.ratingSteps} />
+              </button>
+            ) : (
+              <RatingStars steps={c.ratingSteps} />
+            ))}
         </div>
       ))}
       {cycles.data?.total === 0 && <p>아직 독서 기록이 없습니다.</p>}

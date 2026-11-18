@@ -1,3 +1,4 @@
+import { ratingStepsInput } from "../lib/reading-ratings";
 import { introductionSourceSchema } from "../lib/book-introduction";
 import { collectedReviewSchema } from "../lib/catalog-review";
 import { z } from "zod";
@@ -197,7 +198,17 @@ const fields: Record<string, Record<string, z.ZodType>> = {
       })
       .passthrough(),
   },
-  library_cycles: { source_data: rawObject.nullable() },
+  library_cycles: {
+    source_data: z
+      .object({
+        readingRating: z
+          .object({ steps: ratingStepsInput })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .nullable(),
+  },
   library_research_items: { snapshot: researchSnapshot },
   library_topics: {
     aliases: z.array(z.string()),

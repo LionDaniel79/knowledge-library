@@ -1,3 +1,4 @@
+import { storedRating } from "../reading-ratings";
 import type { Book, Note, ReadingCycle, Revision } from "../domain";
 export type RawRecord = Record<string, any>;
 export const serialized = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -101,6 +102,7 @@ export function projectCycle(r: RawRecord): ReadingCycle {
     startedOn: r.started_on,
     completedOn: r.completed_on,
     currentPage: r.current_page,
+    ratingSteps: storedRating(r.source_data),
     version: r.version,
     createdAt: iso(r.created_at),
   };
