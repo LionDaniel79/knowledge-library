@@ -18,6 +18,7 @@ partial class PdfDesktop {
         public string LoadedSettings="";
         public TextBlock Summary=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,16,4,12),FontSize=16};
         public TextBlock Detail=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4)};
+        public TextBlock Overview=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,8,4,12),FontSize=15};
         public Button Pause,Start;
     }
     readonly Dictionary<string,CollectionView> collectionViews=new Dictionary<string,CollectionView>();
@@ -45,7 +46,7 @@ partial class PdfDesktop {
             view.Start=Btn("지금 수집",()=>RequestCollection(key));actions.Children.Add(view.Start);
             view.Pause=Btn("일시정지 / 계속",()=>ToggleCollection(key));actions.Children.Add(view.Pause);
             actions.Children.Add(Btn("현황 새로고침",RefreshCollectionViews));
-            panel.Children.Add(view.Summary);panel.Children.Add(view.Detail);
+            panel.Children.Add(view.Summary);panel.Children.Add(view.Overview);panel.Children.Add(view.Detail);
             panel.Children.Add(new TextBlock{Text="창을 닫아도 트레이에서 계속 실행됩니다. 화면 잠금은 가능하며, 로그아웃·절전·PC 종료 중에는 실행되지 않습니다. 다시 실행하면 체크포인트를 재사용합니다.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,24,4,4)});
             tabs.Items.Add(new TabItem{Header=key=="pdf"?"PDF 도서정보 수집":"로고스 도서정보 수집",Content=new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}});
         }
@@ -97,6 +98,7 @@ partial class PdfDesktop {
                 var host=CollectionRead("desktop-host.json");
                 var hostAlive=collectionProcess!=null&&!collectionProcess.HasExited;
                 v.Summary.Text=halted.Count>0?"오류로 수집 중단 · 기존 진행 기록은 보존되어 있습니다.":!hostAlive?"백그라운드 수집기가 실행되지 않았습니다. 앱을 다시 열어 주세요.":running?"도서정보 수집 중":paused||limit==0?"일시정지":mode=="continuous"?"연속 실행 대기":mode=="manual"?"수동 실행 대기":"예약 대기";
+                v.Overview.Text=CollectionOverviewText(CollectionRead("overview.json"),kind,CollectionRead("overview-refresh.json"));
                 string text="오늘 조사 완료 "+(ids==null?0:ids.Count)+"권 / 일일 한도 "+limit+"권\n안전 예약 용량 "+(entry.ContainsKey("reserved")?Val(entry,"reserved"):"0")+"권 (중단된 배치 포함)";
                 var result=status.ContainsKey("result")?status["result"] as Dictionary<string,object>:null;
                 if(running){var live=CollectionRead("live-"+kind+".json");DateTime liveAt,startAt;if(DateTime.TryParse(Val(live,"at"),out liveAt)&&DateTime.TryParse(Val(status,"at"),out startAt)&&liveAt>=startAt)result=live;}
@@ -106,7 +108,6 @@ partial class PdfDesktop {
                 }
                 if(result!=null){
                     text+="\n마지막 배치 조사 "+(kind=="pdf"?Val(result,"processed"):Val(result,"considered"))+" · 자동 반영 "+Val(result,"applied")+" · 검토 대기 "+Val(result,"review")+" · 후보 없음 "+Val(result,"missing")+" · 오류 "+(kind=="pdf"?Val(result,"errors"):Val(result,"failed"));
-                    if(result.ContainsKey("pending"))text+="\n마지막 확인 시 남은 대상 "+Val(result,"pending");
                 }
                 DateTime updated;var timestamp=DateTime.TryParse(Val(status,"at"),out updated)?updated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"):"아직 없음";
                 text+="\n마지막 상태 갱신 "+timestamp+"\n실행 방식: "+(mode=="continuous"?"예약 없이 연속 실행":mode=="manual"?"수동 실행만":"예약 "+String.Join(" / ",times)+" (한국시간)")+" · 한 번 최대 "+(cfg.ContainsKey("runLimit")?Val(cfg,"runLimit"):"100")+"권";
@@ -116,6 +117,18 @@ partial class PdfDesktop {
                 v.Detail.Text=text;
             }catch{v.Summary.Text="수집 현황을 읽지 못했습니다. 설정과 저장 장치를 확인하세요.";}
         }
+    }
+    internal static string CollectionOverviewText(Dictionary<string,object> overview,string kind,Dictionary<string,object> refresh){
+        object value;var counts=overview.TryGetValue(kind,out value)?value as Dictionary<string,object>:null;
+        if(counts==null)return "전체 진행 현황을 아직 확인하지 못했습니다. 확인되지 않은 권수는 표시하지 않습니다.";
+        var text="전체 대상 "+Val(counts,"total")+"권 · 누적 조사 "+Val(counts,"investigated")+"권 · 자동 보완 이력 "+Val(counts,"applied")+"권";
+        text+="\n남은 미적용 "+Val(counts,"remaining")+"권 (미조사 "+Val(counts,"uninvestigated")+"권 · 적용 보류 "+Val(counts,"held")+"권)";
+        var holds=counts.ContainsKey("holds")?counts["holds"] as Dictionary<string,object>:null;
+        if(holds!=null)text+="\n보류 상세: 검토 대기 "+Val(holds,"review")+" · 후보 없음 "+Val(holds,"missing")+" · 파일·범위 확인 "+Val(holds,"source")+" · 오류·재시도 "+Val(holds,"retry")+" · 기타 "+Val(holds,"other")+"권";
+        text+="\n보류는 남은 미적용에 포함됩니다. 자동 보완 이력은 모든 항목의 완성을 뜻하지 않습니다.";
+        DateTime at;if(DateTime.TryParse(Val(overview,"at"),out at))text+="\n전체 현황 확인 "+at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")+" · 배치 종료 시와 대기 중 15분마다 갱신";
+        if(refresh.ContainsKey("ok")&&Val(refresh,"ok")=="False")text+="\n현황 갱신 실패 · 마지막으로 확인한 수치입니다.";
+        return text;
     }
     static string CollectionFailureText(Dictionary<string,object> halted,Dictionary<string,object> retry){
         var failure=halted.ContainsKey("failure")?halted["failure"] as Dictionary<string,object>:null;
@@ -198,6 +211,11 @@ partial class PdfDesktop {
             CollectionWrite("halted.json",new Dictionary<string,object>{{"kind","logos"},{"at","other"},{"failure",new Dictionary<string,object>{{"name","Error"},{"kind",failureKind},{"retryable",false}}}});RefreshCollectionViews();
             if(Convert.ToString(collectionViews["logos"].Start.Content)!="원인 해결 후 재시도"||!collectionViews["logos"].Detail.Text.Contains("해결 방법:"))throw new Exception("Failure must provide cause and action");
         }
+        if(!CollectionOverviewText(new Dictionary<string,object>(),"pdf",new Dictionary<string,object>()).Contains("아직 확인하지"))throw new Exception("Unknown totals must not become zero");
+        var overview=json.Deserialize<Dictionary<string,object>>("{\"at\":\"2026-11-18T00:00:00Z\",\"pdf\":{\"total\":100,\"investigated\":70,\"applied\":40,\"remaining\":60,\"uninvestigated\":30,\"held\":30,\"holds\":{\"review\":10,\"missing\":15,\"source\":3,\"retry\":2,\"other\":0}}}");
+        overview["logos"]=overview["pdf"];CollectionWrite("overview.json",overview);CollectionWrite("overview-refresh.json",new Dictionary<string,object>{{"ok",true}});RefreshCollectionViews();
+        foreach(var k in new[]{"pdf","logos"})if(!collectionViews[k].Overview.Text.Contains("남은 미적용 60권")||!collectionViews[k].Overview.Text.Contains("적용 보류 30권"))throw new Exception("Separate cumulative totals must be visible in both tabs");
+        var stale=CollectionOverviewText(overview,"pdf",new Dictionary<string,object>{{"ok",false}});if(!stale.Contains("마지막으로 확인한 수치"))throw new Exception("Failed refresh must be explicit");
         tabs.SelectedIndex=1;UpdateLayout();
         var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap((int)ActualWidth,(int)ActualHeight,96,96,System.Windows.Media.PixelFormats.Pbgra32);
         bmp.Render(this);var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));using(var file=File.Create(screenshot))encoder.Save(file);
