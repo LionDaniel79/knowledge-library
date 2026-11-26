@@ -214,7 +214,7 @@ test("a two-note connection shows one editable relationship only", async ({
   await expect(page.locator(".memo-aggregate-fields")).toHaveCount(0);
   await expect(page.getByLabel("연결 제목", { exact: true })).toHaveCount(1);
 });
-test("single-note title preview sends one source and applies only the title input", async ({
+test("single-note analysis sends one source and applies only the title input", async ({
   page,
 }) => {
   const calls = await mount(page, "note", 1);
@@ -223,7 +223,9 @@ test("single-note title preview sends one source and applies only the title inpu
     page.getByRole("textbox", { name: "제목", exact: true }),
   ).toHaveValue("추천한 새 제목");
   await page.getByRole("button", { name: "분석", exact: true }).click();
-  await expect.poll(() => calls.length).toBe(1);
+  await expect
+    .poll(() => calls.map((call) => call.action))
+    .toEqual(["preview", "request"]);
   expect(calls[0].payload.sources).toHaveLength(1);
   expect(calls[0].payload.editorContext.kind).toBe("note");
   const labels = await page

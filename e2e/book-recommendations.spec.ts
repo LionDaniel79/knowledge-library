@@ -309,7 +309,7 @@ test("home recommendations open existing book detail while calendar menu remains
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
   await page.getByRole("button", { name: "독서 달력", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "책으로 채운 달력" }),
+    page.getByRole("heading", { name: "독서 달력", exact: true }),
   ).toBeVisible();
 });
 

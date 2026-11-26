@@ -3361,7 +3361,6 @@ textarea {
   min-width: 0;
   max-width: 100%;
 }
-.assist-preview blockquote,
 .assist-panel pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -5689,21 +5688,67 @@ textarea {
   }
 }
 
+.assist-entry {
+  position: relative;
+  margin-block: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.assist-entry .assist-launcher {
+  margin: 0;
+}
 .assist-launcher > summary.assist-launcher-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 88px 10px 12px;
+  min-height: 48px;
+  color: var(--green-dark);
+  list-style: none;
+}
+.assist-launcher > summary::-webkit-details-marker {
+  display: none;
+}
+.assist-launcher-title {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  vertical-align: middle;
+  gap: 7px;
+  font-weight: 700;
+}
+.assist-launcher[open] .assist-launcher-chevron {
+  transform: rotate(180deg);
 }
 .assist-launcher-help {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
+  position: absolute;
+  inset: 7px 8px auto auto;
 }
 .assist-launcher-help button {
-  min-height: 32px;
-  padding-block: 4px;
-  font-size: 0.9rem;
+  min-height: 34px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.assist-launcher-body {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.assist-launcher-body .assist-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.assist-status {
+  margin: 0 0 9px;
+  color: var(--green-dark);
+  font-size: 13px;
+}
+.assist-run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
 }
 .assist-topline {
   display: flex;
@@ -5730,6 +5775,11 @@ textarea {
   gap: 5px;
   min-width: 180px;
 }
+.assist-synthesis-controls > label select,
+.assist-model-choice select,
+.assist-analysis-controls select {
+  min-height: 42px;
+}
 .assist-analysis-controls {
   min-width: 0;
 }
@@ -5740,7 +5790,11 @@ textarea {
 }
 .assist-results-toggle > summary {
   cursor: pointer;
-  width: fit-content;
+  min-height: 42px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
 }
 .assist-results-toggle > summary h4 {
   display: inline;
@@ -5750,10 +5804,16 @@ textarea {
 .assist-results-actions {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 8px;
+  margin: 4px 0;
+}
+.assist-results-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .assist-model-choice {
   position: relative;
+  font-size: 13px;
 }
 .assist-model-choice[open] {
   margin: 0;
@@ -5768,16 +5828,15 @@ textarea {
   display: block;
   margin: 8px 0;
 }
-.assist-synthesis .assist-preview > small {
-  display: block;
-  margin: 6px 0;
-}
 .assist-request-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
   gap: 8px;
-  border-top: 1px solid #dce2d7;
-  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin: 6px 0;
+  background: var(--white);
 }
 .assist-request-row:has(.assist-request-actions button:not(.icon-button)) {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -5797,7 +5856,7 @@ textarea {
 }
 .assist-request-row > details > summary > span {
   font-size: 13px;
-  background: #edf2e7;
+  background: var(--soft);
   padding: 3px 6px;
   border-radius: 5px;
 }
@@ -5812,7 +5871,7 @@ textarea {
 }
 .assist-suggestion {
   padding: 12px;
-  border: 1px solid #dce2d7;
+  border: 1px solid var(--line);
   border-radius: 8px;
   margin: 10px 0;
 }
@@ -5827,9 +5886,20 @@ textarea {
   margin-top: 8px;
 }
 @media (max-width: 760px) {
+  .assist-analysis-controls .writing-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .assist-analysis-controls .writing-tools > label {
+    min-width: 0;
+  }
+  .assist-analysis-controls .writing-tools > .assist-run {
+    grid-column: 1 / -1;
+  }
   .assist-synthesis-controls > label {
     flex: 1;
-    min-width: 0;
+    min-width: min(140px, 100%);
   }
   .assist-synthesis-controls > button {
     flex: 0 0 auto;
@@ -6661,89 +6731,193 @@ textarea {
   min-height: 32px;
 }
 
-/* A single compact information area retains provenance without repeating values. */
-.unified-book-information .curation-item,
-.unified-book-information .information-source {
-  padding: 9px 0;
+.book-detail-modal {
+  width: min(660px, calc(100vw - 24px));
 }
-.unified-book-information h4 {
-  margin: 0 0 5px;
+.book-detail-modal > header {
+  margin-bottom: 14px;
+}
+.book-detail-hero,
+.book-detail-section {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+.book-detail-hero {
+  display: grid;
+  grid-template-columns: minmax(80px, 112px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  margin-bottom: 12px;
+  background: var(--paper);
+}
+.book-detail-cover {
+  display: grid;
+  gap: 7px;
+}
+.book-detail-hero .book-cover {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+}
+.book-detail-hero .book-cover strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.book-detail-cover button,
+.book-detail-edit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  min-height: 36px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.book-detail-meta h2 {
+  margin: 0;
+  font-size: clamp(1.12rem, 2.5vw, 1.55rem);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.book-detail-meta > p {
+  margin: 4px 0 0;
+}
+.book-detail-meta .book-heading-status:not(:empty) {
+  margin-top: 7px;
+}
+.book-detail-meta dl {
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 9px;
+  margin: 10px 0 0;
   font-size: 13px;
 }
-.unified-book-information p {
-  margin: 4px 0;
-  font-size: 12px;
-  line-height: 1.6;
+.book-detail-meta .tags {
+  margin: 7px 0 0;
 }
-.unified-book-information .curation-value {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.book-detail-actions {
+  align-items: stretch;
+  gap: 7px;
+  margin-bottom: 12px;
 }
-.unified-book-information .automatic-comparison {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px 12px;
-}
-.unified-book-information .automatic-comparison > label {
-  margin-top: 4px;
-  font-size: 12px;
-}
-.unified-book-information .automatic-comparison dl {
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 4px 8px;
-  margin: 0;
-  font-size: 12px;
-}
-.unified-book-information .automatic-comparison dt {
-  color: var(--muted);
-}
-.unified-book-information .automatic-comparison dd {
+.book-detail-actions > button {
+  flex: 1 1 78px;
   min-width: 0;
+  min-height: 40px;
   margin: 0;
-  overflow-wrap: anywhere;
-  max-height: 130px;
-  overflow-y: auto;
+  padding: 7px 8px;
+  text-align: center;
 }
-.unified-book-information .information-alternatives {
-  margin-top: 6px;
+.book-detail-actions > .primary {
+  flex-grow: 1.4;
 }
-.unified-book-information .information-alternatives > summary,
-.unified-book-information .information-sources > summary {
-  padding: 7px 0;
-  font-size: 12px;
+.book-detail-section + .book-detail-section {
+  margin-top: 10px;
 }
-.unified-book-information .information-alternative {
-  border-left: 2px solid var(--line);
-  padding: 5px 10px;
-  margin: 5px 0;
+.book-detail-shelves {
+  padding-block: 10px;
 }
-.unified-book-information .information-source blockquote {
-  margin: 5px 0;
-  max-height: 130px;
-  overflow-y: auto;
-  font-size: 12px;
+.book-detail-shelves .detail-shelves,
+.book-detail-shelves .shelf-picker {
+  margin: 0;
+}
+.book-detail-shelves .shelf-picker {
+  border: 0;
+  padding: 0;
+}
+.book-detail-shelves .shelf-picker > legend {
+  padding: 0 0 7px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.book-detail-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.book-detail-section-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.book-information-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.book-information-disclosure {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.book-information-disclosure summary {
+  cursor: pointer;
+  padding: 9px 0 1px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.book-information-disclosure p {
+  margin: 7px 0 2px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.65;
 }
-.unified-book-information .form-actions,
-.unified-book-information .detail-actions {
-  gap: 6px;
-  margin-top: 8px;
+.book-information-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
 }
-.unified-book-information button {
-  min-height: 32px;
-  font-size: 12px;
-  padding: 5px 9px;
+.book-information-form > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.book-information-form input,
+.book-information-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+.book-info-wide,
+.book-information-form > p {
+  grid-column: 1 / -1;
+}
+.book-detail-records .book-records-header:first-child {
+  margin-top: 0;
+}
+.book-detail-records .completed-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 @media (max-width: 480px) {
-  .unified-book-information .automatic-comparison {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .book-detail-hero,
+  .book-detail-section {
+    padding: 12px;
   }
-  .unified-book-information .automatic-comparison dl {
-    grid-template-columns: 58px minmax(0, 1fr);
+  .book-detail-hero {
+    grid-template-columns: minmax(68px, 82px) minmax(0, 1fr);
+    gap: 11px;
+  }
+  .book-detail-cover button,
+  .book-detail-edit,
+  .book-detail-actions > button {
+    min-height: 40px;
+  }
+  .book-detail-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .book-detail-actions > button:only-child {
+    grid-column: 1 / -1;
+  }
+  .book-information-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .inline-review-fields {

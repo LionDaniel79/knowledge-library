@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ChevronDown, RefreshCw, Sparkles } from "lucide-react";
 import { libraryRequest } from "@/client/replica/request";
 import { rememberConfirmedRelationship } from "@/lib/assist-adoption-overlay";
 import type { TopicMaterial } from "@/lib/topic-materials";
@@ -63,28 +64,34 @@ export function AssistLauncher({
 }: AssistProps & { children?: ReactNode; enabled?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <details
-      className="assist-launcher"
-      onToggle={(e) => {
-        if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
-      }}
-    >
-      <summary className="assist-launcher-summary">
-        <span>AI 도움</span>
-        <span
-          className="assist-launcher-help"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <AssistHelp />
-        </span>
-      </summary>
-      {open && (
-        <>
-          {children}
-          {enabled && <AssistPanel {...props} />}
-        </>
-      )}
-    </details>
+    <div className="assist-entry">
+      <details
+        className="assist-launcher"
+        onToggle={(e) => {
+          if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
+        }}
+      >
+        <summary className="assist-launcher-summary">
+          <span className="assist-launcher-title">
+            <Sparkles size={17} aria-hidden="true" /> AI 도움
+          </span>
+          <ChevronDown
+            className="assist-launcher-chevron"
+            size={16}
+            aria-hidden="true"
+          />
+        </summary>
+        {open && (
+          <div className="assist-launcher-body">
+            {children}
+            {enabled && <AssistPanel {...props} />}
+          </div>
+        )}
+      </details>
+      <div className="assist-launcher-help">
+        <AssistHelp />
+      </div>
+    </div>
   );
 }
 export function AssistPanel({
@@ -112,10 +119,8 @@ export function AssistPanel({
       editorAnalysis ? "editor_title" : "all",
     ),
     [maximum, setMaximum] = useState(24),
-    [preview, setPreview] = useState<any>(null),
     [requestsOpen, setRequestsOpen] = useState(false);
   const running = useRef(false),
-    requestId = useRef(""),
     hidden = useRef(new Set<string>());
   const hiddenKey = key.replace(":assist-model:", ":assist-hidden:");
   useEffect(() => {
@@ -180,6 +185,21 @@ export function AssistPanel({
     }, 5000);
     return () => clearInterval(timer);
   }, [active, load]);
+  async function postAssist(action: string, payload: unknown) {
+    const response = await libraryRequest(
+      "/api/assist",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, payload }),
+      },
+      { preferServer: true, skipDeviceSync: action === "preview" },
+    );
+    const result = await response.json();
+    if (!response.ok)
+      throw Error(result.error ?? "요청을 처리하지 못했습니다.");
+    return result;
+  }
   async function act(action: string, payload: any) {
     if (running.current) return null;
     running.current = true;
@@ -187,19 +207,7 @@ export function AssistPanel({
     setError("");
     setMessage("");
     try {
-      const r = await libraryRequest(
-          "/api/assist",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action, payload }),
-          },
-          // Server commit is authoritative; an optional device pull is never
-          // part of the user's explicit save acknowledgement.
-          { preferServer: true },
-        ),
-        j = await r.json();
-      if (!r.ok) throw Error(j.error ?? "요청을 처리하지 못했습니다.");
+      const j = await postAssist(action, payload);
       if (action === "hide") {
         hidden.current.add(payload.id);
         try {
@@ -262,7 +270,7 @@ export function AssistPanel({
           );
         onAdopt?.(j);
       }
-      if (action !== "preview" && action !== "adopt")
+      if (action !== "adopt")
         void load().catch(() => {
           // Refresh failure must not turn a successful persisted adoption
           // into an apparent save error. The confirmed row is already visible.
@@ -288,9 +296,8 @@ export function AssistPanel({
         throw Error("AI 분석에는 인터넷 연결이 필요합니다.");
       const fixed = editorAnalysis && focus === "editor_title";
       const selectedNotes = fixed ? editorAnalysis.notes : analysis?.notes;
-      const { candidates, total } = selectedNotes
+      const { candidates } = selectedNotes
         ? {
-            total: selectedNotes.length,
             candidates: selectedNotes.map((n) => ({
               id: n.id,
               kind: "note" as const,
@@ -408,25 +415,21 @@ export function AssistPanel({
           };
         });
       const selection = {
-          purpose: "synthesis",
-          ...(!analysis &&
-          (!editorAnalysis || editorAnalysis.context.kind === "note")
-            ? { recordsOnly: true }
-            : {}),
-          model,
-          focus: analysis ? "writing_idea" : focus,
-          sources,
-          ...(editorAnalysis ? { editorContext: editorAnalysis.context } : {}),
-          ...(!analysis ? { useCurrentRelations: true } : {}),
-          ...(analysis ? { writingContext: analysis.context } : {}),
-        },
-        r = await libraryRequest("/api/assist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "preview", payload: selection }),
-        }),
-        j = await r.json();
-      if (!r.ok) throw Error(j.error ?? "전송 내용을 확인하지 못했습니다.");
+        purpose: "synthesis",
+        ...(!analysis &&
+        (!editorAnalysis || editorAnalysis.context.kind === "note")
+          ? { recordsOnly: true }
+          : {}),
+        model,
+        focus: analysis ? "writing_idea" : focus,
+        sources,
+        ...(editorAnalysis ? { editorContext: editorAnalysis.context } : {}),
+        ...(!analysis ? { useCurrentRelations: true } : {}),
+        ...(analysis ? { writingContext: analysis.context } : {}),
+      };
+      // Keep server-side source, version and budget checks as part of one user action.
+      const j = await postAssist("preview", selection);
+      if (contextRef.current !== ticket) return;
       if (
         !analysis &&
         focus === "connection_title" &&
@@ -441,34 +444,34 @@ export function AssistPanel({
         !j.task.payload.existingBundles?.length
       )
         throw Error("선택한 기록을 함께 포함하는 기존 생각묶음이 없습니다.");
-      if (contextRef.current !== ticket) return;
-      requestId.current = crypto.randomUUID();
-      setPreview({
-        ...j,
-        selection,
-        titles: full.map((n) => n.title || n.content.slice(0, 50)),
-        total,
-        candidateCount: candidates.length,
-        context: ticket,
+      if (!j.policy.requestsEnabled)
+        throw Error("현재 AI 요청이 꺼져 있습니다.");
+      await postAssist("request", {
+        ...selection,
+        requestId: crypto.randomUUID(),
+        expectedPolicyVersion: j.policy.version,
+        scopeHash: j.scopeHash,
       });
+      if (contextRef.current === ticket) {
+        setRequestsOpen(true);
+        setMessage("요청을 저장했습니다. 결과가 준비되면 아래에 표시합니다.");
+      }
+      void load().catch(() => {});
     } catch (e) {
-      setError((e as Error).message);
+      if (contextRef.current === ticket) setError((e as Error).message);
     } finally {
       running.current = false;
       setBusy(false);
     }
   }
-  const currentPreview = preview?.context === context ? preview : null;
-  const exceeds =
-    currentPreview &&
-    Number(currentPreview.estimate.maxCostUsd) >
-      Number(currentPreview.policy.requestLimitUsd ?? 0);
-  const allowance = currentPreview
-    ? (
-        Math.ceil(Number(currentPreview.estimate.maxCostUsd) * 1000000) /
-        1000000
-      ).toFixed(6)
-    : "0";
+  const visibleRequests = state?.requests?.filter((r: any) =>
+    analysis
+      ? r.scope?.writingContext?.boardId === analysis.context.boardId
+      : editorAnalysis
+        ? r.scope?.editorContext?.id === editorAnalysis.context.id &&
+          r.scope?.editorContext?.kind === editorAnalysis.context.kind
+        : !r.scope?.writingContext && !r.scope?.editorContext,
+  );
   return (
     <section className="assist-panel assist-synthesis">
       {error && (
@@ -476,7 +479,11 @@ export function AssistPanel({
           {error}
         </p>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p className="assist-status" role="status">
+          {message}
+        </p>
+      )}
       {analysisControls ? (
         <div className="assist-analysis-controls">
           {analysisControls(() => void prepare(), busy)}
@@ -526,6 +533,7 @@ export function AssistPanel({
               </label>
             )}
             <button
+              className="primary assist-run"
               type="button"
               disabled={
                 busy ||
@@ -534,114 +542,11 @@ export function AssistPanel({
               }
               onClick={() => void prepare()}
             >
+              <Sparkles size={15} aria-hidden="true" />
               {busy ? "처리 중…" : noteFieldsMode ? "빈 항목 추천" : "분석"}
             </button>
           </div>
         </div>
-      )}
-      {currentPreview && (
-        <section className="assist-preview">
-          <strong>
-            조건에 맞는 {currentPreview.total}개 중{" "}
-            {currentPreview.task.payload.sources.length}개 검토
-          </strong>
-          <small>예상 비용 상한 US${currentPreview.estimate.maxCostUsd}</small>
-          <details>
-            <summary>전송할 기록 확인</summary>
-            {currentPreview.task.payload.sources.map((s: any, i: number) => (
-              <div key={s.source.id}>
-                <strong>{currentPreview.titles[i]}</strong>
-                <small>{s.coverage === "partial" ? "발췌" : "전체 기록"}</small>
-                <blockquote>{s.text}</blockquote>
-              </div>
-            ))}
-            {!!(
-              currentPreview.task.payload.existingConnections?.length ||
-              currentPreview.task.payload.existingBundles?.length
-            ) && (
-              <div className="notice">
-                <strong>함께 전송되는 기존 연결·생각묶음 정보</strong>
-                <p>
-                  제목 제안을 위해 아래의 기존 제목과 설명도 AI에 전송합니다.
-                </p>
-                {currentPreview.task.payload.existingConnections?.map(
-                  (c: any) => (
-                    <p key={c.id}>
-                      연결: {c.title || "제목 없음"} · {c.reason}
-                    </p>
-                  ),
-                )}
-                {currentPreview.task.payload.existingBundles?.map((b: any) => (
-                  <p key={b.id}>
-                    생각묶음: {b.title} · {b.description}
-                  </p>
-                ))}
-              </div>
-            )}
-            {maximum !== 0 && currentPreview.total > 200 && (
-              <p>
-                최대 200개 후보에서 대표 기록을 골랐습니다. 범위를 좁히면 다른
-                기록도 검토할 수 있습니다.
-              </p>
-            )}
-          </details>
-          {exceeds && (
-            <div className="notice">
-              <p>
-                기존 건당 한도를 넘습니다. 모델이나 기록 수를 줄이거나 아래
-                한도를 직접 확인해 주세요.
-              </p>
-              <button
-                disabled={
-                  busy ||
-                  active ||
-                  !currentPreview.policy.requestsEnabled ||
-                  Number(currentPreview.estimate.maxCostUsd) >
-                    Math.min(
-                      1,
-                      Number(currentPreview.policy.runtimeMonthlyLimitUsd ?? 0),
-                    )
-                }
-                onClick={async () => {
-                  if (
-                    await act("allowRequest", {
-                      expectedPolicyVersion: currentPreview.policy.version,
-                      maxCostUsd: allowance,
-                    })
-                  ) {
-                    setPreview(null);
-                    await prepare();
-                  }
-                }}
-              >
-                건당 한도를 US${allowance}로 조정 · 월 한도 유지
-              </button>
-            </div>
-          )}
-          {!currentPreview.policy.requestsEnabled && (
-            <p role="alert">현재 AI 요청이 꺼져 있습니다.</p>
-          )}
-          <button
-            className="primary"
-            disabled={busy || exceeds || !currentPreview.policy.requestsEnabled}
-            onClick={async () => {
-              const j = await act("request", {
-                ...currentPreview.selection,
-                requestId: requestId.current,
-                expectedPolicyVersion: currentPreview.policy.version,
-                scopeHash: currentPreview.scopeHash,
-              });
-              if (j) {
-                setPreview(null);
-                setMessage(
-                  "요청을 저장했습니다. 결과가 준비되면 아래에 표시합니다.",
-                );
-              }
-            }}
-          >
-            이 기록으로 AI 도움 요청
-          </button>
-        </section>
       )}
       {!noteFieldsMode && (
         <div className="assist-model-row">
@@ -698,73 +603,62 @@ export function AssistPanel({
                 aria-label="요청 목록 새로고침"
                 onClick={() => void load().catch((e) => setError(e.message))}
               >
+                <RefreshCw size={14} aria-hidden="true" />
                 새로고침
               </button>
             </div>
             {!state && <p role="status">요청 목록을 불러오는 중…</p>}
-            {state && !state.requests?.length && <p>요청한 기록이 없습니다.</p>}
-            {state?.requests
-              ?.filter((r: any) =>
-                analysis
-                  ? r.scope?.writingContext?.boardId ===
-                    analysis.context.boardId
-                  : editorAnalysis
-                    ? r.scope?.editorContext?.id ===
-                        editorAnalysis.context.id &&
-                      r.scope?.editorContext?.kind ===
-                        editorAnalysis.context.kind
-                    : !r.scope?.writingContext && !r.scope?.editorContext,
-              )
-              .map((r: any) => (
-                <AssistRequestCard
-                  key={r.id}
-                  request={r}
-                  busy={busy}
-                  act={act}
-                  library={library}
-                  onOpen={onOpen}
-                  allowedKinds={
-                    !analysis
-                      ? editorAnalysis?.context.kind === "bundle"
-                        ? ["editor_title"]
-                        : editorAnalysis
-                          ? ["editor_title", "note_connection"]
-                          : ["note_connection"]
-                      : undefined
-                  }
-                  onEditorSuggestion={
-                    editorAnalysis
-                      ? async (suggestion, savedScope) => {
-                          if (
-                            savedScope.editorContext?.fields?.kind !==
-                              editorAnalysis.context.fields?.kind ||
-                            JSON.stringify(savedScope.editorContext?.draft) !==
-                              JSON.stringify(editorAnalysis.context.draft) ||
-                            savedScope.editorContext?.id !==
-                              editorAnalysis.context.id ||
-                            savedScope.editorContext?.kind !==
-                              editorAnalysis.context.kind ||
-                            editorAnalysis.notes.some(
-                              (n) =>
-                                !savedScope.sources?.some(
-                                  (v: any) =>
-                                    v.id === n.id &&
-                                    String(v.version) === String(n.version),
-                                ),
-                            )
+            {state && !message && !visibleRequests?.length && (
+              <p>요청한 기록이 없습니다.</p>
+            )}
+            {visibleRequests?.map((r: any) => (
+              <AssistRequestCard
+                key={r.id}
+                request={r}
+                busy={busy}
+                act={act}
+                library={library}
+                onOpen={onOpen}
+                allowedKinds={
+                  !analysis
+                    ? editorAnalysis?.context.kind === "bundle"
+                      ? ["editor_title"]
+                      : editorAnalysis
+                        ? ["editor_title", "note_connection"]
+                        : ["note_connection"]
+                    : undefined
+                }
+                onEditorSuggestion={
+                  editorAnalysis
+                    ? async (suggestion, savedScope) => {
+                        if (
+                          savedScope.editorContext?.fields?.kind !==
+                            editorAnalysis.context.fields?.kind ||
+                          JSON.stringify(savedScope.editorContext?.draft) !==
+                            JSON.stringify(editorAnalysis.context.draft) ||
+                          savedScope.editorContext?.id !==
+                            editorAnalysis.context.id ||
+                          savedScope.editorContext?.kind !==
+                            editorAnalysis.context.kind ||
+                          editorAnalysis.notes.some(
+                            (n) =>
+                              !savedScope.sources?.some(
+                                (v: any) =>
+                                  v.id === n.id &&
+                                  String(v.version) === String(n.version),
+                              ),
                           )
-                            throw Error(
-                              "대상 메모가 변경되었습니다. 다시 분석해 주세요.",
-                            );
-                          await editorAnalysis.onApply(suggestion);
-                        }
-                      : undefined
-                  }
-                  onWritingSuggestion={
-                    analysis ? onWritingSuggestion : undefined
-                  }
-                />
-              ))}
+                        )
+                          throw Error(
+                            "대상 메모가 변경되었습니다. 다시 분석해 주세요.",
+                          );
+                        await editorAnalysis.onApply(suggestion);
+                      }
+                    : undefined
+                }
+                onWritingSuggestion={analysis ? onWritingSuggestion : undefined}
+              />
+            ))}
           </div>
         </details>
       </div>

@@ -180,19 +180,15 @@ for (const width of [390, 1100])
       await ai
         .getByRole("button", { name: "빈 항목 추천", exact: true })
         .click();
+      await expect.poll(() => actions).toEqual(["preview", "request"]);
       expect(selection.editorContext.fields).toEqual({
         kind: "thought",
         missing: preserve ? ["topic", "tags"] : ["title", "topic", "tags"],
       });
       expect(selection.model).toBe("gpt-6-luna");
-      await expect(ai).toContainText("예상 비용 상한");
+      await expect(ai).not.toContainText("예상 비용 상한");
       expect(selection.editorContext.draft.content).toContain("기존 관점");
-      expect(actions).toEqual(["preview"]);
       expect(await page.evaluate(() => (window as any).saves ?? 0)).toBe(0);
-      await ai
-        .getByRole("button", { name: "이 기록으로 AI 도움 요청" })
-        .click();
-      await ai.locator(".assist-results-toggle > summary").click();
       await expect(ai.locator(".assist-request-row")).toHaveCount(1);
       await ai.locator(".assist-request-row > details > summary").click();
       if (preserve) {

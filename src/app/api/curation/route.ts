@@ -1,4 +1,7 @@
-import { selectBookInformation } from "@/server/book-information-selection";
+import {
+  editBookInformation,
+  selectBookInformation,
+} from "@/server/book-information-selection";
 import { z } from "zod";
 import { requireOwner } from "@/server/auth";
 import { database } from "@/server/db";
@@ -32,6 +35,10 @@ export async function POST(request: Request) {
     if (body.length > 100000)
       throw new LibraryError(413, "요청이 너무 큽니다.");
     const parsed = JSON.parse(body);
+    if (parsed.action === "editBookInformation")
+      return Response.json(await editBookInformation(database, owner, parsed), {
+        headers,
+      });
     if (parsed.action === "selectBookField")
       return Response.json(
         await selectBookInformation(database, owner, parsed),

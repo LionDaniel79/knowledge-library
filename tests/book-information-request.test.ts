@@ -24,11 +24,31 @@ it("sends only explicit book-field selections to the server and syncs before ret
       { preferServer, awaitDeviceSync: true },
     );
   await post("selectBookField");
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  expect(sync).toHaveBeenCalledTimes(1);
+  await post("editBookInformation");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(sync).toHaveBeenCalledTimes(2);
   expect(queue).not.toHaveBeenCalled();
   await post("edit");
   await post("selectBookField", false);
   expect(queue).toHaveBeenCalledTimes(2);
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("does not start synchronization for the read-only AI precheck", async () => {
+  const sync = vi.fn(async () => {});
+  registerLibraryRuntime({ getSnapshot: () => ({ ready: true }), sync } as any);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ ok: true })),
+  );
+  const submit = (action: string, skipDeviceSync: boolean) =>
+    libraryRequest(
+      "https://local.invalid/api/assist",
+      { method: "POST", body: JSON.stringify({ action }) },
+      { preferServer: true, skipDeviceSync },
+    );
+  await submit("preview", true);
+  expect(sync).not.toHaveBeenCalled();
+  await submit("request", false);
+  expect(sync).toHaveBeenCalledTimes(1);
 });

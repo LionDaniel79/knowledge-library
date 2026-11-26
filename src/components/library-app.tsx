@@ -28,6 +28,7 @@ import {
   History,
   RefreshCw,
   Settings,
+  Pencil,
 } from "lucide-react";
 import {
   readingStats,
@@ -64,9 +65,7 @@ import {
   PageNavigation,
 } from "./list-pagination";
 
-import { BookRelations } from "./book-relations";
 import { BookDelete } from "./book-delete";
-import { PdfIdentityEvidence } from "./pdf-identity-evidence";
 import { useBookCatalog } from "./use-book-catalog";
 import { categories, categoryName, defaultShelves } from "@/lib/catalog";
 import { containsSearchField } from "@/lib/search-fields";
@@ -286,7 +285,16 @@ export function LibraryApp({
         if (!res.ok)
           throw Error(book.error ?? "책 정보를 불러오지 못했습니다.");
         if (!controller.signal.aborted)
-          setDetailState({ id: detail, book, complete: true });
+          setDetailState((previous) => ({
+            id: detail,
+            book:
+              previous?.id === detail &&
+              previous.book &&
+              previous.book.version > book.version
+                ? previous.book
+                : book,
+            complete: true,
+          }));
       })
       .catch((e) => {
         if (!controller.signal.aborted)
@@ -1551,8 +1559,8 @@ export function LibraryApp({
               최신 정보를 불러오지 못했습니다. 다시 열어 주세요.
             </p>
           )}
-          <div className="book-detail">
-            <div>
+          <div className="book-detail book-detail-hero">
+            <div className="book-detail-cover">
               <BookCover book={detailBook} />
               <button
                 className="secondary"
@@ -1564,12 +1572,14 @@ export function LibraryApp({
                   })
                 }
               >
+                <Pencil size={13} aria-hidden="true" />
                 표지 수정
               </button>
             </div>
-            <div>
+            <div className="book-detail-meta">
+              <h2>{detailBook.title}</h2>
+              <p>{detailBook.author || "저자 미입력"}</p>
               <div className="book-heading-status">
-                <span>{categoryName(detailBook.category)}</span>
                 {completedIds.has(detailBook.id) && (
                   <span className="status-label completed">완독</span>
                 )}
@@ -1577,13 +1587,6 @@ export function LibraryApp({
                   <span className="status-label reading">읽는 중</span>
                 )}
               </div>
-              <div className="tags">
-                {detailBook.tags.map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
-              </div>
-              <h2>{detailBook.title}</h2>
-              <p>{detailBook.author || "저자 미입력"}</p>
               <dl>
                 <dt>출판사</dt>
                 <dd>{detailBook.publisher || "미입력"}</dd>
@@ -1600,9 +1603,16 @@ export function LibraryApp({
                 <dt>보관 위치</dt>
                 <dd>{detailBook.shelf || "미입력"}</dd>
               </dl>
+              {detailBook.tags.length > 0 && (
+                <div className="tags">
+                  {detailBook.tags.map((t) => (
+                    <span key={t}>{t}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <div className="detail-actions">
+          <div className="detail-actions book-detail-actions">
             {!readingIds.has(detailBook.id) && (
               <button
                 className="primary"
@@ -1661,145 +1671,136 @@ export function LibraryApp({
               />
             )}
           </div>
-          <BookShelves
-            key={detailBook.id}
-            book={detailBook}
-            library={data}
-            onSave={save}
-            preview={preview}
-          />
-          <CatalogAttribution
-            value={detailBook.enrichment?.catalogSelection}
-            automatic={detailBook.enrichment}
-            section="introduction"
-          />
-          {!preview && (
-            <UnifiedBookInformation
-              key={detailBook.id + ":information"}
-              bookId={detailBook.id}
-              onChanged={refresh}
-            />
-          )}
-          <details className="book-evidence">
-            <summary>출처</summary>
-            <CatalogAttribution
-              value={detailBook.enrichment?.catalogSelection}
-              automatic={detailBook.enrichment}
-              section="sources"
-            />
-            <dl>
-              <dt>분류 출처</dt>
-              <dd>
-                {detailBook.classification?.source ?? "미입력"}
-                {detailBook.classification?.verified
-                  ? " · 서지 확인됨"
-                  : " · 검토 필요"}
-              </dd>
-            </dl>
-            <PdfIdentityEvidence value={detailBook.enrichment?.pdfIdentity} />
-          </details>
-          {!preview && (
-            <BookRelations
-              key={detailBook.id + ":relations"}
+          <div className="book-detail-section book-detail-shelves">
+            <BookShelves
+              key={detailBook.id}
               book={detailBook}
               library={data}
+              onSave={save}
+              preview={preview}
             />
-          )}
-          {!preview && remote ? (
-            <BookRecords
-              bookId={detailBook.id}
-              onRate={(cycle) => setEditor({ kind: "rating", cycle })}
-              onNote={(id) => void openNote(id)}
-              onCycle={(cycle) =>
-                setEditor({
-                  kind: cycle.status === "reading" ? "progress" : "date",
-                  cycle,
-                })
+          </div>
+          <UnifiedBookInformation
+            key={detailBook.id + ":information"}
+            book={detailBook}
+            preview={preview}
+            onChanged={(change) => {
+              const update = (book: Book) =>
+                book.id === detailBook.id && book.version < change.version
+                  ? { ...book, ...change }
+                  : book;
+              if (remote) {
+                setDetailState((current) =>
+                  current?.book?.id === detailBook.id
+                    ? { ...current, book: update(current.book) }
+                    : current,
+                );
+              } else {
+                setData((current) => ({
+                  ...current,
+                  books: current.books.map(update),
+                }));
               }
-              revision={data}
-            />
-          ) : (
-            <>
-              <div className="book-records-header">
-                <h3>독서이력 {detailCycles.length}개</h3>
-                <PageSizeSelect
-                  label="책별 독서 이력"
-                  paging={detailCyclePaging}
-                  compact
-                />
-              </div>
-              <div className="cycle-list">
-                {detailCycles
-                  .slice(
-                    detailCyclePaging.offset,
-                    detailCyclePaging.offset + detailCyclePaging.size,
-                  )
-                  .map((c) => (
-                    <div key={c.id}>
-                      <span>
-                        {c.status === "reading"
-                          ? "읽는 중"
-                          : (c.completedOn ?? "날짜 미입력") + " 완독"}{" "}
-                        · {c.currentPage}쪽
-                      </span>
-                      <button
-                        className="text-button"
-                        onClick={() =>
-                          setEditor({
-                            kind: c.status === "reading" ? "progress" : "date",
-                            cycle: c,
-                          })
-                        }
-                      >
-                        수정
-                      </button>
-                      {c.status === "completed" && (
+            }}
+          />
+          <div className="book-detail-section book-detail-records">
+            {!preview && remote ? (
+              <BookRecords
+                bookId={detailBook.id}
+                onRate={(cycle) => setEditor({ kind: "rating", cycle })}
+                onNote={(id) => void openNote(id)}
+                onCycle={(cycle) =>
+                  setEditor({
+                    kind: cycle.status === "reading" ? "progress" : "date",
+                    cycle,
+                  })
+                }
+                revision={data}
+              />
+            ) : (
+              <>
+                <div className="book-records-header">
+                  <h3>독서이력 {detailCycles.length}개</h3>
+                  <PageSizeSelect
+                    label="책별 독서 이력"
+                    paging={detailCyclePaging}
+                    compact
+                  />
+                </div>
+                <div className="cycle-list">
+                  {detailCycles
+                    .slice(
+                      detailCyclePaging.offset,
+                      detailCyclePaging.offset + detailCyclePaging.size,
+                    )
+                    .map((c) => (
+                      <div key={c.id}>
+                        <span>
+                          {c.status === "reading"
+                            ? "읽는 중"
+                            : (c.completedOn ?? "날짜 미입력") + " 완독"}{" "}
+                          · {c.currentPage}쪽
+                        </span>
                         <button
                           className="text-button"
                           onClick={() =>
-                            setEditor({ kind: "rating", cycle: c })
+                            setEditor({
+                              kind:
+                                c.status === "reading" ? "progress" : "date",
+                              cycle: c,
+                            })
                           }
                         >
-                          <RatingStars steps={c.ratingSteps} />
+                          수정
                         </button>
-                      )}
-                    </div>
+                        {c.status === "completed" && (
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              setEditor({ kind: "rating", cycle: c })
+                            }
+                          >
+                            <RatingStars steps={c.ratingSteps} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  {!data.cycles.some((c) => c.bookId === detailBook.id) && (
+                    <p className="muted">아직 독서 기록이 없습니다.</p>
+                  )}
+                </div>
+                <PageNavigation
+                  label="책별 독서 이력"
+                  paging={detailCyclePaging}
+                  total={detailCycles.length}
+                />
+                <div className="book-records-header">
+                  <h3>기록 {detailNotes.length}개</h3>
+                  <PageSizeSelect
+                    label="책별 기록"
+                    paging={detailNotePaging}
+                    compact
+                  />
+                </div>
+                {detailNotes
+                  .slice(
+                    detailNotePaging.offset,
+                    detailNotePaging.offset + detailNotePaging.size,
+                  )
+                  .map((note) => (
+                    <details key={note.id} className="book-record-details">
+                      <summary>{note.title}</summary>
+                      {noteCard(note)}
+                    </details>
                   ))}
-                {!data.cycles.some((c) => c.bookId === detailBook.id) && (
-                  <p className="muted">아직 독서 기록이 없습니다.</p>
-                )}
-              </div>
-              <PageNavigation
-                label="책별 독서 이력"
-                paging={detailCyclePaging}
-                total={detailCycles.length}
-              />
-              <div className="book-records-header">
-                <h3>기록 {detailNotes.length}개</h3>
-                <PageSizeSelect
+                <PageNavigation
                   label="책별 기록"
                   paging={detailNotePaging}
-                  compact
+                  total={detailNotes.length}
                 />
-              </div>
-              {detailNotes
-                .slice(
-                  detailNotePaging.offset,
-                  detailNotePaging.offset + detailNotePaging.size,
-                )
-                .map((note) => (
-                  <details key={note.id} className="book-record-details">
-                    <summary>{note.title}</summary>
-                    {noteCard(note)}
-                  </details>
-                ))}
-              <PageNavigation
-                label="책별 기록"
-                paging={detailNotePaging}
-                total={detailNotes.length}
-              />
-            </>
-          )}
+              </>
+            )}
+          </div>
         </Modal>
       )}
       {revisions && (

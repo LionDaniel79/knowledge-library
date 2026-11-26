@@ -5,8 +5,116 @@ import {
   createCurationStore,
   readCurationDetails,
 } from "../src/server/curation-store";
-import { selectBookInformation } from "../src/server/book-information-selection";
+import {
+  editBookInformation,
+  selectBookInformation,
+} from "../src/server/book-information-selection";
+import { displayedBookInformation } from "../src/lib/book-detail-information";
 import { informationValueKey } from "../src/lib/unified-book-information";
+it("edits a printed table of contents without dropping its original source or pages", async () => {
+  const f = await testDatabase();
+  try {
+    const id = randomUUID();
+    const toc = {
+      method: "printed_toc_excerpt",
+      documentId: randomUUID(),
+      signature: "file-signature",
+      pageCount: 100,
+      pages: [{ page: 8, method: "text", textHash: "a".repeat(64) }],
+      text: "Chapter A",
+      truncated: false,
+    };
+    await f.db.query(
+      "INSERT INTO library_books(id,owner_id,title,formats,enrichment) VALUES($1,'owner','Original',ARRAY['pdf'],$2)",
+      [id, JSON.stringify({ auto_toc: toc })],
+    );
+    const result = await editBookInformation(f.db, "owner", {
+      action: "editBookInformation",
+      bookId: id,
+      expectedVersion: 1,
+      changes: { toc: "Chapter A corrected" },
+    });
+    expect(result.enrichment.auto_toc).toEqual({
+      ...toc,
+      editedText: "Chapter A corrected",
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+it("saves final information, protects it and preserves automatic history and other records", async () => {
+  const f = await testDatabase();
+  try {
+    const id = randomUUID();
+    const enrichment = {
+      auto_description: "Saved introduction",
+      auto_toc: ["Existing chapter"],
+      autoBibliography: {
+        fields: ["author", "description", "toc"],
+        status: "automatic",
+        afterValues: {
+          author: "Saved author",
+          description: "Saved introduction",
+          toc: ["Existing chapter"],
+        },
+      },
+      informationSelections: {
+        description: {
+          itemId: "automatic",
+          valueKey: informationValueKey("description", "Saved introduction"),
+        },
+      },
+    };
+    await f.db.query(
+      "INSERT INTO library_books(id,owner_id,title,author,formats,enrichment) VALUES($1,'owner','Original','Saved author',ARRAY['paper'],$2)",
+      [id, JSON.stringify(enrichment)],
+    );
+    const command = {
+      action: "editBookInformation",
+      bookId: id,
+      expectedVersion: 1,
+      changes: { description: "Updated introduction", toc: "" },
+    };
+    await expect(
+      editBookInformation(f.db, "other", command),
+    ).rejects.toMatchObject({ status: 404 });
+    const result = await editBookInformation(f.db, "owner", command);
+    expect(result.version).toBe(2);
+    expect(result.enrichment.autoBibliography).toMatchObject({
+      status: "kept",
+      pendingFields: [],
+      afterValues: enrichment.autoBibliography.afterValues,
+    });
+    expect(result.enrichment.autoBibliographyLocks).toEqual(
+      expect.arrayContaining(["author", "description", "toc"]),
+    );
+    expect(
+      displayedBookInformation(result.enrichment, [
+        { id: "old", kind: "toc", value: ["Stale chapter"], state: "active" },
+      ]),
+    ).toEqual({ description: "Updated introduction" });
+    expect(
+      (
+        await f.db.query("SELECT title,author FROM library_books WHERE id=$1", [
+          id,
+        ])
+      ).rows[0],
+    ).toEqual({ title: "Original", author: "Saved author" });
+    expect(
+      (
+        await f.db.query(
+          "SELECT action FROM library_revisions WHERE entity_id=$1",
+          [id],
+        )
+      ).rows[0].action,
+    ).toBe("editBookInformation");
+    await expect(
+      editBookInformation(f.db, "owner", command),
+    ).rejects.toMatchObject({ status: 409 });
+  } finally {
+    await f.pg.close();
+  }
+});
 it("stores only display preference, checks owner/version/value and leaves sources unchanged", async () => {
   const f = await testDatabase();
   try {

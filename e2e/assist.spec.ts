@@ -246,6 +246,11 @@ async function mount(
             scopeHash: "a".repeat(64),
           },
         });
+      if (c.action === "request" && Number(policy.requestLimitUsd) < 0.01)
+        return r.fulfill({
+          status: 409,
+          json: { error: "요청당 비용 상한을 넘습니다." },
+        });
       return r.fulfill({ json: { ok: true, id: crypto.randomUUID() } });
     }
     return r.fulfill({ json: {} });
@@ -276,13 +281,7 @@ test("request list is compact, details are loaded on demand and current record f
       .getByRole("combobox", { name: "도움 방향" })
       .locator("option")
       .allTextContents(),
-  ).toEqual([
-    "종합검토",
-    "메모 연결 제안",
-    "연결메모 제목 제안",
-    "생각묶음 제안",
-    "생각묶음 제목 제안",
-  ]);
+  ).toEqual(["종합검토", "메모 연결 제안"]);
   await expect(
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toHaveCount(0);
@@ -292,9 +291,11 @@ test("request list is compact, details are loaded on demand and current record f
     page.getByText("서로 다른 기록을 함께 살펴볼 가치", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "분석", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "이 기록으로 AI 도움 요청", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() => f.calls.filter((c) => c.action === "request").length)
+    .toBe(1);
+  await expect(page.getByText(/예상 비용/)).toHaveCount(0);
+  await expect(page.getByText(/이 기록으로 AI 도움 요청/)).toHaveCount(0);
   expect(f.calls.find((c) => c.query)?.query).toMatchObject({
     category: "100",
     tag: "관계",
@@ -341,30 +342,20 @@ test("model choice is remembered and deleted history stays hidden even while the
   await expect(page.locator(".assist-request-row")).toHaveCount(0);
 });
 
-test("raising a request cap preserves the monthly ceiling and does not start an AI call", async ({
+test("the server can still block requests over budget without showing a cost step", async ({
   page,
 }) => {
   const f = await mount(page, false, "0.001");
   await page.getByRole("button", { name: "분석", exact: true }).click();
-  const request = page.getByRole("button", {
-    name: "이 기록으로 AI 도움 요청",
-    exact: true,
-  });
-  await expect(request).toBeDisabled();
-  await page.getByRole("button", { name: /건당 한도를/ }).click();
-  await expect(request).toBeEnabled();
-  expect(f.calls.filter((c) => c.action === "request")).toHaveLength(0);
-  expect(f.calls.find((c) => c.action === "allowRequest").payload).toEqual({
-    expectedPolicyVersion: 1,
-    maxCostUsd: "0.010000",
-  });
-  await request.click();
-  await expect
-    .poll(() => f.calls.filter((c) => c.action === "request").length)
-    .toBe(1);
+  await expect(page.getByRole("alert")).toContainText(
+    "요청당 비용 상한을 넘습니다.",
+  );
+  await expect(page.getByText(/예상 비용|건당 한도를/)).toHaveCount(0);
+  expect(f.calls.filter((c) => c.action === "allowRequest")).toHaveLength(0);
+  expect(f.calls.filter((c) => c.action === "request")).toHaveLength(1);
   expect(
     f.calls.find((c) => c.action === "request").payload.expectedPolicyVersion,
-  ).toBe(2);
+  ).toBe(1);
 });
 
 test("compact AI rows and detailed evidence fit a mobile screen", async ({

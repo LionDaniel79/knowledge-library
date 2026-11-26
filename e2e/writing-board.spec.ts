@@ -275,7 +275,9 @@ for (const width of [390, 1280])
       .getByRole("combobox", { name: "대상 목차", exact: true })
       .selectOption({ label: "1. 나의 결론" });
     await page.getByRole("button", { name: "분석", exact: true }).click();
-    await expect.poll(() => assistCalls.length).toBe(1);
+    await expect
+      .poll(() => assistCalls.map((call) => call.action))
+      .toEqual(["preview", "request"]);
     expect(assistCalls[0].action).toBe("preview");
     expect(assistCalls[0].payload.writingContext).toMatchObject({
       title: "생각의 변화",
@@ -289,6 +291,7 @@ for (const width of [390, 1280])
       ],
     });
     expect(assistCalls[0].payload.sources).toHaveLength(2);
+    await expect(page.getByText(/예상 비용 상한/)).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,

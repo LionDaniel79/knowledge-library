@@ -340,6 +340,11 @@ export function BookShelves({
   useEffect(() => {
     setSelected(book.bookshelves ?? []);
   }, [book.bookshelves]);
+  useEffect(() => {
+    if (book.version <= baseVersion) return;
+    setBaseVersion(book.version);
+    setEditBase(formEditBase(book));
+  }, [book, baseVersion]);
   return (
     <section className="detail-shelves">
       <ShelfPicker

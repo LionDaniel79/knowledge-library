@@ -76,9 +76,8 @@ for (const width of [390, 1280]) {
       [
         ".detail-actions",
         ".shelf-picker",
-        ".catalog-credit",
         ".unified-book-information",
-        ".book-evidence",
+        ".book-detail-records",
       ].map((sel) =>
         Array.from(el.querySelectorAll("*")).indexOf(el.querySelector(sel)!),
       ),
@@ -86,6 +85,16 @@ for (const width of [390, 1280]) {
     expect(
       order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])),
     ).toBeTruthy();
+    await expect(dialog.getByText("출처", { exact: true })).toHaveCount(0);
+    await expect(
+      dialog.getByText("다른 소장본·판본 연결", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "자동 보완 정보 수정" }),
+    ).toBeVisible();
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+    ).toBe(true);
     await expect(
       dialog.getByRole("heading", { name: "독서이력 1개", exact: true }),
     ).toBeVisible();

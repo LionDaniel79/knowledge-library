@@ -185,6 +185,7 @@ export function WritingAssist({
               </select>
             </label>
             <button
+              className="primary assist-run"
               type="button"
               disabled={busy || (request === "materials" && !chapter)}
               onClick={onAnalyze}

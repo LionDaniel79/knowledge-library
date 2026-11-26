@@ -23,7 +23,11 @@ export function registerLibraryRuntime(
 export async function libraryRequest(
   input: RequestInfo | URL,
   init?: RequestInit,
-  options: { preferServer?: boolean; awaitDeviceSync?: boolean } = {},
+  options: {
+    preferServer?: boolean;
+    awaitDeviceSync?: boolean;
+    skipDeviceSync?: boolean;
+  } = {},
 ): Promise<Response> {
   const runtime = current,
     authorizeNetwork = networkAccess,
@@ -57,7 +61,7 @@ export async function libraryRequest(
       if (!(
         (options.preferServer &&
           url.pathname === "/api/curation" &&
-          body.action === "selectBookField") ||
+          ["selectBookField", "editBookInformation"].includes(body.action)) ||
         (url.pathname === "/api/book-relations" &&
           body.relation === "same_file" &&
           body.state === "accepted")
@@ -160,6 +164,7 @@ export async function libraryRequest(
   const response = await fetch(networkInput, networkInit);
   if (
     runtime &&
+    !options.skipDeviceSync &&
     method !== "GET" &&
     response.ok &&
     url.pathname.startsWith("/api/") &&
