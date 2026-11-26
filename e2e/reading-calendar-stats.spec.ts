@@ -122,81 +122,80 @@ async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
   await page.getByRole("button", { name, exact: true }).click();
 }
-test("calendar header jumps to a chosen date and today on home and calendar screens", async ({
-  page,
-}, testInfo) => {
-  await mount(page);
-  for (const screen of ["나의 서재", "독서 달력"]) {
-    if (screen !== "나의 서재") await navigate(page, screen);
-    const calendar = page.locator(".calendar-panel");
-    await expect(
-      calendar.getByRole("button", { name: "날짜 이동", exact: true }),
-    ).toBeVisible();
-    await calendar
-      .getByRole("button", { name: "날짜 이동", exact: true })
-      .click();
-    const picker = calendar.getByRole("dialog", {
-      name: "날짜 선택",
-      exact: true,
-    });
-    await expect(picker).toBeVisible();
-    await expect(picker.locator('input[type="date"]')).toHaveCount(0);
-    await picker
-      .getByRole("combobox", { name: "이동 연도", exact: true })
-      .selectOption("2018");
-    await picker
-      .getByRole("combobox", { name: "이동 월", exact: true })
-      .selectOption("02");
-    await picker
-      .getByRole("button", { name: "2018-02-03", exact: true })
-      .click();
-    await expect(picker).toHaveCount(0);
-    await expect(calendar.locator(".month-selector")).toContainText(
-      "2018년 2월",
-    );
-    await expect(
-      calendar.getByRole("button", { name: "2018-02-03", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await calendar
-      .getByRole("button", { name: "날짜 이동", exact: true })
-      .click();
-    await page.screenshot({ path: testInfo.outputPath("date-jump.png") });
-    await calendar
-      .getByRole("dialog", { name: "날짜 선택", exact: true })
-      .getByRole("button", { name: "오늘", exact: true })
-      .click();
-    await expect(
-      calendar.getByRole("button", { name: "2026-10-28", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect(calendar.locator(".month-selector")).toContainText(
-      "2026년 10월",
-    );
-  }
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  const calendar = page.locator(".calendar-panel");
-  await calendar
-    .getByRole("button", { name: "날짜 이동", exact: true })
-    .click();
-  const picker = calendar.getByRole("dialog", {
-    name: "날짜 선택",
-    exact: true,
-  });
-  await picker
-    .getByRole("combobox", { name: "이동 연도", exact: true })
-    .selectOption("2018");
-  await picker
-    .getByRole("combobox", { name: "이동 월", exact: true })
-    .selectOption("02");
-  await picker.getByRole("button", { name: "2018-02-03", exact: true }).click();
-  await navigate(page, "독서 통계");
-  await expect(
-    page.getByRole("combobox", { name: "통계 연도", exact: true }),
-  ).toHaveValue("2018");
-});
+for (const width of [390, 1280]) {
+  test(
+    "calendar header jumps to a chosen date and today at " + width + "px",
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      await mount(page);
+      await navigate(page, "독서 달력");
+      const calendar = page.locator(".calendar-panel");
+      await expect(
+        calendar.getByRole("button", { name: "날짜 이동", exact: true }),
+      ).toBeVisible();
+      await calendar
+        .getByRole("button", { name: "날짜 이동", exact: true })
+        .click();
+      const picker = calendar.getByRole("dialog", {
+        name: "날짜 선택",
+        exact: true,
+      });
+      await expect(picker).toBeVisible();
+      await expect(picker.locator('input[type="date"]')).toHaveCount(0);
+      await picker
+        .getByRole("combobox", { name: "이동 연도", exact: true })
+        .selectOption("2018");
+      await picker
+        .getByRole("combobox", { name: "이동 월", exact: true })
+        .selectOption("02");
+      await picker
+        .getByRole("button", { name: "2018-02-03", exact: true })
+        .click();
+      await expect(picker).toHaveCount(0);
+      await expect(calendar.locator(".month-selector")).toContainText(
+        "2018년 2월",
+      );
+      await expect(
+        calendar.getByRole("button", { name: "2018-02-03", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await calendar
+        .getByRole("button", { name: "날짜 이동", exact: true })
+        .click();
+      await page.screenshot({ path: testInfo.outputPath("date-jump.png") });
+      await calendar
+        .getByRole("dialog", { name: "날짜 선택", exact: true })
+        .getByRole("button", { name: "오늘", exact: true })
+        .click();
+      await expect(
+        calendar.getByRole("button", { name: "2026-10-28", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect(calendar.locator(".month-selector")).toContainText(
+        "2026년 10월",
+      );
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await calendar
+        .getByRole("button", { name: "날짜 이동", exact: true })
+        .click();
+      await picker
+        .getByRole("combobox", { name: "이동 연도", exact: true })
+        .selectOption("2018");
+      await picker
+        .getByRole("combobox", { name: "이동 월", exact: true })
+        .selectOption("02");
+      await picker
+        .getByRole("button", { name: "2018-02-03", exact: true })
+        .click();
+      await navigate(page, "독서 통계");
+      await expect(
+        page.getByRole("combobox", { name: "통계 연도", exact: true }),
+      ).toHaveValue("2018");
+    },
+  );
+}
 for (const remote of [false, true]) {
   test(`monthly bars show chronological clickable covers including rereads (remote=${remote})`, async ({
     page,

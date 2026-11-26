@@ -952,11 +952,6 @@ progress::-moz-progress-bar {
 .calendar-panel {
   padding: 24px 21px 19px;
 }
-.calendar-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
-}
 .calendar-content {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(230px, 1fr);
@@ -984,7 +979,7 @@ progress::-moz-progress-bar {
   font-size: 14px;
   font-weight: 600;
 }
-.month-selector .icon-button {
+.month-selector > .icon-button {
   width: 26px;
   height: 26px;
   border: 0;
@@ -6985,3 +6980,280 @@ textarea {
 .rating-book-open small {color:var(--muted)}.rating-book-score {margin-top:.4rem;border:0;background:transparent;padding:.25rem 0}
 @media(max-width:600px) {.rating-books {grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem}.rating-book-open strong{font-size:.8rem}.rating-book-open small{font-size:.7rem}.rating-display{gap:.25rem;font-size:.8rem}.rating-summary .stat-card{padding:.8rem}.rating-summary .stat-card strong{font-size:1.7rem}}
 .rating-summary {grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* Shared spacing and controls for the main library views. */
+.app-shell > .workspace {
+  --workspace-gutter: clamp(12px, 3vw, 38px);
+}
+.workspace > .topbar,
+.workspace > .preview-banner,
+.main-content {
+  padding-inline: var(--workspace-gutter, 12px);
+}
+.workspace > .topbar {
+  height: 60px;
+  gap: 10px;
+}
+.topbar-title {
+  color: var(--green-dark);
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.nav-drawer .brand {
+  margin-bottom: 24px;
+}
+.nav-drawer .sidebar nav {
+  gap: 5px;
+}
+.nav-drawer .sidebar nav button {
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--ink);
+}
+.nav-drawer .sidebar nav button.active {
+  color: var(--white);
+}
+.main-content {
+  padding-block-start: clamp(16px, 2.3vw, 30px);
+}
+.page-heading {
+  align-items: center;
+  min-height: 44px;
+}
+.heading-line {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+.heading-line h1 {
+  font-size: clamp(24px, 2.6vw, 33px);
+  line-height: 1.2;
+  word-break: keep-all;
+}
+.heading-line time {
+  font-size: 12px;
+  color: var(--muted);
+}
+.heading-actions:empty {
+  display: none;
+}
+
+.library-overview {
+  margin-bottom: 18px;
+}
+.library-overview .stat-grid {
+  gap: 10px;
+  margin-bottom: 0;
+}
+.library-overview .stat-card {
+  min-width: 0;
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--ink);
+}
+.library-overview .stat-card > span {
+  display: block;
+  padding-inline-end: 19px;
+  color: var(--muted);
+  font-size: 13px;
+  word-break: keep-all;
+}
+.library-overview .stat-card > strong {
+  margin-top: 3px;
+  font-size: clamp(24px, 3vw, 30px);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.library-overview .stat-card > p {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+.library-overview .stat-card > svg {
+  inset: 13px 12px auto auto;
+  color: var(--muted);
+}
+.library-overview button.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.library-overview button.stat-card:hover {
+  border-color: var(--green);
+  background: var(--soft);
+}
+.overview-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 9px 0 0;
+  padding-inline: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.overview-formats > div {
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+.overview-formats dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  align-items: start;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  border-radius: 12px;
+}
+.catalog-controls > label {
+  min-width: 0;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.catalog-controls select,
+.catalog-controls input {
+  margin: 0;
+  background: var(--white);
+  color: var(--ink);
+  font-weight: 500;
+}
+.catalog-controls .catalog-search input {
+  font-size: 16px;
+}
+.book-toolbar {
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+  margin-bottom: 14px;
+}
+.book-toolbar .filter-tabs button {
+  color: var(--green-dark);
+  white-space: nowrap;
+}
+.book-toolbar .filter-tabs button[aria-pressed="true"] {
+  color: var(--white);
+}
+.book-toolbar .book-view-actions select,
+.book-toolbar .book-toolbar-end > button {
+  min-height: 40px;
+}
+
+.my-bookshelves {
+  gap: 12px;
+}
+.my-shelf-covers {
+  border-bottom-width: 3px;
+}
+.my-shelf-covers:has(> .muted) {
+  height: auto;
+  min-height: 26px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 7px;
+  font-size: 13px;
+}
+.my-shelf-label {
+  padding-block: 9px;
+}
+
+.calendar-panel .month-selector {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+  gap: 4px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.calendar-panel .month-selector > strong {
+  font-size: 15px;
+}
+.month-selector > .icon-button,
+.calendar-jump-anchor > .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.calendar-jump-heading {
+  text-align: start;
+}
+.calendar-summary strong {
+  font-size: 36px;
+  margin: 6px 0;
+}
+.calendar-summary p {
+  margin: 0;
+  line-height: 1.55;
+}
+.library-search-tabs,
+.statistics-tabs {
+  flex-wrap: wrap;
+}
+.library-search-tabs > button,
+.statistics-tabs > button {
+  min-height: 40px;
+  border-radius: 8px;
+}
+.book-detail-modal > header .icon-button {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1001px) {
+  .my-bookshelves:has(> .my-shelf-row) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+@media (max-width: 760px) {
+  .catalog-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .catalog-search {
+    grid-column: 1 / -1;
+  }
+  .book-toolbar > .filter-tabs {
+    flex-basis: 100%;
+  }
+  .book-toolbar .filter-tabs button {
+    min-height: 36px;
+  }
+  .book-toolbar .book-view-actions select,
+  .book-toolbar .book-toolbar-end > button,
+  .library-search-tabs > button,
+  .statistics-tabs > button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 700px) {
+  .heading-actions:not(:has(.sync-button)) {
+    display: flex;
+    width: auto;
+  }
+  .heading-actions:empty {
+    display: none;
+  }
+  .calendar-panel {
+    padding: 12px;
+  }
+  .calendar-panel .calendar-day {
+    height: clamp(44px, 14vw, 67px);
+  }
+}
+@media (max-width: 360px) {
+  .catalog-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .catalog-controls > label:last-child {
+    grid-column: 1 / -1;
+  }
+}

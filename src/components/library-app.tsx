@@ -13,6 +13,7 @@ import { newDraft, writeDraft, offlineOwnerKey } from "@/lib/offline-drafts";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  BookMarked,
   Menu,
   LibraryBig,
   LayoutDashboard,
@@ -99,7 +100,7 @@ type View =
 const navigation = [
   { id: "home", label: "나의 서재", icon: LayoutDashboard },
   { id: "books", label: "소장 도서", icon: LibraryBig },
-  { id: "shelves", label: "나의 책장", icon: LibraryBig },
+  { id: "shelves", label: "나의 책장", icon: BookMarked },
   { id: "search", label: "통합 검색", icon: Search },
   { id: "knowledge", label: "사유의 지도", icon: Feather },
   { id: "calendar", label: "독서 달력", icon: CalendarDays },
@@ -681,12 +682,12 @@ export function LibraryApp({
               <span>나만의 지식 서재</span>
             </div>
           </a>
-          <span className="sidebar-caption">MY LIBRARY</span>
           <nav aria-label="주 메뉴">
             {navigation.map((n) => (
               <button
                 key={n.id}
                 className={view === n.id ? "active" : ""}
+                aria-current={view === n.id ? "page" : undefined}
                 onClick={() => navigate(n.id)}
               >
                 <n.icon size={19} />
@@ -806,6 +807,7 @@ export function LibraryApp({
           >
             <Menu size={24} />
           </button>
+          <span className="topbar-title">지식서재</span>
           <button
             className="topbar-add secondary"
             aria-label="새 기록"
@@ -815,9 +817,6 @@ export function LibraryApp({
             <Plus size={16} />
             <span>새 기록</span>
           </button>
-          <div className="avatar" aria-label="나의 서재">
-            나
-          </div>
           {!preview && (
             <button
               className="icon-button mobile-logout"
@@ -850,9 +849,11 @@ export function LibraryApp({
         <main className="main-content">
           <div className="page-heading">
             <div className="heading-line">
-              <time className="eyebrow" dateTime={today}>
-                {today.replaceAll("-", ".")}
-              </time>
+              {view === "home" && (
+                <time className="eyebrow" dateTime={today}>
+                  {today.replaceAll("-", ".")}
+                </time>
+              )}
               <h1>{navigation.find((n) => n.id === view)?.label}</h1>
             </div>
             <div className="heading-actions">
@@ -889,6 +890,20 @@ export function LibraryApp({
           )}
           {view === "books" && (
             <div className="catalog-controls">
+              <label className="catalog-search">
+                도서 검색
+                <input
+                  type="search"
+                  aria-label="소장 도서 검색"
+                  placeholder="제목·저자·출판사·ISBN"
+                  value={query}
+                  maxLength={200}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    bookPaging.setPage(0);
+                  }}
+                />
+              </label>
               <label>
                 분야
                 <select
@@ -930,28 +945,14 @@ export function LibraryApp({
                 </select>
               </label>
               <label>
-                검색
-                <input
-                  type="search"
-                  aria-label="소장 도서 검색"
-                  placeholder="제목·저자·출판사·ISBN"
-                  value={query}
-                  maxLength={200}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    bookPaging.setPage(0);
-                  }}
-                />
-              </label>
-              <label>
                 정렬
                 <select
                   aria-label="도서 정렬"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
                 >
-                  <option value="newest">최근 등록한 순</option>
-                  <option value="oldest">오래전 등록한 순</option>
+                  <option value="newest">최근 등록 순</option>
+                  <option value="oldest">오래된 순</option>
                   <option value="title">제목 순</option>
                   <option value="author">저자 이름 순</option>
                 </select>
@@ -979,62 +980,62 @@ export function LibraryApp({
           ) : (
             <>
               {(view === "home" || view === "stats") && (
-                <div className="stat-grid">
-                  <button
-                    type="button"
-                    className="stat-card"
-                    aria-label="소장한 책"
-                    style={{
-                      textAlign: "left",
-                      color: "inherit",
-                      width: "100%",
-                    }}
-                    onClick={() => navigate("books")}
+                <section className="library-overview" aria-label="서재 현황">
+                  <div className="stat-grid">
+                    <button
+                      type="button"
+                      className="stat-card"
+                      aria-label="소장한 책"
+                      onClick={() => navigate("books")}
+                    >
+                      <span>소장한 책</span>
+                      <strong>
+                        {totalBooks}
+                        <small>권</small>
+                      </strong>
+                      <LibraryBig />
+                    </button>
+                    <div className="stat-card">
+                      <span>현재 읽는 중</span>
+                      <strong>
+                        {currentStats.readingCount}
+                        <small>권</small>
+                      </strong>
+                      <BookOpen />
+                    </div>
+                    <div className="stat-card">
+                      <span>{Number(month.slice(5))}월 완독</span>
+                      <strong data-testid="month-total">
+                        {stats.monthCount}
+                        <small>권</small>
+                      </strong>
+                      <p>
+                        서로 다른 책 {stats.uniqueBooks}권 · 재독{" "}
+                        {stats.rereads}권
+                      </p>
+                      <CalendarDays />
+                    </div>
+                    <div className="stat-card">
+                      <span>쌓인 내 기록</span>
+                      <strong>
+                        {data.notes.length}
+                        <small>개</small>
+                      </strong>
+                      <Feather />
+                    </div>
+                  </div>
+                  <dl
+                    className="overview-formats"
+                    aria-label="소장 형식별 권수"
                   >
-                    <span>소장한 책</span>
-                    <strong>
-                      {totalBooks}
-                      <small>권</small>
-                    </strong>
-                    <p>
-                      {formats
-                        .map(
-                          (format) =>
-                            `${formatNames[format]} ${formatCount(format)}`,
-                        )
-                        .join(" · ")}
-                    </p>
-                    <LibraryBig />
-                  </button>
-                  <div className="stat-card">
-                    <span>현재 읽는 중</span>
-                    <strong>
-                      {currentStats.readingCount}
-                      <small>권</small>
-                    </strong>
-                    <BookOpen />
-                  </div>
-                  <div className="stat-card">
-                    <span>{Number(month.slice(5))}월 완독</span>
-                    <strong data-testid="month-total">
-                      {stats.monthCount}
-                      <small>권</small>
-                    </strong>
-                    <p>
-                      서로 다른 책 {stats.uniqueBooks}권 · 재독 {stats.rereads}
-                      권
-                    </p>
-                    <CalendarDays />
-                  </div>
-                  <div className="stat-card">
-                    <span>쌓인 내 기록</span>
-                    <strong>
-                      {data.notes.length}
-                      <small>개</small>
-                    </strong>
-                    <Feather />
-                  </div>
-                </div>
+                    {formats.map((format) => (
+                      <div key={format}>
+                        <dt>{formatNames[format]}</dt>
+                        <dd>{formatCount(format)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
               )}
               {view === "home" && (
                 <>
@@ -1109,28 +1110,11 @@ export function LibraryApp({
               {view === "books" && (
                 <>
                   <div className="book-toolbar">
-                    <div className="book-view-actions">
-                      <PageSizeSelect
-                        label="소장 도서"
-                        paging={bookPaging}
-                        compact
-                      />
-                      <div className="book-view-review">
-                        <select
-                          aria-label="도서 보기 방식"
-                          value={bookLayout}
-                          onChange={(e) =>
-                            chooseBookLayout(
-                              e.target.value === "list" ? "list" : "covers",
-                            )
-                          }
-                        >
-                          <option value="list">목록형</option>
-                          <option value="covers">표지형</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="filter-tabs">
+                    <div
+                      className="filter-tabs"
+                      role="group"
+                      aria-label="도서 필터"
+                    >
                       {[
                         ["all", "전체"],
                         ["reading", "읽는 중"],
@@ -1152,6 +1136,27 @@ export function LibraryApp({
                           {label}
                         </button>
                       ))}
+                    </div>
+                    <div className="book-view-actions">
+                      <PageSizeSelect
+                        label="소장 도서"
+                        paging={bookPaging}
+                        compact
+                      />
+                      <div className="book-view-review">
+                        <select
+                          aria-label="도서 보기 방식"
+                          value={bookLayout}
+                          onChange={(e) =>
+                            chooseBookLayout(
+                              e.target.value === "list" ? "list" : "covers",
+                            )
+                          }
+                        >
+                          <option value="list">목록형</option>
+                          <option value="covers">표지형</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="book-toolbar-end">
                       {!preview && (
@@ -1259,7 +1264,6 @@ export function LibraryApp({
                   today={today}
                   monthSummary={
                     <div className="panel calendar-summary">
-                      <span className="eyebrow">THIS MONTH</span>
                       <h2>{Number(month.slice(5))}월의 독서</h2>
                       <strong>
                         {stats.monthCount}

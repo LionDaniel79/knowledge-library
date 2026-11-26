@@ -93,14 +93,6 @@ export function ReadingCalendar({
       {remote && !calendar && !error && (
         <p role="status">달력을 불러오는 중…</p>
       )}
-      <div className="calendar-toolbar">
-        <CalendarDatePicker
-          month={month}
-          selected={selected}
-          today={today}
-          onSelect={jump}
-        />
-      </div>
       <div className="calendar-content">
         <div className="calendar-month-view">
           <div className="month-selector">
@@ -121,6 +113,12 @@ export function ReadingCalendar({
             >
               <ArrowRight size={17} />
             </button>
+            <CalendarDatePicker
+              month={month}
+              selected={selected}
+              today={today}
+              onSelect={jump}
+            />
           </div>
           <div className="weekdays">
             {["일", "월", "화", "수", "목", "금", "토"].map((d) => (

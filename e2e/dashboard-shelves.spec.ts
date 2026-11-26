@@ -274,3 +274,74 @@ test("remote home requests bounded queue and recent pages with hydrated detail l
     expect(url.searchParams.get("offset")).toBe("0");
   }
 });
+
+for (const width of [390, 1280]) {
+  test(`main screens keep primary controls easy to find at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mount(page, previewLibrary);
+    const menu = page.getByRole("button", { name: "메뉴 열기" });
+    const navigate = async (name: string) => {
+      await menu.click();
+      await page
+        .getByRole("navigation", { name: "주 메뉴" })
+        .getByRole("button", { name, exact: true })
+        .click();
+      await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    };
+
+    const card = page.getByRole("button", { name: "소장한 책", exact: true });
+    expect((await card.boundingBox())!.height).toBeLessThan(130);
+    await card.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "소장 도서" }),
+    ).toBeVisible();
+    const search = page.getByRole("searchbox", { name: "소장 도서 검색" });
+    const fields = page.locator(".catalog-controls");
+    expect(
+      await fields.locator("input, select").first().getAttribute("type"),
+    ).toBe("search");
+    expect((await search.boundingBox())!.width).toBeGreaterThan(
+      (await page
+        .getByRole("combobox", { name: "분야별 소장 도서" })
+        .boundingBox())!.width,
+    );
+    await search.fill("우주를 읽는 문장");
+    await expect(page.locator(".shelf-card")).toHaveCount(1);
+    await page.locator(".shelf-card").click();
+    await expect(page.getByRole("dialog", { name: "상세 정보" })).toBeVisible();
+    await page
+      .getByRole("button", { name: "닫기", exact: true })
+      .last()
+      .click();
+
+    await navigate("나의 책장");
+    const emptyShelf = page.getByRole("button", {
+      name: "책 대기열 책장 열기",
+    });
+    expect((await emptyShelf.boundingBox())!.height).toBeLessThan(100);
+    await emptyShelf.click();
+    await expect(
+      page.getByRole("heading", { name: "이 책장에 담긴 책이 없습니다" }),
+    ).toBeVisible();
+
+    await navigate("독서 달력");
+    const calendar = page.locator(".calendar-panel");
+    const jump = calendar.getByRole("button", {
+      name: "날짜 이동",
+      exact: true,
+    });
+    await expect(
+      calendar
+        .locator(".month-selector")
+        .getByRole("button", { name: "날짜 이동" }),
+    ).toBeVisible();
+    await jump.click();
+    const picker = calendar.getByRole("dialog");
+    await expect(picker).toBeVisible();
+    const bounds = (await picker.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width + 1);
+  });
+}
